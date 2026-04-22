@@ -1,0 +1,16 @@
+{
+  "name": "@omnichannel/main-api",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "postgres": "^3.4.0",
+    "ioredis": "^5.3.0",
+    "@omnichannel/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

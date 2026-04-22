@@ -1,0 +1,13 @@
+{
+  "name": "omnichannel-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:main-api": "bun run --cwd apps/main-api dev",
+    "dev:wa-adapter": "bun run --cwd apps/wa-adapter dev"
+  }
+}
