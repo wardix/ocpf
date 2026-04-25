@@ -79,18 +79,19 @@ async function startBaileys() {
       const msg = m.messages[0];
       
       // -- FITUR DUMP PESAN MENTAH UNTUK DEBUGGING --
-      // Simpan payload mentah dari Baileys ke file JSON
-      const dumpDir = path.join(process.cwd(), 'message_dumps');
-      const timestampDump = Date.now();
-      const msgId = msg?.key?.id || 'unknown';
-      const dumpFilename = path.join(dumpDir, `msg-${timestampDump}-${msgId}.json`);
+      // ... (kode dump tetap ada)
       
-      // Tulis file ke background tanpa await (fire and forget) agar tidak memblokir antrean utama
-      fs.writeFile(dumpFilename, JSON.stringify(m, null, 2))
-        .catch(err => console.error('Gagal mem-dump pesan:', err));
-      // ----------------------------------------------
-
-      if (!msg.message || msg.key.fromMe) return;
+      // ABAIKAN PESAN JIKA:
+      // 1. Dari diri sendiri
+      // 2. Tidak ada objek message
+      // 3. Pesan bertipe protocolMessage (sync kunci, hapus pesan, dll)
+      // 4. Kategori pesan adalah 'peer' (internal sinkronisasi antar perangkat)
+      if (
+        !msg.message || 
+        msg.key.fromMe || 
+        msg.message.protocolMessage || 
+        msg.category === 'peer'
+      ) return;
 
       const textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
       

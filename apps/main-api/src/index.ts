@@ -171,6 +171,9 @@ app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'))
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
   try {
+    const status = c.req.query('status') || 'open'; // default ke open
+    const isResolved = status === 'resolved';
+
     const convs = await sql`
       SELECT 
         c.id, 
@@ -181,7 +184,10 @@ app.get('/api/conversations', async (c) => {
         (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
       FROM conversations c
       JOIN contacts con ON c.contact_id = con.id
-      WHERE c.account_id = 1
+      WHERE c.account_id = 1 AND (
+        (${isResolved}::boolean = true AND c.status = 'resolved') OR 
+        (${isResolved}::boolean = false AND c.status != 'resolved')
+      )
       ORDER BY c.updated_at DESC
     `;
     return c.json(convs);
@@ -254,6 +260,35 @@ app.post('/api/messages/send', async (c) => {
   } catch (error) {
     console.error('Error pengiriman pesan:', error);
     return c.json({ success: false, error: 'Gagal mengirim' }, 500);
+  }
+});
+
+// Endpoint untuk update status tiket (misal: Tutup Tiket)
+app.patch('/api/conversations/:id/status', async (c) => {
+  const conversationId = c.req.param('id');
+  try {
+    const body = await c.req.json();
+    const { status } = body; // 'open', 'resolved', etc.
+
+    if (!['open', 'pending', 'snoozed', 'resolved'].includes(status)) {
+      return c.json({ error: 'Status tidak valid' }, 400);
+    }
+
+    const [conversation] = await sql`
+      UPDATE conversations 
+      SET status = ${status}, updated_at = NOW() 
+      WHERE id = ${conversationId}
+      RETURNING *;
+    `;
+
+    if (!conversation) {
+      return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
+    }
+
+    return c.json({ success: true, data: conversation });
+  } catch (error) {
+    console.error('Error update status:', error);
+    return c.json({ success: false, error: 'Gagal update status' }, 500);
   }
 });
 

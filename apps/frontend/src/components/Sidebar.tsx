@@ -12,15 +12,17 @@ interface Conversation {
 interface Props {
   selectedId: number | null;
   onSelect: (id: number, phone: string, name: string) => void;
+  refreshKey: number;
 }
 
-const Sidebar = ({ selectedId, onSelect }: Props) => {
+const Sidebar = ({ selectedId, onSelect, refreshKey }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeTab, setActiveTab] = useState<'open' | 'resolved'>('open');
 
   const fetchConversations = async () => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations`);
+      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`);
       if (response.ok) {
         const data = await response.json();
         setConversations(data);
@@ -35,18 +37,32 @@ const Sidebar = ({ selectedId, onSelect }: Props) => {
     // Refresh sidebar setiap 10 detik agar tetap up to date
     const interval = setInterval(fetchConversations, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshKey, activeTab]);
 
   return (
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
       <div className="p-4 border-b border-base-300 bg-base-200">
-        <h2 className="font-bold text-lg italic">💬 Inbox Aktif</h2>
+        <h2 className="font-bold text-lg italic">💬 Inbox</h2>
+        <div className="flex gap-2 mt-3">
+          <button 
+            className={`btn btn-sm flex-1 ${activeTab === 'open' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('open')}
+          >
+            Aktif
+          </button>
+          <button 
+            className={`btn btn-sm flex-1 ${activeTab === 'resolved' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('resolved')}
+          >
+            Selesai
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 && (
           <div className="p-8 text-center opacity-30 italic text-sm">
-            Menunggu chat masuk...
+            {activeTab === 'open' ? 'Menunggu chat masuk...' : 'Belum ada tiket selesai.'}
           </div>
         )}
 

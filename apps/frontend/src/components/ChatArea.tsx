@@ -17,11 +17,35 @@ interface SelectedConversation {
 interface Props {
   messages: Message[];
   selectedConv: SelectedConversation;
+  onResolve: () => void;
 }
 
-const ChatArea = ({ messages, selectedConv }: Props) => {
+const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
+
+  const handleResolve = async () => {
+    const confirm = window.confirm("Apakah Anda yakin ingin menutup tiket obrolan ini?");
+    if (!confirm) return;
+
+    setIsResolving(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved' })
+      });
+      if (response.ok) {
+        onResolve(); // Panggil fungsi reset di App.tsx
+      }
+    } catch (err) {
+      console.error('Gagal menutup tiket:', err);
+    } finally {
+      setIsResolving(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -65,6 +89,17 @@ const ChatArea = ({ messages, selectedConv }: Props) => {
             <h2 className="font-bold text-sm sm:text-base">{selectedConv.name}</h2>
             <p className="text-[10px] text-success font-medium">Online</p>
           </div>
+        </div>
+        
+        <div className="flex gap-2">
+          <button 
+            className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
+            onClick={handleResolve}
+            disabled={isResolving}
+          >
+            Tutup Tiket
+          </button>
+          <button className="btn btn-sm btn-outline">Tunda (Snooze)</button>
         </div>
       </div>
 

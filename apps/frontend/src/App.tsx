@@ -21,6 +21,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const fetchMessages = useCallback(async (conversationId: number) => {
     try {
