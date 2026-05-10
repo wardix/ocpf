@@ -109,21 +109,34 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       `;
     }
 
-    // 2. Cari Percakapan aktif
+    // 2. Cari Percakapan terakhir dari kontak ini
     let [conversation] = await sql`
-      SELECT id FROM conversations
+      SELECT id, status FROM conversations
       WHERE account_id = ${ACCOUNT_ID} 
         AND inbox_id = ${INBOX_ID} 
         AND contact_id = ${contact.id}
-        AND status = 'open'
+      ORDER BY updated_at DESC
       LIMIT 1
     `;
 
     if (!conversation) {
+      // Jika belum pernah ada percakapan, buat baru
       [conversation] = await sql`
         INSERT INTO conversations (account_id, inbox_id, contact_id, status)
         VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id}, 'open')
         RETURNING id;
+      `;
+    } else if (conversation.status === 'resolved' || conversation.status === 'snoozed') {
+      // Jika percakapan sudah ditutup/ditunda, buka kembali (reopen)
+      [conversation] = await sql`
+        UPDATE conversations SET status = 'open', updated_at = NOW() 
+        WHERE id = ${conversation.id}
+        RETURNING id;
+      `;
+    } else {
+      // Jika masih open/pending, cukup update waktunya saja
+      await sql`
+        UPDATE conversations SET updated_at = NOW() WHERE id = ${conversation.id}
       `;
     }
 
