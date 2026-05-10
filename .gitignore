@@ -162,3 +162,5 @@ $RECYCLE.BIN/
 apps/wa-adapter/auth_info_baileys/
 apps/wa-adapter/message_dumps/
 apps/frontend/dist/
+apps/main-api/public/uploads/*
+!apps/main-api/public/uploads/.gitkeep

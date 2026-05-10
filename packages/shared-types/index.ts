@@ -16,6 +16,11 @@ export interface IncomingMessagePayload {
     timestamp: number;
     participant_id?: string;
     participant_name?: string;
+    media?: {
+      mimetype: string;
+      data_base64: string;
+      filename?: string;
+    };
   };
 }
 
@@ -37,6 +42,11 @@ export interface SendMessagePayload {
     target_id: string;
     content: string;
     message_type: MessageType;
+    media?: {
+      mimetype: string;
+      data_base64: string;
+      filename?: string;
+    };
   };
 }
 

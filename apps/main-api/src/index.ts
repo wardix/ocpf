@@ -1,8 +1,10 @@
 // apps/main-api/src/index.ts
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { serveStatic } from 'hono/bun';
 import postgres from 'postgres';
 import Redis from 'ioredis';
+import path from 'path';
 import type { 
   IncomingMessagePayload, 
   SendMessagePayload 
@@ -14,6 +16,9 @@ const app = new Hono();
 // Aktifkan CORS agar frontend (port 5173) bisa akses backend (port 8000)
 app.use('/api/*', cors());
 app.use('/ws', cors()); // Opsional untuk beberapa skenario upgrade
+
+// Sajikan file statis media (gambar/dokumen)
+app.use('/uploads/*', serveStatic({ root: './public' }));
 
 // =========================================================================
 // 1. Koneksi Database & Redis (Valkey)
@@ -156,7 +161,39 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       RETURNING *;
     `;
 
-    return { ...msg, contact_name: displayName };
+    // 4. Jika ada media, simpan file secara lokal dan catat ke tabel attachments
+    let attachmentData = null;
+    if (data.media) {
+      try {
+        const { mimetype, data_base64, filename } = data.media;
+        
+        // Buat nama file unik
+        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
+        const safeFilename = filename || `media_${Date.now()}_${data.wa_message_id}.${ext}`;
+        
+        // Decode base64 dan simpan ke disk
+        const buffer = Buffer.from(data_base64, 'base64');
+        const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
+        await Bun.write(uploadPath, buffer);
+        
+        const fileUrl = `/uploads/${safeFilename}`;
+        
+        const [attachment] = await sql`
+          INSERT INTO attachments (message_id, file_type, file_url)
+          VALUES (${msg.id}, ${mimetype}, ${fileUrl})
+          RETURNING *;
+        `;
+        attachmentData = attachment;
+      } catch (mediaErr) {
+        console.error('Gagal memproses media lampiran:', mediaErr);
+      }
+    }
+
+    return { 
+      ...msg, 
+      contact_name: displayName,
+      attachments: attachmentData ? [attachmentData] : [] 
+    };
   } catch (error) {
     console.error("Gagal menyimpan ke database:", error);
     return null;
@@ -213,10 +250,19 @@ app.get('/api/conversations', async (c) => {
 app.get('/api/conversations/:id/messages', async (c) => {
   const conversationId = c.req.param('id');
   try {
+    // Mengambil pesan beserta attachment-nya
     const messages = await sql`
-      SELECT * FROM messages 
-      WHERE conversation_id = ${conversationId} 
-      ORDER BY created_at ASC
+      SELECT 
+        m.*,
+        COALESCE(
+          json_agg(a.*) FILTER (WHERE a.id IS NOT NULL), 
+          '[]'
+        ) AS attachments
+      FROM messages m
+      LEFT JOIN attachments a ON m.id = a.message_id
+      WHERE m.conversation_id = ${conversationId} 
+      GROUP BY m.id
+      ORDER BY m.created_at ASC
     `;
     return c.json(messages);
   } catch (error) {
@@ -230,7 +276,7 @@ app.post('/api/messages/send', async (c) => {
   console.log(`\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
   try {
     const body = await c.req.json();
-    const { target_id, content, conversation_id, account_id } = body;
+    const { target_id, content, conversation_id, account_id, media } = body;
 
     const tDbStart = Date.now();
     const [msg] = await sql`
@@ -239,10 +285,33 @@ app.post('/api/messages/send', async (c) => {
         content, message_type, status
       ) VALUES (
         ${account_id || 1}, ${conversation_id}, 'User', NULL, 
-        ${content}, 'outgoing', 'sent'
+        ${content || ''}, 'outgoing', 'sent'
       )
       RETURNING *;
     `;
+    
+    let attachmentData = null;
+    if (media) {
+      try {
+        const { mimetype, data_base64, filename } = media;
+        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
+        const safeFilename = filename || `media_out_${Date.now()}_${msg.id}.${ext}`;
+        const buffer = Buffer.from(data_base64, 'base64');
+        const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
+        await Bun.write(uploadPath, buffer);
+        
+        const fileUrl = `/uploads/${safeFilename}`;
+        const [attachment] = await sql`
+          INSERT INTO attachments (message_id, file_type, file_url)
+          VALUES (${msg.id}, ${mimetype}, ${fileUrl})
+          RETURNING *;
+        `;
+        attachmentData = attachment;
+      } catch (err) {
+        console.error('Gagal memproses lampiran media yang dikirim:', err);
+      }
+    }
+    
     const tDbEnd = Date.now();
     console.log(`[DEBUG-LATENCY] (${tDbEnd}) Simpan DB PostgreSQL selesai (Memakan waktu: ${tDbEnd - tDbStart}ms)`);
 
@@ -252,8 +321,9 @@ app.post('/api/messages/send', async (c) => {
       data: {
         internal_message_id: msg.id,
         target_id: target_id,
-        content: content,
-        message_type: 'text'
+        content: content || '',
+        message_type: media ? 'image' : 'text',
+        media: media
       }
     };
     
@@ -262,14 +332,19 @@ app.post('/api/messages/send', async (c) => {
     await redis.rpush(QUEUE_OUTGOING, payloadStr);
     console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (QUEUE_OUTGOING).`);
     
+    const finalMsgData = {
+      ...msg,
+      attachments: attachmentData ? [attachmentData] : []
+    };
+    
     // Broadcast ke UI kita sendiri juga (Agar bubble chat langsung muncul tanpa nunggu WA Adapter)
     await redis.publish(PUB_SUB_CH, JSON.stringify({
       event: 'message.new',
-      data: msg
+      data: finalMsgData
     }));
 
     console.log(`[DEBUG-LATENCY] Total proses di Main API selesai dalam ${Date.now() - tStart}ms`);
-    return c.json({ success: true, data: msg });
+    return c.json({ success: true, data: finalMsgData });
   } catch (error) {
     console.error('Error pengiriman pesan:', error);
     return c.json({ success: false, error: 'Gagal mengirim' }, 500);

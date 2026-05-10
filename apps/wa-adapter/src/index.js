@@ -3,7 +3,8 @@ import {
   default as makeWASocket, 
   DisconnectReason, 
   useMultiFileAuthState,
-  fetchLatestBaileysVersion 
+  fetchLatestBaileysVersion,
+  downloadMediaMessage
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import Redis from 'ioredis';
@@ -93,7 +94,7 @@ async function startBaileys() {
         msg.category === 'peer'
       ) return;
 
-      const textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+      let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
       
       let fullJid = msg.key.remoteJid;
       
@@ -127,18 +128,59 @@ async function startBaileys() {
 
     console.log(`[Pesan Masuk] Dari: ${displayName} (${fullJid})`);
 
+    // -- DETEKSI DAN UNDUH MEDIA --
+    let mediaPayload = undefined;
+    let finalMessageType = 'text';
+    
+    // Ambil kunci pertama dari objek message (misal: 'imageMessage', 'documentMessage', 'conversation')
+    const messageTypeKey = Object.keys(msg.message || {})[0];
+    
+    if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
+      finalMessageType = messageTypeKey.replace('Message', ''); // Menjadi 'image', 'document', dll
+      try {
+        console.log(`Mendeteksi lampiran media (${messageTypeKey}), sedang mengunduh...`);
+        
+        const buffer = await downloadMediaMessage(
+          msg,
+          'buffer',
+          { },
+          { 
+            logger: pino({ level: 'silent' }),
+            reuploadRequest: sock.updateMediaMessage
+          }
+        );
+        
+        const mediaMsg = msg.message[messageTypeKey];
+        mediaPayload = {
+          mimetype: mediaMsg.mimetype || 'application/octet-stream',
+          data_base64: buffer.toString('base64'),
+          filename: mediaMsg.fileName || undefined
+        };
+        
+        // Jika ada caption pada gambar/dokumen, kita jadikan sebagai textContent
+        if (mediaMsg.caption) {
+          textContent = mediaMsg.caption;
+        }
+        
+        console.log(`Media berhasil diunduh (${buffer.length} bytes).`);
+      } catch (err) {
+        console.error('Gagal mengunduh media dari WA:', err);
+      }
+    }
+
     const payload = {
       event: 'message.incoming',
       data: {
         source_id: sourceId,
-        source_jid: fullJid, // Kirim alamat lengkap (format asli WA)
+        source_jid: fullJid, 
         push_name: displayName,
         content: textContent,
-        message_type: 'text',
+        message_type: finalMessageType, // 'text', 'image', dll
         wa_message_id: msg.key.id,
         timestamp: msg.messageTimestamp,
         participant_id: participantId,
-        participant_name: isGroup ? msg.pushName : null
+        participant_name: isGroup ? msg.pushName : null,
+        media: mediaPayload // Tambahkan data base64 ke payload
       }
     };
 
@@ -168,13 +210,44 @@ async function startBaileys() {
             const queuedAt = payload._queued_at || poppedAt;
             const redisLatency = poppedAt - queuedAt;
             
-            const { target_id, content } = payload.data;
+            const { target_id, content, media } = payload.data;
             console.log(`\n[DEBUG-LATENCY] (${poppedAt}) Mengambil antrean kirim pesan (Latency Antrean Redis: ${redisLatency}ms)`);
             console.log(`[Kirim Pesan] Ke: ${target_id} - Mengirim via Baileys...`);
             
             const sendStart = Date.now();
+            
+            // Siapkan objek pesan
+            let waMessage = {};
+            if (media) {
+              const buffer = Buffer.from(media.data_base64, 'base64');
+              const isDocument = !media.mimetype.startsWith('image/') && !media.mimetype.startsWith('video/');
+              
+              if (isDocument) {
+                waMessage = {
+                  document: buffer,
+                  mimetype: media.mimetype,
+                  fileName: media.filename || 'document.bin',
+                  caption: content || undefined
+                };
+              } else if (media.mimetype.startsWith('video/')) {
+                waMessage = {
+                  video: buffer,
+                  mimetype: media.mimetype,
+                  caption: content || undefined
+                };
+              } else {
+                waMessage = {
+                  image: buffer,
+                  mimetype: media.mimetype,
+                  caption: content || undefined
+                };
+              }
+            } else {
+              waMessage = { text: content };
+            }
+
             // Kirim pesan melalui Socket WhatsApp
-            await sock.sendMessage(target_id, { text: content });
+            await sock.sendMessage(target_id, waMessage);
             const sendEnd = Date.now();
             
             console.log(`-> Pesan berhasil dikirim! [DEBUG-LATENCY] (Proses pengiriman WA memakan waktu: ${sendEnd - sendStart}ms)`);
