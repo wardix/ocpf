@@ -298,6 +298,22 @@ app.patch('/api/conversations/:id/status', async (c) => {
       return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
     }
 
+    // Dual-write: Catat ke conversation_events dan pesan sistem
+    await sql`
+      INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
+      VALUES (${conversation.account_id}, ${conversation.id}, 'User', NULL, 'status_changed', ${sql.json({ new_status: status })});
+    `;
+    
+    let systemText = `Tiket diubah menjadi ${status}`;
+    if (status === 'resolved') systemText = 'Tiket ditutup oleh Agen';
+    
+    const [sysMsg] = await sql`
+      INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
+      VALUES (${conversation.account_id}, ${conversation.id}, 'System', NULL, ${systemText}, 'template', 'sent')
+      RETURNING *;
+    `;
+    await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+
     return c.json({ success: true, data: conversation });
   } catch (error) {
     console.error('Error update status:', error);

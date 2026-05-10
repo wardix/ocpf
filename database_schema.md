@@ -99,6 +99,17 @@ Menyimpan file media yang diunggah.
 *   `file_type` (String) - Mime type (image/png, application/pdf).
 *   `file_url` (String) - URL lokasi file (S3, lokal).
 
+### `conversation_events` (Audit Trail)
+Tabel untuk mencatat log aktivitas atau perubahan status pada percakapan.
+*   `id` (Primary Key)
+*   `account_id` (Foreign Key -> accounts.id)
+*   `conversation_id` (Foreign Key -> conversations.id)
+*   `actor_type` (String) - Siapa yang melakukan aksi ('User', 'Contact', 'System').
+*   `actor_id` (BIGINT, Nullable) - ID dari aktor yang melakukan aksi.
+*   `event_type` (String) - Jenis kejadian (misal: 'status_changed').
+*   `event_data` (JSONB) - Data tambahan (misal: `{ "old_status": "open", "new_status": "resolved" }`).
+*   `created_at` (Timestamp)
+
 ## 4. Tabel Organisasi Tambahan (Tags & Teams)
 
 ### `labels`

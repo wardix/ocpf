@@ -13,6 +13,7 @@ Platform ini dibangun dengan arsitektur **Microservices** terpisah (*decoupled*)
 ## 2. Aturan & Konvensi Database
 *   **Wajib Menggunakan Raw SQL:** Di dalam `main-api`, kita menggunakan pustaka `postgres` murni. **JANGAN gunakan ORM** (seperti Prisma atau TypeORM). Keputusan ini diambil secara sadar untuk mencegah *memory bloat* dan menjaga efisiensi saat menangani jutaan baris data pesan.
 *   **Multi-tenancy:** Semua tabel data utama (seperti `contacts`, `conversations`, `messages`, `channels`) wajib menyertakan kolom `account_id` untuk memastikan isolasi data antar perusahaan.
+*   **Audit Trail & Dual-Write:** Setiap perubahan status percakapan (seperti tutup/buka tiket) harus dicatat ganda (*dual-write*): sebagai data analitik struktural di tabel `conversation_events` dan sebagai gelembung pesan visual di tabel `messages` dengan `sender_type = 'System'`.
 
 ## 3. Aturan Koneksi Redis (Anti-Blocking)
 Di `apps/main-api`, koneksi Redis dipisahkan menjadi 3 *instance* yang berbeda peruntukannya. Tolong pertahankan pola ini:

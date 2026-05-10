@@ -117,26 +117,38 @@ const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
 
           {messages.length > 0 && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
 
-          {messages.map((msg) => (
-            <div key={msg.id} className={`chat ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
-              <div className="chat-header text-[10px] opacity-50 mb-1">
-                {msg.sender_type === 'Contact' ? selectedConv.name : 'Anda'} 
-                <time className="ml-1 opacity-50">
-                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </time>
+          {messages.map((msg) => {
+            if (msg.sender_type === 'System') {
+              return (
+                <div key={msg.id} className="flex justify-center my-2">
+                  <div className="bg-base-300 text-base-content/70 px-4 py-1 rounded-full text-[10px] font-medium shadow-sm">
+                    {msg.content} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={msg.id} className={`chat ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
+                <div className="chat-header text-[10px] opacity-50 mb-1">
+                  {msg.sender_type === 'Contact' ? selectedConv.name : 'Anda'} 
+                  <time className="ml-1 opacity-50">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </time>
+                </div>
+                <div className={`chat-bubble text-sm shadow-sm ${
+                  msg.sender_type === 'Contact' 
+                    ? 'bg-white text-base-content' 
+                    : 'bg-primary text-primary-content'
+                }`}>
+                  {msg.content}
+                </div>
+                <div className="chat-footer opacity-50 text-[10px] mt-1">
+                  {msg.sender_type === 'Contact' ? 'Diterima' : 'Terkirim ✓'}
+                </div>
               </div>
-              <div className={`chat-bubble text-sm shadow-sm ${
-                msg.sender_type === 'Contact' 
-                  ? 'bg-white text-base-content' 
-                  : 'bg-primary text-primary-content'
-              }`}>
-                {msg.content}
-              </div>
-              <div className="chat-footer opacity-50 text-[10px] mt-1">
-                {msg.sender_type === 'Contact' ? 'Diterima' : 'Terkirim ✓'}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
         </div>
       </div>

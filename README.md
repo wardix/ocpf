@@ -75,6 +75,7 @@ bun run --cwd apps/frontend dev
 ```
 
 ## Keputusan Teknis Penting (Technical Decisions Log)
+*   **Audit Trail & System Messages:** Saat terjadi perubahan status tiket (tutup/buka kembali), sistem melakukan *dual-write*: mencatat log analitik ke tabel `conversation_events` dan menyisipkan pesan ke ruang obrolan dengan `sender_type = 'System'` agar agen mendapatkan konteks visual secara kronologis.
 *   **JID Normalization (Multi-Device):** Di `wa-adapter`, kita memprioritaskan `remoteJidAlt` (`@s.whatsapp.net`) daripada `remoteJid` (`@lid`) untuk pesan dari perangkat pendamping (seperti WA Desktop) agar riwayat obrolan pelanggan tidak terpecah di database.
 *   **Group Chat Handling:** `wa-adapter` sudah dimodifikasi untuk mendeteksi pesan grup (`@g.us`). Sistem akan mengambil nama grup via `groupMetadata` dan menangkap nomor pengirim asli (participant) agar `main-api` bisa memberikan *prefix* nama pada pesan grup.
 *   **Redis Connection Splitting:** Di `main-api`, koneksi Redis dipisah menjadi 3 bagian (`redis` biasa, `redisSub` untuk websocket, dan `redisWorker` khusus untuk `brpop`). Ini adalah solusi wajib untuk mencegah fungsi antrean (blocking pop) membekukan (*hang*) seluruh server Hono saat agen mencoba membalas pesan.

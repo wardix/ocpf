@@ -115,6 +115,17 @@ CREATE TABLE attachments (
     file_url VARCHAR(1024) NOT NULL
 );
 
+CREATE TABLE conversation_events (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    actor_type VARCHAR(50), 
+    actor_id BIGINT,        
+    event_type VARCHAR(50), 
+    event_data JSONB,       
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- -------------------------------------------------------------------------
 -- 5. Tags / Labels
 -- -------------------------------------------------------------------------
