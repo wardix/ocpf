@@ -335,17 +335,20 @@ app.post('/api/messages/send', async (c) => {
   const tStart = Date.now();
   console.log(`\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
   try {
+    const jwtPayload = c.get('jwtPayload');
+    const agentId = jwtPayload.id;
+
     const body = await c.req.json();
-    const { target_id, content, conversation_id, account_id, media } = body;
+    const { target_id, content, conversation_id, account_id, media, is_private } = body;
 
     const tDbStart = Date.now();
     const [msg] = await sql`
       INSERT INTO messages (
         account_id, conversation_id, sender_type, sender_id, 
-        content, message_type, status
+        content, message_type, status, is_private
       ) VALUES (
-        ${account_id || 1}, ${conversation_id}, 'User', NULL, 
-        ${content || ''}, 'outgoing', 'sent'
+        ${account_id || 1}, ${conversation_id}, 'User', ${agentId}, 
+        ${content || ''}, 'outgoing', 'sent', ${is_private || false}
       )
       RETURNING *;
     `;
@@ -375,22 +378,26 @@ app.post('/api/messages/send', async (c) => {
     const tDbEnd = Date.now();
     console.log(`[DEBUG-LATENCY] (${tDbEnd}) Simpan DB PostgreSQL selesai (Memakan waktu: ${tDbEnd - tDbStart}ms)`);
 
-    // Beritahu WA Adapter via Redis Queue
-    const payload: SendMessagePayload = {
-      event: 'message.send',
-      data: {
-        internal_message_id: msg.id,
-        target_id: target_id,
-        content: content || '',
-        message_type: media ? 'image' : 'text',
-        media: media
-      }
-    };
-    
-    // Sisipkan _queued_at sementara untuk mengukur latency Redis
-    const payloadStr = JSON.stringify({ ...payload, _queued_at: Date.now() });
-    await redis.rpush(QUEUE_OUTGOING, payloadStr);
-    console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (QUEUE_OUTGOING).`);
+    // Beritahu WA Adapter via Redis Queue HANYA JIKA BUKAN PRIVATE NOTE
+    if (!is_private) {
+      const payload: SendMessagePayload = {
+        event: 'message.send',
+        data: {
+          internal_message_id: msg.id,
+          target_id: target_id,
+          content: content || '',
+          message_type: media ? 'image' : 'text',
+          media: media
+        }
+      };
+      
+      // Sisipkan _queued_at sementara untuk mengukur latency Redis
+      const payloadStr = JSON.stringify({ ...payload, _queued_at: Date.now() });
+      await redis.rpush(QUEUE_OUTGOING, payloadStr);
+      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (QUEUE_OUTGOING).`);
+    } else {
+      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan adalah Private Note, dilewati dari antrean Redis.`);
+    }
     
     const finalMsgData = {
       ...msg,

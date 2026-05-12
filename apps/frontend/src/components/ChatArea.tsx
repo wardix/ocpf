@@ -20,6 +20,7 @@ interface Message {
   sender_type: 'Contact' | 'User' | 'System';
   created_at: string;
   conversation_id: number;
+  is_private?: boolean;
   attachments?: Attachment[];
 }
 
@@ -45,6 +46,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isPrivateNote, setIsPrivateNote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -166,13 +168,15 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
           content: inputText,
           conversation_id: selectedConv.id,
           account_id: 1,
-          media: mediaPayload
+          media: mediaPayload,
+          is_private: isPrivateNote
         })
       });
 
       if (response.ok) {
         setInputText(''); // Reset input setelah berhasil kirim
         clearFile(); // Hapus file yang dipilih
+        setIsPrivateNote(false); // Reset mode ke publik
       }
     } catch (err) {
       console.error('Gagal kirim pesan:', err);
@@ -257,6 +261,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
               <div key={msg.id} className={`chat ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
                 <div className="chat-header text-[10px] opacity-50 mb-1">
                   {msg.sender_type === 'Contact' ? selectedConv.name : 'Anda'} 
+                  {msg.is_private && <span className="ml-1 text-warning font-bold">(Private Note)</span>}
                   <time className="ml-1 opacity-50">
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </time>
@@ -264,7 +269,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
                 <div className={`chat-bubble text-sm shadow-sm ${
                   msg.sender_type === 'Contact' 
                     ? 'bg-white text-base-content' 
-                    : 'bg-primary text-primary-content'
+                    : msg.is_private ? 'bg-warning text-warning-content' : 'bg-primary text-primary-content'
                 }`}>
                   {/* Render Media Attachments */}
                   {msg.attachments && msg.attachments.length > 0 && (
@@ -295,7 +300,21 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
       </div>
 
       {/* Area Input Pesan Bawah */}
-      <div className="p-4 bg-base-100 border-t border-base-300">
+      <div className={`p-4 border-t border-base-300 transition-colors ${isPrivateNote ? 'bg-warning/20' : 'bg-base-100'}`}>
+        {/* Toggle Mode (Publik vs Private) */}
+        {canReply && (
+          <div className="flex gap-4 mb-3 px-2">
+            <label className="cursor-pointer flex items-center gap-2">
+              <input type="radio" name="replyMode" className="radio radio-primary radio-xs" checked={!isPrivateNote} onChange={() => setIsPrivateNote(false)} />
+              <span className="text-xs font-semibold">Balas Pelanggan</span>
+            </label>
+            <label className="cursor-pointer flex items-center gap-2">
+              <input type="radio" name="replyMode" className="radio radio-warning radio-xs" checked={isPrivateNote} onChange={() => setIsPrivateNote(true)} />
+              <span className="text-xs font-semibold text-warning-content">Catatan Internal (Privat)</span>
+            </label>
+          </div>
+        )}
+
         {selectedFile && (
           <div className="mb-2 p-2 bg-base-200 rounded-lg flex items-center justify-between border border-base-300">
             <span className="text-sm truncate max-w-xs font-medium">📎 {selectedFile.name}</span>
@@ -321,7 +340,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
           </button>
           <div className="flex-1 relative">
             {/* Canned Responses Dropdown */}
-            {showCanned && canReply && (
+            {showCanned && canReply && !isPrivateNote && (
               <div className="absolute bottom-full mb-2 left-0 w-full max-h-48 overflow-y-auto bg-base-100 shadow-xl border border-base-300 rounded-lg z-50">
                 <ul className="menu p-2 text-sm">
                   {cannedResponses
