@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 // ... (interface lainnya tetap)
 
@@ -6,6 +6,12 @@ interface Attachment {
   id: number;
   file_url: string;
   file_type: string;
+}
+
+interface CannedResponse {
+  id: number;
+  short_code: string;
+  content: string;
 }
 
 interface Message {
@@ -41,6 +47,30 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
   const [isAssigning, setIsAssigning] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // State untuk Canned Responses
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+  const [showCanned, setShowCanned] = useState(false);
+  const [cannedSearch, setCannedSearch] = useState('');
+
+  useEffect(() => {
+    const fetchCanned = async () => {
+      if (!token) return;
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        const response = await fetch(`${apiUrl}/api/canned-responses`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCannedResponses(data);
+        }
+      } catch (err) {
+        console.error('Gagal mengambil canned responses:', err);
+      }
+    };
+    fetchCanned();
+  }, [token]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -290,15 +320,58 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
             📎
           </button>
           <div className="flex-1 relative">
+            {/* Canned Responses Dropdown */}
+            {showCanned && canReply && (
+              <div className="absolute bottom-full mb-2 left-0 w-full max-h-48 overflow-y-auto bg-base-100 shadow-xl border border-base-300 rounded-lg z-50">
+                <ul className="menu p-2 text-sm">
+                  {cannedResponses
+                    .filter(r => r.short_code.toLowerCase().includes(cannedSearch.toLowerCase()))
+                    .map(r => (
+                    <li key={r.id}>
+                      <a onClick={() => {
+                        setInputText(r.content);
+                        setShowCanned(false);
+                      }}>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-primary">/{r.short_code}</span>
+                          <span className="text-xs opacity-70 truncate">{r.content}</span>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                  {cannedResponses.filter(r => r.short_code.toLowerCase().includes(cannedSearch.toLowerCase())).length === 0 && (
+                    <li className="disabled"><a className="text-xs opacity-50">Tidak ada template yang cocok</a></li>
+                  )}
+                </ul>
+              </div>
+            )}
+
             <textarea 
               className="textarea textarea-bordered w-full resize-none h-12 focus:outline-primary/50 text-base" 
-              placeholder={canReply ? "Ketik balasan Anda..." : "Tiket ini sedang ditangani oleh agen lain."}
+              placeholder={canReply ? "Ketik balasan Anda (atau ketik '/' untuk template)..." : "Tiket ini sedang ditangani oleh agen lain."}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setInputText(val);
+                
+                // Deteksi jika karakter pertama adalah / atau ada kata yang berawalan /
+                if (val === '/') {
+                  setShowCanned(true);
+                  setCannedSearch('');
+                } else if (val.startsWith('/') && !val.includes(' ')) {
+                  setShowCanned(true);
+                  setCannedSearch(val.substring(1));
+                } else {
+                  setShowCanned(false);
+                }
+              }}
               onKeyDown={(e) => { 
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendMessage();
+                  // Jika sedang membuka canned response, jangan kirim pesan
+                  if (!showCanned) {
+                    handleSendMessage();
+                  }
                 }
               }}
               disabled={isSending || !canReply}

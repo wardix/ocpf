@@ -502,6 +502,22 @@ app.patch('/api/conversations/:id/assign', async (c) => {
   }
 });
 
+// Endpoint untuk mengambil daftar Canned Responses
+app.get('/api/canned-responses', async (c) => {
+  try {
+    const responses = await sql`
+      SELECT id, short_code, content 
+      FROM canned_responses 
+      WHERE account_id = 1 
+      ORDER BY short_code ASC
+    `;
+    return c.json(responses);
+  } catch (error) {
+    console.error('Error fetch canned responses:', error);
+    return c.json({ error: 'Gagal mengambil balasan cepat' }, 500);
+  }
+});
+
 // Jalankan Worker
 startWorker();
 
