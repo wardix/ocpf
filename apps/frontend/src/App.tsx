@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import ContactInfo from './components/ContactInfo'
+import Login from './components/Login'
 
 interface Message {
   id: number;
@@ -18,23 +19,44 @@ interface SelectedConversation {
 }
 
 function App() {
+  const [token, setToken] = useState<string | null>(localStorage.getItem('omni_token'));
+  const [user, setUser] = useState<any>(null);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const handleLoginSuccess = (newToken: string, loggedInUser: any) => {
+    localStorage.setItem('omni_token', newToken);
+    setToken(newToken);
+    setUser(loggedInUser);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('omni_token');
+    setToken(null);
+    setUser(null);
+    setSelectedConv(null);
+  };
+
   const fetchMessages = useCallback(async (conversationId: number) => {
+    if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations/${conversationId}/messages`);
+      const response = await fetch(`${apiUrl}/api/conversations/${conversationId}/messages`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setMessages(data);
+      } else if (response.status === 401) {
+        handleLogout();
       }
     } catch (err) {
       console.error('Gagal memuat pesan:', err);
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (selectedConv) {
@@ -43,6 +65,8 @@ function App() {
   }, [selectedConv, fetchMessages]);
 
   useEffect(() => {
+    if (!token) return;
+    
     const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
     const ws = new WebSocket(wsUrl);
 
@@ -59,7 +83,11 @@ function App() {
     };
     ws.onclose = () => setWsStatus('closed');
     return () => ws.close();
-  }, [selectedConv]);
+  }, [selectedConv, token]);
+
+  if (!token) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content">
@@ -72,13 +100,16 @@ function App() {
           </div>
         </div>
         <div className="flex flex-col gap-6 text-neutral-content/60 w-full px-2">
-          <button className="btn btn-square btn-ghost text-white bg-white/10 hover:bg-white/20 w-full rounded-xl">💬</button>
+          <button className="btn btn-square btn-ghost text-white bg-white/10 hover:bg-white/20 w-full rounded-xl" title="Inbox">💬</button>
+          <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title="Logout">🚪</button>
         </div>
       </div>
 
       <Sidebar 
         selectedId={selectedConv?.id || null} 
         onSelect={(id, phone, name) => setSelectedConv({ id, phone, name })} 
+        refreshKey={refreshKey}
+        token={token}
       />
       
       {selectedConv ? (
@@ -86,6 +117,11 @@ function App() {
           <ChatArea 
             messages={messages} 
             selectedConv={selectedConv}
+            onResolve={() => {
+              setSelectedConv(null);
+              setRefreshKey(k => k + 1);
+            }}
+            token={token}
           />
           <ContactInfo selectedConv={selectedConv} />
         </>

@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
+import { jwt, sign } from 'hono/jwt';
 import postgres from 'postgres';
 import Redis from 'ioredis';
 import path from 'path';
@@ -218,6 +219,50 @@ redisSub.on('message', (channel, message) => {
 // =========================================================================
 app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'));
 
+// === ENDPOINT AUTHENTICATION ===
+app.post('/api/auth/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+
+    const [user] = await sql`
+      SELECT id, name, email, password_hash FROM users WHERE email = ${email} LIMIT 1
+    `;
+
+    if (!user) {
+      return c.json({ error: 'Kredensial tidak valid' }, 401);
+    }
+
+    const isMatch = await Bun.password.verify(password, user.password_hash);
+    
+    if (!isMatch) {
+      return c.json({ error: 'Kredensial tidak valid' }, 401);
+    }
+
+    // Buat Token JWT
+    const payload = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 // 24 Jam
+    };
+    const secret = process.env.JWT_SECRET || 'fallback_secret';
+    const token = await sign(payload, secret);
+
+    return c.json({ 
+      success: true, 
+      token, 
+      user: { id: user.id, name: user.name, email: user.email } 
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return c.json({ error: 'Terjadi kesalahan pada server' }, 500);
+  }
+});
+
+// === MIDDLEWARE JWT (PROTECT ROUTES BELOW) ===
+app.use('/api/conversations/*', jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' }));
+app.use('/api/messages/*', jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' }));
+
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
   try {
@@ -355,6 +400,10 @@ app.post('/api/messages/send', async (c) => {
 app.patch('/api/conversations/:id/status', async (c) => {
   const conversationId = c.req.param('id');
   try {
+    const jwtPayload = c.get('jwtPayload');
+    const agentId = jwtPayload.id;
+    const agentName = jwtPayload.name;
+
     const body = await c.req.json();
     const { status } = body; // 'open', 'resolved', etc.
 
@@ -376,11 +425,11 @@ app.patch('/api/conversations/:id/status', async (c) => {
     // Dual-write: Catat ke conversation_events dan pesan sistem
     await sql`
       INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
-      VALUES (${conversation.account_id}, ${conversation.id}, 'User', NULL, 'status_changed', ${sql.json({ new_status: status })});
+      VALUES (${conversation.account_id}, ${conversation.id}, 'User', ${agentId}, 'status_changed', ${sql.json({ new_status: status })});
     `;
     
     let systemText = `Tiket diubah menjadi ${status}`;
-    if (status === 'resolved') systemText = 'Tiket ditutup oleh Agen';
+    if (status === 'resolved') systemText = `Tiket ditutup oleh Agen ${agentName}`;
     
     const [sysMsg] = await sql`
       INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)

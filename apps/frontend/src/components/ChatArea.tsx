@@ -27,9 +27,10 @@ interface Props {
   messages: Message[];
   selectedConv: SelectedConversation;
   onResolve: () => void;
+  token: string | null;
 }
 
-const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
+const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -49,14 +50,17 @@ const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
 
   const handleResolve = async () => {
     const confirm = window.confirm("Apakah Anda yakin ingin menutup tiket obrolan ini?");
-    if (!confirm) return;
+    if (!confirm || !token) return;
 
     setIsResolving(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({ status: 'resolved' })
       });
       if (response.ok) {
@@ -70,7 +74,7 @@ const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() && !selectedFile) return;
+    if ((!inputText.trim() && !selectedFile) || !token) return;
     setIsSending(true);
 
     try {
@@ -93,7 +97,10 @@ const ChatArea = ({ messages, selectedConv, onResolve }: Props) => {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/messages/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           target_id: selectedConv.phone,
           content: inputText,

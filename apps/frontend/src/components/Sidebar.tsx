@@ -13,16 +13,20 @@ interface Props {
   selectedId: number | null;
   onSelect: (id: number, phone: string, name: string) => void;
   refreshKey: number;
+  token: string | null;
 }
 
-const Sidebar = ({ selectedId, onSelect, refreshKey }: Props) => {
+const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'open' | 'resolved'>('open');
 
   const fetchConversations = async () => {
+    if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`);
+      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setConversations(data);
