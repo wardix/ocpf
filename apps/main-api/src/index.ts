@@ -267,26 +267,41 @@ app.use('/api/messages/*', jwt({ secret: process.env.JWT_SECRET || 'fallback_sec
 app.get('/api/conversations', async (c) => {
   try {
     const status = c.req.query('status') || 'open'; // default ke open
+    const assigneeFilter = c.req.query('assignee'); // 'me' atau 'unassigned' atau 'all'
     const isResolved = status === 'resolved';
+    
+    // Ambil ID agen yang sedang login dari JWT
+    const jwtPayload = c.get('jwtPayload');
+    const currentAgentId = jwtPayload?.id;
 
     const convs = await sql`
       SELECT 
         c.id, 
         c.status, 
         c.updated_at, 
+        c.assignee_id,
+        u.name as assignee_name,
         con.name as contact_name, 
         con.phone_number as contact_phone,
         (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
       FROM conversations c
       JOIN contacts con ON c.contact_id = con.id
+      LEFT JOIN users u ON c.assignee_id = u.id
       WHERE c.account_id = 1 AND (
         (${isResolved}::boolean = true AND c.status = 'resolved') OR 
         (${isResolved}::boolean = false AND c.status != 'resolved')
+      )
+      AND (
+        ${assigneeFilter === 'me'}::boolean = false OR c.assignee_id = ${currentAgentId}
+      )
+      AND (
+        ${assigneeFilter === 'unassigned'}::boolean = false OR c.assignee_id IS NULL
       )
       ORDER BY c.updated_at DESC
     `;
     return c.json(convs);
   } catch (error) {
+    console.error(error);
     return c.json({ error: 'Gagal mengambil daftar percakapan' }, 500);
   }
 });
@@ -442,6 +457,48 @@ app.patch('/api/conversations/:id/status', async (c) => {
   } catch (error) {
     console.error('Error update status:', error);
     return c.json({ success: false, error: 'Gagal update status' }, 500);
+  }
+});
+
+// Endpoint untuk mengambil alih tiket (Assign to me)
+app.patch('/api/conversations/:id/assign', async (c) => {
+  const conversationId = c.req.param('id');
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    const agentId = jwtPayload.id;
+    const agentName = jwtPayload.name;
+
+    const [conversation] = await sql`
+      UPDATE conversations 
+      SET assignee_id = ${agentId}, updated_at = NOW() 
+      WHERE id = ${conversationId} AND assignee_id IS NULL
+      RETURNING *;
+    `;
+
+    if (!conversation) {
+      // Cek apakah memang tidak ketemu atau sudah diambil orang lain
+      const [existing] = await sql`SELECT assignee_id FROM conversations WHERE id = ${conversationId}`;
+      if (!existing) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
+      if (existing.assignee_id !== null) return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
+    }
+
+    // Dual-write: Catat ke conversation_events dan pesan sistem
+    await sql`
+      INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
+      VALUES (${conversation.account_id}, ${conversation.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
+    `;
+    
+    const [sysMsg] = await sql`
+      INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
+      VALUES (${conversation.account_id}, ${conversation.id}, 'System', NULL, ${`Tiket diambil alih oleh ${agentName}`}, 'template', 'sent')
+      RETURNING *;
+    `;
+    await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+
+    return c.json({ success: true, data: conversation });
+  } catch (error) {
+    console.error('Error assign ticket:', error);
+    return c.json({ success: false, error: 'Gagal mengambil tiket' }, 500);
   }
 });
 

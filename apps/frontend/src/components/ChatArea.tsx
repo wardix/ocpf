@@ -21,19 +21,24 @@ interface SelectedConversation {
   id: number;
   phone: string;
   name: string;
+  assignee_id?: number | null;
+  assignee_name?: string | null;
 }
 
 interface Props {
   messages: Message[];
   selectedConv: SelectedConversation;
   onResolve: () => void;
+  onAssign: () => void;
   token: string | null;
+  currentUser: any;
 }
 
-const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
+const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentUser }: Props) => {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +51,31 @@ const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
   const clearFile = () => {
     setSelectedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleAssign = async () => {
+    if (!token) return;
+    setIsAssigning(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/assign`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        }
+      });
+      if (response.ok) {
+        onAssign(); // Panggil fungsi refresh sidebar di App.tsx
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'Gagal mengambil tiket');
+      }
+    } catch (err) {
+      console.error('Gagal mengambil tiket:', err);
+    } finally {
+      setIsAssigning(false);
+    }
   };
 
   const handleResolve = async () => {
@@ -121,6 +151,8 @@ const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
     }
   };
 
+  const canReply = selectedConv.assignee_id === null || selectedConv.assignee_id === currentUser?.id;
+
   return (
     <div className="flex-1 flex flex-col bg-base-200/50 h-full relative">
       
@@ -138,15 +170,31 @@ const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
           </div>
         </div>
         
-        <div className="flex gap-2">
-          <button 
-            className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
-            onClick={handleResolve}
-            disabled={isResolving}
-          >
-            Tutup Tiket
-          </button>
-          <button className="btn btn-sm btn-outline">Tunda (Snooze)</button>
+        <div className="flex items-center gap-4">
+          {selectedConv.assignee_id === null ? (
+            <button 
+              className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
+              onClick={handleAssign}
+              disabled={isAssigning}
+            >
+              🙋‍♂️ Ambil Tiket
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs badge badge-ghost">
+                👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
+              </span>
+              {(selectedConv.assignee_id === currentUser?.id || !selectedConv.assignee_id) && (
+                <button 
+                  className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
+                  onClick={handleResolve}
+                  disabled={isResolving}
+                >
+                  Tutup Tiket
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -231,18 +279,20 @@ const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
             ref={fileInputRef} 
             onChange={handleFileChange}
             accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            disabled={!canReply}
           />
           <button 
             className="btn btn-circle btn-ghost" 
             onClick={() => fileInputRef.current?.click()}
             title="Lampirkan File"
+            disabled={!canReply}
           >
             📎
           </button>
           <div className="flex-1 relative">
             <textarea 
               className="textarea textarea-bordered w-full resize-none h-12 focus:outline-primary/50 text-base" 
-              placeholder="Ketik balasan Anda..."
+              placeholder={canReply ? "Ketik balasan Anda..." : "Tiket ini sedang ditangani oleh agen lain."}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => { 
@@ -251,13 +301,13 @@ const ChatArea = ({ messages, selectedConv, onResolve, token }: Props) => {
                   handleSendMessage();
                 }
               }}
-              disabled={isSending}
+              disabled={isSending || !canReply}
             ></textarea>
           </div>
           <button 
             className={`btn btn-primary px-8 text-white h-12 ${isSending ? 'loading' : ''}`}
             onClick={handleSendMessage}
-            disabled={isSending || (!inputText.trim() && !selectedFile)}
+            disabled={isSending || (!inputText.trim() && !selectedFile) || !canReply}
           >
             {isSending ? '' : 'Kirim'}
           </button>

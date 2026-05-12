@@ -16,6 +16,8 @@ interface SelectedConversation {
   id: number;
   phone: string;
   name: string;
+  assignee_id?: number | null;
+  assignee_name?: string | null;
 }
 
 function App() {
@@ -107,7 +109,7 @@ function App() {
 
       <Sidebar 
         selectedId={selectedConv?.id || null} 
-        onSelect={(id, phone, name) => setSelectedConv({ id, phone, name })} 
+        onSelect={(id, phone, name, assignee_id, assignee_name) => setSelectedConv({ id, phone, name, assignee_id, assignee_name })} 
         refreshKey={refreshKey}
         token={token}
       />
@@ -121,7 +123,9 @@ function App() {
               setSelectedConv(null);
               setRefreshKey(k => k + 1);
             }}
+            onAssign={() => setRefreshKey(k => k + 1)}
             token={token}
+            currentUser={user}
           />
           <ContactInfo selectedConv={selectedConv} />
         </>

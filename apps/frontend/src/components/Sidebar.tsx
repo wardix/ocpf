@@ -7,6 +7,8 @@ interface Conversation {
   last_message: string;
   updated_at: string;
   status: string;
+  assignee_id?: number | null;
+  assignee_name?: string | null;
 }
 
 interface Props {
@@ -19,12 +21,13 @@ interface Props {
 const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'open' | 'resolved'>('open');
+  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me' | 'unassigned'>('all');
 
   const fetchConversations = async () => {
     if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`, {
+      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}&assignee=${assigneeFilter}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -41,13 +44,24 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
     // Refresh sidebar setiap 10 detik agar tetap up to date
     const interval = setInterval(fetchConversations, 10000);
     return () => clearInterval(interval);
-  }, [refreshKey, activeTab]);
+  }, [refreshKey, activeTab, assigneeFilter]);
 
   return (
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
-      <div className="p-4 border-b border-base-300 bg-base-200">
-        <h2 className="font-bold text-lg italic">💬 Inbox</h2>
-        <div className="flex gap-2 mt-3">
+      <div className="p-4 border-b border-base-300 bg-base-200 flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <h2 className="font-bold text-lg italic">💬 Inbox</h2>
+          <select 
+            className="select select-bordered select-xs text-[10px]"
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value as any)}
+          >
+            <option value="all">Semua Tiket</option>
+            <option value="me">Tiketku</option>
+            <option value="unassigned">Belum Ada Pemilik</option>
+          </select>
+        </div>
+        <div className="flex gap-2 mt-1">
           <button 
             className={`btn btn-sm flex-1 ${activeTab === 'open' ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setActiveTab('open')}
@@ -73,7 +87,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
         {conversations.map((conv) => (
           <div 
             key={conv.id} 
-            onClick={() => onSelect(conv.id, conv.contact_phone, conv.contact_name)}
+            onClick={() => onSelect(conv.id, conv.contact_phone, conv.contact_name, conv.assignee_id, conv.assignee_name)}
             className={`flex gap-3 p-4 cursor-pointer hover:bg-base-200 transition-colors border-b border-base-200 ${
               selectedId === conv.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
             }`}
@@ -93,9 +107,14 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
               <span className="text-xs text-base-content/70 truncate mt-1 italic">
                 {conv.last_message || 'Tidak ada pesan...'}
               </span>
-              <div className="flex gap-1 mt-2">
+              <div className="flex gap-1 mt-2 flex-wrap">
                  <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
-                 {conv.status === 'open' && <div className="badge badge-success badge-xs">Active</div>}
+                 {conv.status === 'open' && <div className="badge badge-success badge-xs text-white">Active</div>}
+                 {conv.assignee_name && (
+                   <div className="badge badge-neutral badge-outline text-[9px] h-4 truncate max-w-[80px]">
+                     {conv.assignee_name}
+                   </div>
+                 )}
               </div>
             </div>
           </div>
