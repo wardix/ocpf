@@ -525,6 +525,54 @@ app.get('/api/canned-responses', async (c) => {
   }
 });
 
+// Endpoint untuk menambah Canned Response
+app.post('/api/canned-responses', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { short_code, content } = body;
+    const [response] = await sql`
+      INSERT INTO canned_responses (account_id, short_code, content)
+      VALUES (1, ${short_code}, ${content})
+      RETURNING *
+    `;
+    return c.json({ success: true, data: response });
+  } catch (error) {
+    console.error('Error create canned response:', error);
+    return c.json({ error: 'Gagal menambah balasan cepat' }, 500);
+  }
+});
+
+// Endpoint untuk mengupdate Canned Response
+app.put('/api/canned-responses/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { short_code, content } = body;
+    const [response] = await sql`
+      UPDATE canned_responses
+      SET short_code = ${short_code}, content = ${content}
+      WHERE id = ${id} AND account_id = 1
+      RETURNING *
+    `;
+    return c.json({ success: true, data: response });
+  } catch (error) {
+    console.error('Error update canned response:', error);
+    return c.json({ error: 'Gagal mengubah balasan cepat' }, 500);
+  }
+});
+
+// Endpoint untuk menghapus Canned Response
+app.delete('/api/canned-responses/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await sql`DELETE FROM canned_responses WHERE id = ${id} AND account_id = 1`;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error delete canned response:', error);
+    return c.json({ error: 'Gagal menghapus balasan cepat' }, 500);
+  }
+});
+
 // Jalankan Worker
 startWorker();
 
