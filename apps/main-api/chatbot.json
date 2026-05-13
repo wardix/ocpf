@@ -1,0 +1,80 @@
+{
+  "global_commands": {
+    "!menu": "start",
+    "!bantuan": "menu_bantuan"
+  },
+  "states": {
+    "start": {
+      "steps": [
+        {
+          "type": "text",
+          "content": "🤖 Halo! Saya adalah Asisten Virtual Omnichannel.\nSilakan pilih menu dengan mengetikkan angka:\n\n1️⃣ Info Jam Operasional\n2️⃣ Cek Status Server (API Call)\n3️⃣ Layanan Pelanggan (Bicara dengan CS)"
+        }
+      ],
+      "options": {
+        "1": "jam_operasional",
+        "2": "cek_server",
+        "3": "transfer_cs"
+      },
+      "fallback": "start"
+    },
+    "jam_operasional": {
+      "steps": [
+        {
+          "type": "text",
+          "content": "🕒 *Jam Operasional Kami*\nSenin - Jumat: 09.00 - 17.00 WIB\nSabtu - Minggu: Libur\n\nKetik *0* untuk kembali ke Menu Utama."
+        }
+      ],
+      "options": {
+        "0": "start"
+      },
+      "fallback": "jam_operasional"
+    },
+    "cek_server": {
+      "steps": [
+        {
+          "type": "text",
+          "content": "⏳ Mohon tunggu, saya sedang mengecek status server via API eksternal..."
+        },
+        {
+          "type": "api_call",
+          "url": "https://jsonplaceholder.typicode.com/todos/1",
+          "method": "GET",
+          "store_response_as": "api_hasil",
+          "on_failure": {
+            "target_state": "server_down"
+          }
+        },
+        {
+          "type": "text",
+          "content": "✅ Pengecekan selesai!\nHasil API: {{api_hasil.title}}\nStatus: Server Online.\n\nKetik *0* untuk kembali."
+        }
+      ],
+      "options": {
+        "0": "start"
+      },
+      "fallback": "cek_server"
+    },
+    "server_down": {
+      "steps": [
+        {
+          "type": "text",
+          "content": "❌ Maaf, server sedang mengalami gangguan atau API tidak merespons.\nKetik *0* untuk kembali."
+        }
+      ],
+      "options": {
+        "0": "start"
+      },
+      "fallback": "server_down"
+    },
+    "transfer_cs": {
+      "steps": [
+        {
+          "type": "text",
+          "content": "👨‍💻 Baik, mohon tunggu sebentar. Tiket Anda sedang dialihkan ke tim Customer Service kami. Agen kami akan segera merespons Anda."
+        }
+      ],
+      "action": "assign_agent"
+    }
+  }
+}

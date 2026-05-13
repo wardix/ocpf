@@ -6,6 +6,7 @@ import { jwt, sign } from 'hono/jwt';
 import postgres from 'postgres';
 import Redis from 'ioredis';
 import path from 'path';
+import fs from 'fs';
 import type { 
   IncomingMessagePayload, 
   SendMessagePayload 
@@ -13,6 +14,16 @@ import type {
 import { ServerWebSocket } from 'bun';
 
 const app = new Hono();
+
+// Load Chatbot Rules
+let chatbotRules: any = null;
+try {
+  const chatbotFile = fs.readFileSync(path.join(process.cwd(), 'chatbot.json'), 'utf-8');
+  chatbotRules = JSON.parse(chatbotFile);
+  console.log('Chatbot rules loaded successfully.');
+} catch (e) {
+  console.log('No chatbot.json found or invalid format. Chatbot is disabled.');
+}
 
 // Aktifkan CORS agar frontend (port 5173) bisa akses backend (port 8000)
 app.use('/api/*', cors());
@@ -117,7 +128,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 
     // 2. Cari Percakapan terakhir dari kontak ini
     let [conversation] = await sql`
-      SELECT id, status FROM conversations
+      SELECT id, status, is_bot_active, bot_state FROM conversations
       WHERE account_id = ${ACCOUNT_ID} 
         AND inbox_id = ${INBOX_ID} 
         AND contact_id = ${contact.id}
@@ -125,25 +136,59 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       LIMIT 1
     `;
 
+    // Cek Global Commands
+    let triggeredGlobalCommand = false;
+    if (chatbotRules && chatbotRules.global_commands) {
+      const commandKey = content.trim().toLowerCase();
+      if (chatbotRules.global_commands[commandKey]) {
+        triggeredGlobalCommand = true;
+        const targetState = chatbotRules.global_commands[commandKey];
+        
+        if (conversation) {
+          [conversation] = await sql`
+            UPDATE conversations 
+            SET is_bot_active = true, bot_state = ${targetState}, status = 'open', updated_at = NOW() 
+            WHERE id = ${conversation.id}
+            RETURNING id, status, is_bot_active, bot_state;
+          `;
+        }
+      }
+    }
+
     if (!conversation) {
       // Jika belum pernah ada percakapan, buat baru
       [conversation] = await sql`
-        INSERT INTO conversations (account_id, inbox_id, contact_id, status)
-        VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id}, 'open')
-        RETURNING id;
+        INSERT INTO conversations (account_id, inbox_id, contact_id, status, is_bot_active, bot_state)
+        VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
+        RETURNING id, status, is_bot_active, bot_state;
       `;
-    } else if (conversation.status === 'resolved' || conversation.status === 'snoozed') {
-      // Jika percakapan sudah ditutup/ditunda, buka kembali (reopen)
-      [conversation] = await sql`
-        UPDATE conversations SET status = 'open', updated_at = NOW() 
-        WHERE id = ${conversation.id}
-        RETURNING id;
-      `;
-    } else {
-      // Jika masih open/pending, cukup update waktunya saja
-      await sql`
-        UPDATE conversations SET updated_at = NOW() WHERE id = ${conversation.id}
-      `;
+    } else if (!triggeredGlobalCommand) {
+      if (conversation.status === 'resolved' || conversation.status === 'snoozed') {
+        // Jika percakapan sudah ditutup/ditunda, buka kembali (reopen)
+        const oldStatus = conversation.status;
+        [conversation] = await sql`
+          UPDATE conversations SET status = 'open', is_bot_active = true, bot_state = 'start', updated_at = NOW() 
+          WHERE id = ${conversation.id}
+          RETURNING id, status, is_bot_active, bot_state;
+        `;
+        
+        // Dual-write: Catat ke conversation_events dan pesan sistem
+        await sql`
+          INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
+          VALUES (${ACCOUNT_ID}, ${conversation.id}, 'Contact', ${contact.id}, 'status_changed', ${sql.json({ old_status: oldStatus, new_status: 'open' })});
+        `;
+        const [sysMsg] = await sql`
+          INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
+          VALUES (${ACCOUNT_ID}, ${conversation.id}, 'System', NULL, 'Tiket dibuka kembali oleh pelanggan', 'template', 'sent')
+          RETURNING *;
+        `;
+        await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+      } else {
+        // Jika masih open/pending, cukup update waktunya saja
+        await sql`
+          UPDATE conversations SET updated_at = NOW() WHERE id = ${conversation.id}
+        `;
+      }
     }
 
     // 3. Masukkan Pesan ke Tabel Messages
@@ -187,6 +232,173 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         attachmentData = attachment;
       } catch (mediaErr) {
         console.error('Gagal memproses media lampiran:', mediaErr);
+      }
+    }
+
+    // 5. Evaluasi Chatbot
+    if (conversation.is_bot_active && chatbotRules && chatbotRules.states) {
+      const userText = content.trim();
+      let targetNode = null;
+      let targetNodeKey = null;
+
+      if (triggeredGlobalCommand) {
+        targetNodeKey = chatbotRules.global_commands[userText.toLowerCase()];
+        targetNode = chatbotRules.states[targetNodeKey];
+      } else {
+        const currentState = chatbotRules.states[conversation.bot_state];
+        if (currentState) {
+          if (currentState.options) {
+            if (currentState.options[userText]) {
+              targetNodeKey = currentState.options[userText];
+            } else if (currentState.options['*']) {
+              targetNodeKey = currentState.options['*'];
+            } else if (currentState.fallback) {
+              targetNodeKey = currentState.fallback;
+            }
+          } else if (currentState.fallback) {
+            targetNodeKey = currentState.fallback;
+          }
+          if (targetNodeKey) targetNode = chatbotRules.states[targetNodeKey];
+        }
+      }
+
+      if (targetNode) {
+        let newBotActive = true;
+        let memory: Record<string, any> = {};
+
+        // Fungsi bantu untuk mem-parsing variabel dinamis seperti {{user_input}} atau {{api_A.status}}
+        const interpolateText = (text: string) => {
+          let parsed = text.replace(/{{user_input}}/g, userText);
+          parsed = parsed.replace(/{{phone_number}}/g, sourceJid.split('@')[0]);
+          parsed = parsed.replace(/{{contact_name}}/g, displayName);
+          
+          // Mengganti variabel dari memory (misal: {{api_A.status}})
+          const memMatches = parsed.match(/{{([a-zA-Z0-9_.]+?)}}/g);
+          if (memMatches) {
+            memMatches.forEach(match => {
+              const path = match.replace(/[{}]/g, '').split('.');
+              let val: any = memory;
+              for (const p of path) {
+                if (val !== undefined && val !== null) val = val[p];
+              }
+              if (val !== undefined && typeof val !== 'object') {
+                parsed = parsed.replace(match, String(val));
+              }
+            });
+          }
+          return parsed;
+        };
+
+        const executeStep = async (step: any): Promise<boolean> => {
+           if (step.type === 'text' && step.content) {
+              const finalBotText = interpolateText(step.content);
+              const [botMsg] = await sql`
+                INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
+                VALUES (${ACCOUNT_ID}, ${conversation.id}, 'System', NULL, ${finalBotText}, 'outgoing', 'sent')
+                RETURNING *;
+              `;
+              await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: botMsg }));
+              const payload: SendMessagePayload = {
+                event: 'message.send',
+                data: {
+                  internal_message_id: botMsg.id,
+                  target_id: sourceJid,
+                  content: finalBotText,
+                  message_type: 'text'
+                }
+              };
+              await redis.rpush(QUEUE_OUTGOING, JSON.stringify(payload));
+              return true;
+           } else if (step.type === 'api_call') {
+              try {
+                const apiUrl = interpolateText(step.url);
+                const reqOptions: any = {
+                  method: step.method || 'GET',
+                  headers: step.headers || {}
+                };
+                
+                if (step.body && (step.method === 'POST' || step.method === 'PUT')) {
+                   // Interpolate body if it's stringified JSON, or traverse object
+                   const bodyStr = JSON.stringify(step.body);
+                   reqOptions.body = interpolateText(bodyStr);
+                   if (!reqOptions.headers['Content-Type']) {
+                     reqOptions.headers['Content-Type'] = 'application/json';
+                   }
+                }
+
+                const apiResponse = await fetch(apiUrl, reqOptions);
+                const responseData = await apiResponse.json();
+                
+                if (step.store_response_as) {
+                  memory[step.store_response_as] = responseData;
+                }
+
+                let isSuccess = false;
+                if (step.on_success && step.on_success.condition) {
+                   try {
+                     const conditionFunc = new Function('response', `return ${step.on_success.condition};`);
+                     isSuccess = conditionFunc(responseData);
+                   } catch (e) {
+                     console.error('Condition eval error:', e);
+                   }
+                } else if (apiResponse.ok) {
+                   isSuccess = true;
+                }
+
+                if (isSuccess && step.on_success && step.on_success.target_state) {
+                   targetNodeKey = step.on_success.target_state;
+                   return false; // Berhenti eksekusi sequence saat ini dan melompat ke state baru
+                } else if (!isSuccess && step.on_failure) {
+                   targetNodeKey = step.on_failure.target_state;
+                   return false; // Berhenti eksekusi sequence dan melompat ke state failure
+                }
+                return true; // Lanjutkan ke step berikutnya
+
+              } catch (apiErr) {
+                console.error('Chatbot API call failed:', apiErr);
+                if (step.on_failure) {
+                   targetNodeKey = step.on_failure.target_state;
+                   return false; // Berhenti eksekusi
+                }
+                return true; // Jika tidak ada penanganan error, lanjut saja
+              }
+           }
+           return true;
+        };
+
+        // Eksekusi Array Steps
+        if (targetNode.steps && Array.isArray(targetNode.steps)) {
+           for (const step of targetNode.steps) {
+              const shouldContinue = await executeStep(step);
+              if (!shouldContinue) {
+                 // Terjadi lompatan state dinamis dari hasil API
+                 break;
+              }
+           }
+        } else if (targetNode.text) {
+           // Backward compatibility dengan format lama
+           await executeStep({ type: 'text', content: targetNode.text });
+           
+           if (targetNode.api_call) {
+             const shouldContinue = await executeStep({ type: 'api_call', ...targetNode.api_call });
+           }
+        }
+
+        if (targetNode.action === 'assign_agent') {
+          newBotActive = false;
+        } else if (targetNodeKey !== conversation.bot_state && chatbotRules.states[targetNodeKey]?.action === 'assign_agent') {
+          // Cek jika lompatan state ternyata adalah transfer agent
+          newBotActive = false;
+        }
+
+        // Update state di DB
+        if (targetNodeKey !== conversation.bot_state || !newBotActive) {
+          await sql`
+            UPDATE conversations 
+            SET bot_state = ${targetNodeKey}, is_bot_active = ${newBotActive}, updated_at = NOW()
+            WHERE id = ${conversation.id}
+          `;
+        }
       }
     }
 
