@@ -136,13 +136,15 @@ function App() {
           >
             💬
           </button>
-          <button 
-            className={`btn btn-square w-full rounded-xl ${currentView === 'settings' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-            onClick={() => setCurrentView('settings')}
-            title="Pengaturan"
-          >
-            ⚙️
-          </button>
+          {user?.role === 'administrator' && (
+            <button 
+              className={`btn btn-square w-full rounded-xl ${currentView === 'settings' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+              onClick={() => setCurrentView('settings')}
+              title="Pengaturan"
+            >
+              ⚙️
+            </button>
+          )}
           <div className="flex-1"></div>
           <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title="Logout">🚪</button>
         </div>

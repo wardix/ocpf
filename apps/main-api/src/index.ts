@@ -436,8 +436,13 @@ app.post('/api/auth/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
 
+    // Join dengan account_users untuk mendapatkan role
     const [user] = await sql`
-      SELECT id, name, email, password_hash FROM users WHERE email = ${email} LIMIT 1
+      SELECT u.id, u.name, u.email, u.password_hash, au.role 
+      FROM users u
+      LEFT JOIN account_users au ON u.id = au.user_id AND au.account_id = 1
+      WHERE u.email = ${email} 
+      LIMIT 1
     `;
 
     if (!user) {
@@ -450,11 +455,12 @@ app.post('/api/auth/login', async (c) => {
       return c.json({ error: 'Kredensial tidak valid' }, 401);
     }
 
-    // Buat Token JWT
+    // Buat Token JWT dengan menyertakan role
     const payload = {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role || 'agent', // Default ke agent jika role null
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 // 24 Jam
     };
     const secret = process.env.JWT_SECRET || 'fallback_secret';
@@ -463,7 +469,7 @@ app.post('/api/auth/login', async (c) => {
     return c.json({ 
       success: true, 
       token, 
-      user: { id: user.id, name: user.name, email: user.email } 
+      user: { id: user.id, name: user.name, email: user.email, role: user.role || 'agent' } 
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -740,6 +746,11 @@ app.get('/api/canned-responses', async (c) => {
 // Endpoint untuk menambah Canned Response
 app.post('/api/canned-responses', async (c) => {
   try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
     const body = await c.req.json();
     const { short_code, content } = body;
     const [response] = await sql`
@@ -757,6 +768,11 @@ app.post('/api/canned-responses', async (c) => {
 // Endpoint untuk mengupdate Canned Response
 app.put('/api/canned-responses/:id', async (c) => {
   try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
     const id = c.req.param('id');
     const body = await c.req.json();
     const { short_code, content } = body;
@@ -776,6 +792,11 @@ app.put('/api/canned-responses/:id', async (c) => {
 // Endpoint untuk menghapus Canned Response
 app.delete('/api/canned-responses/:id', async (c) => {
   try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
     const id = c.req.param('id');
     await sql`DELETE FROM canned_responses WHERE id = ${id} AND account_id = 1`;
     return c.json({ success: true });
