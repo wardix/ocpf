@@ -4,6 +4,7 @@ import ChatArea from './components/ChatArea'
 import ContactInfo from './components/ContactInfo'
 import Login from './components/Login'
 import Settings from './components/Settings'
+import Analytics from './components/Analytics'
 
 interface Message {
   id: number;
@@ -137,13 +138,22 @@ function App() {
             💬
           </button>
           {user?.role === 'administrator' && (
-            <button 
-              className={`btn btn-square w-full rounded-xl ${currentView === 'settings' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-              onClick={() => setCurrentView('settings')}
-              title="Pengaturan"
-            >
-              ⚙️
-            </button>
+            <>
+              <button 
+                className={`btn btn-square w-full rounded-xl ${currentView === 'analytics' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => setCurrentView('analytics')}
+                title="Laporan & Analitik"
+              >
+                📊
+              </button>
+              <button 
+                className={`btn btn-square w-full rounded-xl ${currentView === 'settings' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => setCurrentView('settings')}
+                title="Pengaturan"
+              >
+                ⚙️
+              </button>
+            </>
           )}
           <div className="flex-1"></div>
           <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title="Logout">🚪</button>
@@ -182,6 +192,8 @@ function App() {
             </div>
           )}
         </>
+      ) : currentView === 'analytics' ? (
+        <Analytics token={token} />
       ) : (
         <Settings token={token} />
       )}

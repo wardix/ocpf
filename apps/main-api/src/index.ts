@@ -478,8 +478,13 @@ app.post('/api/auth/login', async (c) => {
 });
 
 // === MIDDLEWARE JWT (PROTECT ROUTES BELOW) ===
-app.use('/api/conversations/*', jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' }));
-app.use('/api/messages/*', jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' }));
+const jwtMiddleware = jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' });
+app.use('/api/conversations/*', jwtMiddleware);
+app.use('/api/conversations', jwtMiddleware);
+app.use('/api/messages/*', jwtMiddleware);
+app.use('/api/analytics', jwtMiddleware);
+app.use('/api/canned-responses/*', jwtMiddleware);
+app.use('/api/canned-responses', jwtMiddleware);
 
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
@@ -803,6 +808,71 @@ app.delete('/api/canned-responses/:id', async (c) => {
   } catch (error) {
     console.error('Error delete canned response:', error);
     return c.json({ error: 'Gagal menghapus balasan cepat' }, 500);
+  }
+});
+
+// Endpoint untuk Dasbor Analitik
+app.get('/api/analytics', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    // 1. Total Tiket Masuk Hari Ini
+    const [totalIncoming] = await sql`
+      SELECT COUNT(DISTINCT conversation_id) as count 
+      FROM messages 
+      WHERE sender_type = 'Contact' 
+      AND created_at >= CURRENT_DATE
+    `;
+
+    // 2. Total Tiket Diselesaikan Hari Ini
+    const [totalResolved] = await sql`
+      SELECT COUNT(*) as count 
+      FROM conversation_events 
+      WHERE event_type = 'status_changed' 
+      AND event_data->>'new_status' = 'resolved'
+      AND created_at >= CURRENT_DATE
+    `;
+
+    // 3. Status Tiket Saat Ini
+    const statusCounts = await sql`
+      SELECT status, COUNT(*) as count 
+      FROM conversations 
+      WHERE account_id = 1
+      GROUP BY status
+    `;
+
+    // 4. Performa Agen (Jumlah tiket yang di-resolve hari ini per agen)
+    const agentPerformance = await sql`
+      SELECT 
+        u.name, 
+        COUNT(ce.id) as resolved_count
+      FROM conversation_events ce
+      JOIN users u ON ce.actor_id = u.id
+      WHERE ce.event_type = 'status_changed' 
+        AND ce.event_data->>'new_status' = 'resolved'
+        AND ce.actor_type = 'User'
+        AND ce.created_at >= CURRENT_DATE
+      GROUP BY u.id, u.name
+      ORDER BY resolved_count DESC
+    `;
+
+    return c.json({
+      success: true,
+      data: {
+        today: {
+          incoming_tickets: parseInt(totalIncoming?.count || '0'),
+          resolved_tickets: parseInt(totalResolved?.count || '0')
+        },
+        current_status: statusCounts || [],
+        agent_performance: agentPerformance || []
+      }
+    });
+  } catch (error) {
+    console.error('Error fetch analytics:', error);
+    return c.json({ error: 'Gagal mengambil data analitik' }, 500);
   }
 });
 
