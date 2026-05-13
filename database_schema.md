@@ -112,6 +112,14 @@ Tabel untuk mencatat log aktivitas atau perubahan status pada percakapan.
 
 ## 4. Tabel Organisasi Tambahan (Tags & Teams)
 
+### `canned_responses`
+Tabel untuk menyimpan template balasan cepat yang bisa digunakan agen.
+*   `id` (Primary Key)
+*   `account_id` (Foreign Key -> accounts.id)
+*   `short_code` (String) - Kode panggil (Misal: "salam", tanpa garis miring).
+*   `content` (Text) - Isi pesan template.
+*   `created_at` (Timestamp)
+
 ### `labels`
 Tabel tag/label untuk kategorisasi.
 *   `id` (Primary Key)
