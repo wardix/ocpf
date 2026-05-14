@@ -65,25 +65,37 @@ Menghubungkan kontak dengan inbox tertentu (seorang kontak di WA mungkin punya I
 *   `inbox_id` (Foreign Key -> inboxes.id)
 *   `source_id` (String) - ID unik dari platform asli (Misal: nomor WA pelanggan, atau ID Facebook Messenger).
 
-## 3. Tabel Percakapan (Conversations)
+## 3. Tabel Percakapan & Tiket (Conversations & Tickets)
 
 ### `conversations`
-Tabel untuk menyimpan sesi obrolan / tiket.
+Tabel untuk menyimpan wadah sesi obrolan (percakapan abadi / berkelanjutan) antara kontak dan inbox.
 *   `id` (Primary Key)
 *   `account_id` (Foreign Key -> accounts.id)
 *   `inbox_id` (Foreign Key -> inboxes.id)
 *   `contact_id` (Foreign Key -> contacts.id)
+*   `created_at` (Timestamp)
+*   `updated_at` (Timestamp)
+
+### `tickets`
+Tabel untuk sesi penanganan masalah yang memiliki siklus hidup (lifecycle). Satu percakapan bisa memiliki banyak tiket dari waktu ke waktu.
+*   `id` (Primary Key)
+*   `account_id` (Foreign Key -> accounts.id)
+*   `conversation_id` (Foreign Key -> conversations.id)
 *   `assignee_id` (Foreign Key -> users.id, Nullable) - Agen yang menangani.
 *   `status` (Enum: 'open', 'pending', 'snoozed', 'resolved')
+*   `is_bot_active` (Boolean) - Menandakan apakah chatbot sedang menangani tiket ini.
+*   `bot_state` (String) - Node/State terkini dari FSM chatbot pelanggan ini.
 *   `snoozed_until` (Timestamp, Nullable) - Jika statusnya snoozed.
 *   `created_at` (Timestamp)
 *   `updated_at` (Timestamp)
+*   `resolved_at` (Timestamp, Nullable)
 
 ### `messages`
 Tabel yang menyimpan setiap baris pesan di dalam sebuah percakapan. Tabel ini akan sangat besar volumenya.
 *   `id` (Primary Key)
 *   `account_id` (Foreign Key -> accounts.id)
 *   `conversation_id` (Foreign Key -> conversations.id)
+*   `ticket_id` (Foreign Key -> tickets.id)
 *   `sender_type` (Enum: 'Contact', 'User', 'System') - Siapa yang mengirim.
 *   `sender_id` (Integer) - ID dari Contact atau User yang mengirim.
 *   `content` (Text, Nullable) - Teks pesan.

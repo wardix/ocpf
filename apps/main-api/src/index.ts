@@ -126,12 +126,27 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       `;
     }
 
-    // 2. Cari Percakapan terakhir dari kontak ini
+    // 2. Cari Percakapan (Wadah Abadi) dari kontak ini
     let [conversation] = await sql`
-      SELECT id, status, is_bot_active, bot_state FROM conversations
+      SELECT id FROM conversations
       WHERE account_id = ${ACCOUNT_ID} 
         AND inbox_id = ${INBOX_ID} 
         AND contact_id = ${contact.id}
+      LIMIT 1
+    `;
+
+    if (!conversation) {
+      [conversation] = await sql`
+        INSERT INTO conversations (account_id, inbox_id, contact_id)
+        VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
+        RETURNING id;
+      `;
+    }
+
+    // 3. Cari Tiket (Sesi Masalah) terakhir dari percakapan ini
+    let [ticket] = await sql`
+      SELECT id, status, is_bot_active, bot_state FROM tickets
+      WHERE account_id = ${ACCOUNT_ID} AND conversation_id = ${conversation.id}
       ORDER BY updated_at DESC
       LIMIT 1
     `;
@@ -144,64 +159,47 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         triggeredGlobalCommand = true;
         const targetState = chatbotRules.global_commands[commandKey];
         
-        if (conversation) {
-          [conversation] = await sql`
-            UPDATE conversations 
-            SET is_bot_active = true, bot_state = ${targetState}, status = 'open', updated_at = NOW() 
-            WHERE id = ${conversation.id}
+        if (ticket && ticket.status !== 'resolved') {
+          [ticket] = await sql`
+            UPDATE tickets 
+            SET is_bot_active = true, bot_state = ${targetState}, updated_at = NOW() 
+            WHERE id = ${ticket.id}
             RETURNING id, status, is_bot_active, bot_state;
           `;
         }
       }
     }
 
-    if (!conversation) {
-      // Jika belum pernah ada percakapan, buat baru
-      [conversation] = await sql`
-        INSERT INTO conversations (account_id, inbox_id, contact_id, status, is_bot_active, bot_state)
-        VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
+    if (!ticket || ticket.status === 'resolved') {
+      // Jika belum ada tiket atau tiket terakhir sudah ditutup, BUAT TIKET BARU
+      [ticket] = await sql`
+        INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
+        VALUES (${ACCOUNT_ID}, ${conversation.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
         RETURNING id, status, is_bot_active, bot_state;
       `;
-    } else if (!triggeredGlobalCommand) {
-      if (conversation.status === 'resolved' || conversation.status === 'snoozed') {
-        // Jika percakapan sudah ditutup/ditunda, buka kembali (reopen)
-        const oldStatus = conversation.status;
-        [conversation] = await sql`
-          UPDATE conversations SET status = 'open', is_bot_active = true, bot_state = 'start', updated_at = NOW() 
-          WHERE id = ${conversation.id}
-          RETURNING id, status, is_bot_active, bot_state;
-        `;
-        
-        // Dual-write: Catat ke conversation_events dan pesan sistem
-        await sql`
-          INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
-          VALUES (${ACCOUNT_ID}, ${conversation.id}, 'Contact', ${contact.id}, 'status_changed', ${sql.json({ old_status: oldStatus, new_status: 'open' })});
-        `;
-        const [sysMsg] = await sql`
-          INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
-          VALUES (${ACCOUNT_ID}, ${conversation.id}, 'System', NULL, 'Tiket dibuka kembali oleh pelanggan', 'template', 'sent')
-          RETURNING *;
-        `;
-        await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
-      } else {
-        // Jika masih open/pending, cukup update waktunya saja
-        await sql`
-          UPDATE conversations SET updated_at = NOW() WHERE id = ${conversation.id}
-        `;
+    } else {
+      // Jika tiket masih open/pending/snoozed, cukup update waktunya
+      if (!triggeredGlobalCommand) {
+        if (ticket.status === 'snoozed') {
+           await sql`UPDATE tickets SET status = 'open', updated_at = NOW() WHERE id = ${ticket.id}`;
+           ticket.status = 'open';
+        } else {
+           await sql`UPDATE tickets SET updated_at = NOW() WHERE id = ${ticket.id}`;
+        }
       }
     }
 
-    // 3. Masukkan Pesan ke Tabel Messages
+    // 4. Masukkan Pesan ke Tabel Messages (Tautkan ke conversation_id DAN ticket_id)
     const finalContent = data.participant_id 
       ? `[${data.participant_name || 'Member'}]: ${content}` 
       : content;
 
     const [msg] = await sql`
       INSERT INTO messages (
-        account_id, conversation_id, sender_type, sender_id, 
+        account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, created_at
       ) VALUES (
-        ${ACCOUNT_ID}, ${conversation.id}, 'Contact', ${contact.id}, 
+        ${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'Contact', ${contact.id}, 
         ${finalContent}, 'incoming', 'delivered', to_timestamp(${timestamp})
       )
       RETURNING *;
@@ -236,7 +234,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     // 5. Evaluasi Chatbot
-    if (conversation.is_bot_active && chatbotRules && chatbotRules.states) {
+    if (ticket.is_bot_active && chatbotRules && chatbotRules.states) {
       const userText = content.trim();
       let targetNode = null;
       let targetNodeKey = null;
@@ -245,7 +243,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         targetNodeKey = chatbotRules.global_commands[userText.toLowerCase()];
         targetNode = chatbotRules.states[targetNodeKey];
       } else {
-        const currentState = chatbotRules.states[conversation.bot_state];
+        const currentState = chatbotRules.states[ticket.bot_state];
         if (currentState) {
           if (currentState.options) {
             if (currentState.options[userText]) {
@@ -386,17 +384,17 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 
         if (targetNode.action === 'assign_agent') {
           newBotActive = false;
-        } else if (targetNodeKey !== conversation.bot_state && chatbotRules.states[targetNodeKey]?.action === 'assign_agent') {
+        } else if (targetNodeKey !== ticket.bot_state && chatbotRules.states[targetNodeKey]?.action === 'assign_agent') {
           // Cek jika lompatan state ternyata adalah transfer agent
           newBotActive = false;
         }
 
         // Update state di DB
-        if (targetNodeKey !== conversation.bot_state || !newBotActive) {
+        if (targetNodeKey !== ticket.bot_state || !newBotActive) {
           await sql`
-            UPDATE conversations 
+            UPDATE tickets 
             SET bot_state = ${targetNodeKey}, is_bot_active = ${newBotActive}, updated_at = NOW()
-            WHERE id = ${conversation.id}
+            WHERE id = ${ticket.id}
           `;
         }
       }
@@ -499,28 +497,29 @@ app.get('/api/conversations', async (c) => {
 
     const convs = await sql`
       SELECT 
-        c.id, 
-        c.status, 
-        c.updated_at, 
-        c.assignee_id,
+        t.id, 
+        t.status, 
+        t.updated_at, 
+        t.assignee_id,
         u.name as assignee_name,
         con.name as contact_name, 
         con.phone_number as contact_phone,
-        (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
-      FROM conversations c
+        (SELECT content FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
+      FROM tickets t
+      JOIN conversations c ON t.conversation_id = c.id
       JOIN contacts con ON c.contact_id = con.id
-      LEFT JOIN users u ON c.assignee_id = u.id
-      WHERE c.account_id = 1 AND (
-        (${isResolved}::boolean = true AND c.status = 'resolved') OR 
-        (${isResolved}::boolean = false AND c.status != 'resolved')
+      LEFT JOIN users u ON t.assignee_id = u.id
+      WHERE t.account_id = 1 AND (
+        (${isResolved}::boolean = true AND t.status = 'resolved') OR 
+        (${isResolved}::boolean = false AND t.status != 'resolved')
       )
       AND (
-        ${assigneeFilter === 'me'}::boolean = false OR c.assignee_id = ${currentAgentId}
+        ${assigneeFilter === 'me'}::boolean = false OR t.assignee_id = ${currentAgentId}
       )
       AND (
-        ${assigneeFilter === 'unassigned'}::boolean = false OR c.assignee_id IS NULL
+        ${assigneeFilter === 'unassigned'}::boolean = false OR t.assignee_id IS NULL
       )
-      ORDER BY c.updated_at DESC
+      ORDER BY t.updated_at DESC
     `;
     return c.json(convs);
   } catch (error) {
@@ -564,13 +563,17 @@ app.post('/api/messages/send', async (c) => {
     const body = await c.req.json();
     const { target_id, content, conversation_id, account_id, media, is_private } = body;
 
+    // Ambil conversation_id asli dari tiket
+    const [ticket] = await sql`SELECT conversation_id FROM tickets WHERE id = ${conversation_id} LIMIT 1`;
+    if (!ticket) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+
     const tDbStart = Date.now();
     const [msg] = await sql`
       INSERT INTO messages (
-        account_id, conversation_id, sender_type, sender_id, 
+        account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, is_private
       ) VALUES (
-        ${account_id || 1}, ${conversation_id}, 'User', ${agentId}, 
+        ${account_id || 1}, ${ticket.conversation_id}, ${conversation_id}, 'User', ${agentId}, 
         ${content || ''}, 'outgoing', 'sent', ${is_private || false}
       )
       RETURNING *;
@@ -698,34 +701,34 @@ app.patch('/api/conversations/:id/assign', async (c) => {
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
 
-    const [conversation] = await sql`
-      UPDATE conversations 
+    const [ticket] = await sql`
+      UPDATE tickets 
       SET assignee_id = ${agentId}, updated_at = NOW() 
       WHERE id = ${conversationId} AND assignee_id IS NULL
       RETURNING *;
     `;
 
-    if (!conversation) {
+    if (!ticket) {
       // Cek apakah memang tidak ketemu atau sudah diambil orang lain
-      const [existing] = await sql`SELECT assignee_id FROM conversations WHERE id = ${conversationId}`;
-      if (!existing) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
+      const [existing] = await sql`SELECT assignee_id FROM tickets WHERE id = ${conversationId}`;
+      if (!existing) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
       if (existing.assignee_id !== null) return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     }
 
     // Dual-write: Catat ke conversation_events dan pesan sistem
     await sql`
-      INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
-      VALUES (${conversation.account_id}, ${conversation.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
+      INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
     `;
     
     const [sysMsg] = await sql`
-      INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
-      VALUES (${conversation.account_id}, ${conversation.id}, 'System', NULL, ${`Tiket diambil alih oleh ${agentName}`}, 'template', 'sent')
+      INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket diambil alih oleh ${agentName}`}, 'template', 'sent')
       RETURNING *;
     `;
     await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
 
-    return c.json({ success: true, data: conversation });
+    return c.json({ success: true, data: ticket });
   } catch (error) {
     console.error('Error assign ticket:', error);
     return c.json({ success: false, error: 'Gagal mengambil tiket' }, 500);
@@ -821,7 +824,7 @@ app.get('/api/analytics', async (c) => {
 
     // 1. Total Tiket Masuk Hari Ini
     const [totalIncoming] = await sql`
-      SELECT COUNT(DISTINCT conversation_id) as count 
+      SELECT COUNT(DISTINCT ticket_id) as count 
       FROM messages 
       WHERE sender_type = 'Contact' 
       AND created_at >= CURRENT_DATE
@@ -839,7 +842,7 @@ app.get('/api/analytics', async (c) => {
     // 3. Status Tiket Saat Ini
     const statusCounts = await sql`
       SELECT status, COUNT(*) as count 
-      FROM conversations 
+      FROM tickets 
       WHERE account_id = 1
       GROUP BY status
     `;
