@@ -26,7 +26,9 @@ const ContactInfo = ({ selectedConv }: Props) => {
         <h2 className="font-bold text-xl text-center truncate w-full px-2">
           {selectedConv.name}
         </h2>
-        <p className="text-xs text-base-content/60 mt-1">ID Percakapan: #{selectedConv.id}</p>
+        <p className="text-xs text-base-content/60 mt-1 font-mono">
+          ID Tiket: #TKT-{String(selectedConv.id).padStart(4, '0')}
+        </p>
       </div>
 
       {/* Detail Attributes */}

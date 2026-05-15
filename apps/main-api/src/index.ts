@@ -487,7 +487,7 @@ app.use('/api/canned-responses', jwtMiddleware);
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
   try {
-    const activeTab = c.req.query('tab') || 'unassigned'; // 'unassigned', 'assigned', 'all'
+    const activeTab = c.req.query('tab') || 'unassigned'; // 'unassigned', 'mine', 'assigned', 'all'
     
     // Ambil ID agen yang sedang login dari JWT
     const jwtPayload = c.get('jwtPayload');
@@ -510,6 +510,7 @@ app.get('/api/conversations', async (c) => {
       WHERE t.account_id = 1 
       AND (
         (${activeTab === 'unassigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NULL) OR
+        (${activeTab === 'mine'}::boolean = true AND t.status != 'resolved' AND t.assignee_id = ${currentAgentId}) OR
         (${activeTab === 'assigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NOT NULL) OR
         (${activeTab === 'all'}::boolean = true)
       )
