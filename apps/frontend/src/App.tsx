@@ -122,10 +122,12 @@ function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content">
       <div className="w-16 bg-neutral flex flex-col items-center py-4 shrink-0 shadow-lg z-20">
-        <div className="tooltip tooltip-right mb-8" data-tip="Status Koneksi">
-           <div className={`avatar placeholder cursor-pointer`}>
-            <div className={`${wsStatus === 'open' ? 'bg-success' : 'bg-error'} text-white rounded-full w-10 border-2 border-white/20`}>
-              <span className="text-[10px]">{wsStatus === 'open' ? 'ON' : 'OFF'}</span>
+        <div className="tooltip tooltip-right mb-8" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'})`}>
+          <div className={`avatar placeholder cursor-pointer ${wsStatus === 'open' ? 'online' : 'offline'}`}>
+            <div className="bg-primary text-primary-content rounded-full w-10 border-2 border-neutral">
+              <span className="text-sm font-bold">
+                {user?.name ? user.name.substring(0, 2).toUpperCase() : 'AG'}
+              </span>
             </div>
           </div>
         </div>
