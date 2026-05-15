@@ -105,8 +105,8 @@ function App() {
       const payload = JSON.parse(event.data);
       if (payload.event === 'message.new') {
         const newMessage = payload.data;
-        // Hanya tambahkan pesan ke state jika conversation_id cocok dengan yang sedang dibuka
-        if (selectedConv && newMessage.conversation_id === selectedConv.id) {
+        // Karena arsitektur baru menggunakan tiket, cocokkan dengan ticket_id (yang ada di selectedConv.id)
+        if (selectedConv && newMessage.ticket_id === selectedConv.id) {
           setMessages((prev) => [...prev, newMessage]);
         }
       }
