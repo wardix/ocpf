@@ -494,27 +494,31 @@ app.get('/api/conversations', async (c) => {
     const currentAgentId = jwtPayload?.id;
 
     const convs = await sql`
-      SELECT 
-        t.id, 
-        t.status, 
-        t.updated_at, 
-        t.assignee_id,
-        u.name as assignee_name,
-        con.name as contact_name, 
-        con.phone_number as contact_phone,
-        (SELECT content FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
-      FROM tickets t
-      JOIN conversations c ON t.conversation_id = c.id
-      JOIN contacts con ON c.contact_id = con.id
-      LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE t.account_id = 1 
-      AND (
-        (${activeTab === 'unassigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NULL) OR
-        (${activeTab === 'mine'}::boolean = true AND t.status != 'resolved' AND t.assignee_id = ${currentAgentId}) OR
-        (${activeTab === 'assigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NOT NULL) OR
-        (${activeTab === 'all'}::boolean = true)
+      WITH LatestTickets AS (
+        SELECT DISTINCT ON (c.id)
+          t.id, 
+          t.status, 
+          t.updated_at, 
+          t.assignee_id,
+          u.name as assignee_name,
+          con.name as contact_name, 
+          con.phone_number as contact_phone,
+          (SELECT content FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
+        FROM tickets t
+        JOIN conversations c ON t.conversation_id = c.id
+        JOIN contacts con ON c.contact_id = con.id
+        LEFT JOIN users u ON t.assignee_id = u.id
+        WHERE t.account_id = 1 
+        AND (
+          (${activeTab === 'unassigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NULL) OR
+          (${activeTab === 'mine'}::boolean = true AND t.status != 'resolved' AND t.assignee_id = ${currentAgentId}) OR
+          (${activeTab === 'assigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NOT NULL) OR
+          (${activeTab === 'all'}::boolean = true)
+        )
+        ORDER BY c.id, t.updated_at DESC
       )
-      ORDER BY t.updated_at DESC
+      SELECT * FROM LatestTickets
+      ORDER BY updated_at DESC
     `;
     return c.json(convs);
   } catch (error) {
@@ -525,9 +529,9 @@ app.get('/api/conversations', async (c) => {
 
 // Ambil riwayat pesan untuk percakapan tertentu
 app.get('/api/conversations/:id/messages', async (c) => {
-  const conversationId = c.req.param('id');
+  const ticketId = c.req.param('id');
   try {
-    // Mengambil pesan beserta attachment-nya
+    // Mengambil pesan berdasarkan wadah abadi (conversation_id) dari tiket ini
     const messages = await sql`
       SELECT 
         m.*,
@@ -537,7 +541,7 @@ app.get('/api/conversations/:id/messages', async (c) => {
         ) AS attachments
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
-      WHERE m.conversation_id = ${conversationId} 
+      WHERE m.conversation_id = (SELECT conversation_id FROM tickets WHERE id = ${ticketId} LIMIT 1) 
       GROUP BY m.id
       ORDER BY m.created_at ASC
     `;
