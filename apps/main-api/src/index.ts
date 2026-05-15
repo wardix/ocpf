@@ -487,9 +487,7 @@ app.use('/api/canned-responses', jwtMiddleware);
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
   try {
-    const status = c.req.query('status') || 'open'; // default ke open
-    const assigneeFilter = c.req.query('assignee'); // 'me' atau 'unassigned' atau 'all'
-    const isResolved = status === 'resolved';
+    const activeTab = c.req.query('tab') || 'unassigned'; // 'unassigned', 'assigned', 'all'
     
     // Ambil ID agen yang sedang login dari JWT
     const jwtPayload = c.get('jwtPayload');
@@ -509,15 +507,11 @@ app.get('/api/conversations', async (c) => {
       JOIN conversations c ON t.conversation_id = c.id
       JOIN contacts con ON c.contact_id = con.id
       LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE t.account_id = 1 AND (
-        (${isResolved}::boolean = true AND t.status = 'resolved') OR 
-        (${isResolved}::boolean = false AND t.status != 'resolved')
-      )
+      WHERE t.account_id = 1 
       AND (
-        ${assigneeFilter === 'me'}::boolean = false OR t.assignee_id = ${currentAgentId}
-      )
-      AND (
-        ${assigneeFilter === 'unassigned'}::boolean = false OR t.assignee_id IS NULL
+        (${activeTab === 'unassigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NULL) OR
+        (${activeTab === 'assigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NOT NULL) OR
+        (${activeTab === 'all'}::boolean = true)
       )
       ORDER BY t.updated_at DESC
     `;

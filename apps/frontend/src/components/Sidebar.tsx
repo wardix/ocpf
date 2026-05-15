@@ -20,13 +20,13 @@ interface Props {
 
 const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeTab, setActiveTab] = useState<'open' | 'resolved'>('open');
+  const [activeTab, setActiveTab] = useState<'unassigned' | 'assigned' | 'all'>('unassigned');
 
   const fetchConversations = async () => {
     if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`, {
+      const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -51,16 +51,25 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
         <h2 className="font-bold text-lg italic">💬 Inbox</h2>
         <div className="flex gap-2 mt-1">
           <button 
-            className={`btn btn-sm flex-1 ${activeTab === 'open' ? 'btn-active' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('open')}
+            className={`btn btn-xs flex-1 ${activeTab === 'unassigned' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('unassigned')}
+            title="Belum Ada Pemilik"
+          >
+            Antrean
+          </button>
+          <button 
+            className={`btn btn-xs flex-1 ${activeTab === 'assigned' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('assigned')}
+            title="Sedang Ditangani"
           >
             Aktif
           </button>
           <button 
-            className={`btn btn-sm flex-1 ${activeTab === 'resolved' ? 'btn-active' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('resolved')}
+            className={`btn btn-xs flex-1 ${activeTab === 'all' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('all')}
+            title="Semua Tiket"
           >
-            Selesai
+            Semua
           </button>
         </div>
       </div>
@@ -68,7 +77,9 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 && (
           <div className="p-8 text-center opacity-30 italic text-sm">
-            {activeTab === 'open' ? 'Menunggu chat masuk...' : 'Belum ada tiket selesai.'}
+            {activeTab === 'unassigned' ? 'Hore! Tidak ada antrean tiket baru.' : 
+             activeTab === 'assigned' ? 'Belum ada tiket yang sedang ditangani.' : 
+             'Belum ada tiket sama sekali.'}
           </div>
         )}
 
