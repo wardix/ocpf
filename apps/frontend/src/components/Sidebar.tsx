@@ -20,7 +20,7 @@ interface Props {
 
 const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeTab, setActiveTab] = useState<'unassigned' | 'assigned' | 'all'>('unassigned');
+  const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'assigned' | 'all'>('unassigned');
 
   const fetchConversations = async () => {
     if (!token) return;
@@ -49,23 +49,30 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
       <div className="p-4 border-b border-base-300 bg-base-200 flex flex-col gap-2">
         <h2 className="font-bold text-lg italic">💬 Inbox</h2>
-        <div className="flex gap-2 mt-1">
+        <div className="flex gap-2 mt-1 overflow-x-auto whitespace-nowrap pb-2 custom-scrollbar">
           <button 
-            className={`btn btn-xs flex-1 ${activeTab === 'unassigned' ? 'btn-active' : 'btn-ghost'}`}
+            className={`btn btn-xs shrink-0 ${activeTab === 'unassigned' ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setActiveTab('unassigned')}
             title="Belum Ada Pemilik"
           >
             Antrean
           </button>
           <button 
-            className={`btn btn-xs flex-1 ${activeTab === 'assigned' ? 'btn-active' : 'btn-ghost'}`}
+            className={`btn btn-xs shrink-0 ${activeTab === 'mine' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('mine')}
+            title="Tiket Saya"
+          >
+            Tiketku
+          </button>
+          <button 
+            className={`btn btn-xs shrink-0 ${activeTab === 'assigned' ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setActiveTab('assigned')}
             title="Sedang Ditangani"
           >
             Aktif
           </button>
           <button 
-            className={`btn btn-xs flex-1 ${activeTab === 'all' ? 'btn-active' : 'btn-ghost'}`}
+            className={`btn btn-xs shrink-0 ${activeTab === 'all' ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setActiveTab('all')}
             title="Semua Tiket"
           >
@@ -76,8 +83,9 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
 
       <div className="flex-1 overflow-y-auto">
         {conversations.length === 0 && (
-          <div className="p-8 text-center opacity-30 italic text-sm">
+          <div className="p-8 text-center opacity-30 italic text-sm whitespace-normal">
             {activeTab === 'unassigned' ? 'Hore! Tidak ada antrean tiket baru.' : 
+             activeTab === 'mine' ? 'Anda belum mengambil tiket apa pun.' :
              activeTab === 'assigned' ? 'Belum ada tiket yang sedang ditangani.' : 
              'Belum ada tiket sama sekali.'}
           </div>
