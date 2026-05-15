@@ -46,6 +46,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isUnassigning, setIsUnassigning] = useState(false);
   const [isPrivateNote, setIsPrivateNote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,6 +108,33 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
       console.error('Gagal mengambil tiket:', err);
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  const handleUnassign = async () => {
+    const confirm = window.confirm("Apakah Anda yakin ingin melepas tiket ini kembali ke antrean?");
+    if (!confirm || !token) return;
+
+    setIsUnassigning(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/unassign`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        }
+      });
+      if (response.ok) {
+        onResolve(); // Melepas tiket memiliki efek UI yang sama dengan resolve (menutup chat dan refresh)
+      } else {
+        const errData = await response.json();
+        alert(errData.error || 'Gagal melepas tiket');
+      }
+    } catch (err) {
+      console.error('Gagal melepas tiket:', err);
+    } finally {
+      setIsUnassigning(false);
     }
   };
 
@@ -222,13 +250,22 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
                 👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
               </span>
               {(selectedConv.assignee_id === currentUser?.id || !selectedConv.assignee_id) && (
-                <button 
-                  className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
-                  onClick={handleResolve}
-                  disabled={isResolving}
-                >
-                  Tutup Tiket
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}
+                    onClick={handleUnassign}
+                    disabled={isUnassigning || isResolving}
+                  >
+                    Lepas Tiket
+                  </button>
+                  <button 
+                    className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
+                    onClick={handleResolve}
+                    disabled={isResolving || isUnassigning}
+                  >
+                    Tutup Tiket
+                  </button>
+                </div>
               )}
             </div>
           )}

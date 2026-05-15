@@ -739,6 +739,45 @@ app.patch('/api/conversations/:id/assign', async (c) => {
   }
 });
 
+// Endpoint untuk melepas tiket (Unassign)
+app.patch('/api/conversations/:id/unassign', async (c) => {
+  const conversationId = c.req.param('id');
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    const agentId = jwtPayload.id;
+    const agentName = jwtPayload.name;
+
+    const [ticket] = await sql`
+      UPDATE tickets 
+      SET assignee_id = NULL, updated_at = NOW() 
+      WHERE id = ${conversationId} AND assignee_id = ${agentId}
+      RETURNING *;
+    `;
+
+    if (!ticket) {
+      return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
+    }
+
+    // Dual-write: Catat ke conversation_events dan pesan sistem
+    await sql`
+      INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'User', ${agentId}, 'unassigned', ${sql.json({ old_assignee_id: agentId })});
+    `;
+    
+    const [sysMsg] = await sql`
+      INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket #TKT-${String(ticket.id).padStart(4, '0')} dilepas oleh ${agentName}`}, 'template', 'sent')
+      RETURNING *;
+    `;
+    await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+
+    return c.json({ success: true, data: ticket });
+  } catch (error) {
+    console.error('Error unassign ticket:', error);
+    return c.json({ success: false, error: 'Gagal melepas tiket' }, 500);
+  }
+});
+
 // Endpoint untuk mengambil daftar Canned Responses
 app.get('/api/canned-responses', async (c) => {
   try {
