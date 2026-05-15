@@ -185,7 +185,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
     }
   };
 
-  const canReply = selectedConv.assignee_id === null || selectedConv.assignee_id === currentUser?.id;
+  const canReply = selectedConv.assignee_id === currentUser?.id;
 
   return (
     <div className="flex-1 flex flex-col bg-base-200/50 h-full relative">
@@ -200,7 +200,10 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
           </div>
           <div>
             <h2 className="font-bold text-sm sm:text-base">{selectedConv.name}</h2>
-            <p className="text-[10px] text-success font-medium">Online</p>
+            <p className="text-[10px] text-success font-medium flex gap-2">
+              <span>Online</span>
+              <span className="text-base-content/50 font-mono text-[9px]">• #TKT-{String(selectedConv.id).padStart(4, '0')}</span>
+            </p>
           </div>
         </div>
         
@@ -367,7 +370,13 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
 
             <textarea 
               className="textarea textarea-bordered w-full resize-none h-12 focus:outline-primary/50 text-base" 
-              placeholder={canReply ? "Ketik balasan Anda (atau ketik '/' untuk template)..." : "Tiket ini sedang ditangani oleh agen lain."}
+              placeholder={
+                canReply 
+                  ? "Ketik balasan Anda (atau ketik '/' untuk template)..." 
+                  : selectedConv.assignee_id === null
+                    ? "Silakan klik 'Ambil Tiket' terlebih dahulu untuk membalas."
+                    : "Tiket ini sedang ditangani oleh agen lain."
+              }
               value={inputText}
               onChange={(e) => {
                 const val = e.target.value;

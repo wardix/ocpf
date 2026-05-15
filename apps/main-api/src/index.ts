@@ -563,9 +563,14 @@ app.post('/api/messages/send', async (c) => {
     const body = await c.req.json();
     const { target_id, content, conversation_id, account_id, media, is_private } = body;
 
-    // Ambil conversation_id asli dari tiket
-    const [ticket] = await sql`SELECT conversation_id FROM tickets WHERE id = ${conversation_id} LIMIT 1`;
+    // Ambil conversation_id asli dan assignee_id dari tiket
+    const [ticket] = await sql`SELECT conversation_id, assignee_id FROM tickets WHERE id = ${conversation_id} LIMIT 1`;
     if (!ticket) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+    
+    // Validasi keamanan: Pastikan tiket ini dipegang oleh agen yang sedang login
+    if (ticket.assignee_id !== agentId) {
+      return c.json({ error: 'Akses ditolak: Anda harus mengambil alih tiket ini terlebih dahulu.' }, 403);
+    }
 
     const tDbStart = Date.now();
     const [msg] = await sql`
@@ -659,34 +664,34 @@ app.patch('/api/conversations/:id/status', async (c) => {
       return c.json({ error: 'Status tidak valid' }, 400);
     }
 
-    const [conversation] = await sql`
-      UPDATE conversations 
+    const [ticket] = await sql`
+      UPDATE tickets 
       SET status = ${status}, updated_at = NOW() 
       WHERE id = ${conversationId}
       RETURNING *;
     `;
 
-    if (!conversation) {
-      return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
+    if (!ticket) {
+      return c.json({ error: 'Tiket tidak ditemukan' }, 404);
     }
 
     // Dual-write: Catat ke conversation_events dan pesan sistem
     await sql`
-      INSERT INTO conversation_events (account_id, conversation_id, actor_type, actor_id, event_type, event_data)
-      VALUES (${conversation.account_id}, ${conversation.id}, 'User', ${agentId}, 'status_changed', ${sql.json({ new_status: status })});
+      INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'User', ${agentId}, 'status_changed', ${sql.json({ new_status: status })});
     `;
     
     let systemText = `Tiket diubah menjadi ${status}`;
-    if (status === 'resolved') systemText = `Tiket ditutup oleh Agen ${agentName}`;
+    if (status === 'resolved') systemText = `Tiket #TKT-${String(ticket.id).padStart(4, '0')} ditutup oleh Agen ${agentName}`;
     
     const [sysMsg] = await sql`
-      INSERT INTO messages (account_id, conversation_id, sender_type, sender_id, content, message_type, status)
-      VALUES (${conversation.account_id}, ${conversation.id}, 'System', NULL, ${systemText}, 'template', 'sent')
+      INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${systemText}, 'template', 'sent')
       RETURNING *;
     `;
     await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
 
-    return c.json({ success: true, data: conversation });
+    return c.json({ success: true, data: ticket });
   } catch (error) {
     console.error('Error update status:', error);
     return c.json({ success: false, error: 'Gagal update status' }, 500);
@@ -723,7 +728,7 @@ app.patch('/api/conversations/:id/assign', async (c) => {
     
     const [sysMsg] = await sql`
       INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
-      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket diambil alih oleh ${agentName}`}, 'template', 'sent')
+      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket #TKT-${String(ticket.id).padStart(4, '0')} diambil alih oleh ${agentName}`}, 'template', 'sent')
       RETURNING *;
     `;
     await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
