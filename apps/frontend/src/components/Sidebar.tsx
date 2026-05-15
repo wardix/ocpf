@@ -21,13 +21,12 @@ interface Props {
 const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'open' | 'resolved'>('open');
-  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me' | 'unassigned'>('all');
 
   const fetchConversations = async () => {
     if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}&assignee=${assigneeFilter}`, {
+      const response = await fetch(`${apiUrl}/api/conversations?status=${activeTab}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -44,23 +43,12 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
     // Refresh sidebar setiap 10 detik agar tetap up to date
     const interval = setInterval(fetchConversations, 10000);
     return () => clearInterval(interval);
-  }, [refreshKey, activeTab, assigneeFilter]);
+  }, [refreshKey, activeTab]);
 
   return (
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
       <div className="p-4 border-b border-base-300 bg-base-200 flex flex-col gap-2">
-        <div className="flex justify-between items-center">
-          <h2 className="font-bold text-lg italic">💬 Inbox</h2>
-          <select 
-            className="select select-bordered select-xs text-[10px]"
-            value={assigneeFilter}
-            onChange={(e) => setAssigneeFilter(e.target.value as any)}
-          >
-            <option value="all">Semua Tiket</option>
-            <option value="me">Tiketku</option>
-            <option value="unassigned">Belum Ada Pemilik</option>
-          </select>
-        </div>
+        <h2 className="font-bold text-lg italic">💬 Inbox</h2>
         <div className="flex gap-2 mt-1">
           <button 
             className={`btn btn-sm flex-1 ${activeTab === 'open' ? 'btn-active' : 'btn-ghost'}`}
@@ -100,8 +88,8 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
             <div className="flex flex-col flex-1 overflow-hidden">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-sm truncate">{conv.contact_name}</span>
-                <span className="text-[10px] text-base-content/60">
-                  {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <span className="text-[10px] text-base-content/60 font-mono">
+                  #TKT-{String(conv.id).padStart(4, '0')} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               <span className="text-xs text-base-content/70 truncate mt-1 italic">
