@@ -16,8 +16,10 @@ interface Message {
 
 interface SelectedConversation {
   id: number;
+  contact_id: number;
   phone: string;
   name: string;
+  email: string | null;
   assignee_id?: number | null;
   assignee_name?: string | null;
 }
@@ -182,7 +184,15 @@ function App() {
         <>
           <Sidebar 
             selectedId={selectedConv?.id || null} 
-            onSelect={(id, phone, name, assignee_id, assignee_name) => setSelectedConv({ id, phone, name, assignee_id, assignee_name })} 
+            onSelect={(conv) => setSelectedConv({
+              id: conv.id,
+              contact_id: conv.contact_id,
+              phone: conv.contact_phone,
+              name: conv.contact_name,
+              email: conv.contact_email,
+              assignee_id: conv.assignee_id,
+              assignee_name: conv.assignee_name
+            })} 
             refreshKey={refreshKey}
             token={token}
           />
@@ -200,7 +210,11 @@ function App() {
                 token={token}
                 currentUser={user}
               />
-              <ContactInfo selectedConv={selectedConv} />
+              <ContactInfo 
+                selectedConv={selectedConv} 
+                token={token} 
+                onUpdate={() => setRefreshKey(k => k + 1)} 
+              />
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">

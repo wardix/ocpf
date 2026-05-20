@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 
 interface Conversation {
   id: number;
+  contact_id: number;
   contact_name: string;
+  contact_email: string | null;
   contact_phone: string;
   last_message: string;
   updated_at: string;
@@ -13,7 +15,7 @@ interface Conversation {
 
 interface Props {
   selectedId: number | null;
-  onSelect: (id: number, phone: string, name: string) => void;
+  onSelect: (conv: Conversation) => void;
   refreshKey: number;
   token: string | null;
 }
@@ -94,7 +96,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
         {conversations.map((conv) => (
           <div 
             key={conv.id} 
-            onClick={() => onSelect(conv.id, conv.contact_phone, conv.contact_name, conv.assignee_id, conv.assignee_name)}
+            onClick={() => onSelect(conv)}
             className={`flex gap-3 p-4 cursor-pointer hover:bg-base-200 transition-colors border-b border-base-200 ${
               selectedId === conv.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
             }`}

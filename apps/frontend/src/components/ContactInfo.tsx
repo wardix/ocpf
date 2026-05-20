@@ -1,21 +1,73 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SelectedConversation {
   id: number;
+  contact_id: number;
   phone: string;
   name: string;
+  email: string | null;
 }
 
 interface Props {
   selectedConv: SelectedConversation;
+  token: string | null;
+  onUpdate: () => void;
 }
 
-const ContactInfo = ({ selectedConv }: Props) => {
+const ContactInfo = ({ selectedConv, token, onUpdate }: Props) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({ name: '', email: '' });
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setFormData({ 
+      name: selectedConv.name || '', 
+      email: selectedConv.email || '' 
+    });
+    setIsEditing(false);
+  }, [selectedConv]);
+
+  const handleSave = async () => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/contacts/${selectedConv.contact_id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(formData)
+      });
+      
+      if (response.ok) {
+        setIsEditing(false);
+        onUpdate(); // Minta parent komponen refresh data agar nama baru muncul di sidebar
+      } else {
+        alert('Gagal memperbarui kontak');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="w-72 bg-base-100 border-l border-base-300 flex flex-col h-full shrink-0 overflow-y-auto">
       
       {/* Header Info Dinamis */}
-      <div className="p-6 flex flex-col items-center border-b border-base-200">
+      <div className="p-6 flex flex-col items-center border-b border-base-200 relative">
+        {!isEditing && (
+          <button 
+            className="btn btn-xs btn-ghost absolute top-2 right-2" 
+            onClick={() => setIsEditing(true)}
+            title="Edit Kontak"
+          >
+            ✏️
+          </button>
+        )}
         <div className="avatar placeholder mb-4 shadow-md rounded-full">
           <div className="bg-neutral text-neutral-content rounded-full w-24">
             <span className="text-3xl">
@@ -23,17 +75,52 @@ const ContactInfo = ({ selectedConv }: Props) => {
             </span>
           </div>
         </div>
-        <h2 className="font-bold text-xl text-center truncate w-full px-2">
-          {selectedConv.name}
-        </h2>
-        <p className="text-xs text-base-content/60 mt-1 font-mono">
-          ID Tiket: #TKT-{String(selectedConv.id).padStart(4, '0')}
-        </p>
+        
+        {isEditing ? (
+          <div className="w-full flex flex-col gap-2">
+            <input 
+              type="text" 
+              className="input input-sm input-bordered w-full text-center" 
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Nama Kontak"
+            />
+            <input 
+              type="email" 
+              className="input input-sm input-bordered w-full text-center" 
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              placeholder="Email (Opsional)"
+            />
+            <div className="flex gap-1 mt-2">
+              <button className="btn btn-xs flex-1 btn-ghost" onClick={() => setIsEditing(false)}>Batal</button>
+              <button className={`btn btn-xs flex-1 btn-primary ${isSaving ? 'loading' : ''}`} onClick={handleSave}>Simpan</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h2 className="font-bold text-xl text-center truncate w-full px-2">
+              {selectedConv.name}
+            </h2>
+            <p className="text-xs text-base-content/60 mt-1 font-mono">
+              ID Tiket: #TKT-{String(selectedConv.id).padStart(4, '0')}
+            </p>
+          </>
+        )}
       </div>
 
       {/* Detail Attributes */}
       <div className="p-4 space-y-4">
         
+        {!isEditing && formData.email && (
+          <div>
+            <label className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider">Email</label>
+            <p className="text-sm mt-1 bg-base-200 p-2 rounded-lg truncate">
+              {formData.email}
+            </p>
+          </div>
+        )}
+
         <div>
           <label className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider">Alamat WhatsApp (JID)</label>
           <p className="text-[10px] mt-1 bg-base-200 p-2 rounded-lg font-mono text-primary break-all">

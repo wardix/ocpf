@@ -491,6 +491,32 @@ app.use('/api/messages/*', jwtMiddleware);
 app.use('/api/analytics', jwtMiddleware);
 app.use('/api/canned-responses/*', jwtMiddleware);
 app.use('/api/canned-responses', jwtMiddleware);
+app.use('/api/contacts/*', jwtMiddleware);
+
+// Endpoint update data contact
+app.patch('/api/contacts/:id', async (c) => {
+  const contactId = c.req.param('id');
+  try {
+    const body = await c.req.json();
+    const { name, email } = body;
+
+    const [updatedContact] = await sql`
+      UPDATE contacts 
+      SET name = ${name}, email = ${email}, updated_at = NOW() 
+      WHERE id = ${contactId} AND account_id = 1
+      RETURNING *;
+    `;
+
+    if (!updatedContact) {
+      return c.json({ error: 'Kontak tidak ditemukan' }, 404);
+    }
+
+    return c.json({ success: true, data: updatedContact });
+  } catch (error) {
+    console.error('Error update contact:', error);
+    return c.json({ error: 'Gagal memperbarui kontak' }, 500);
+  }
+});
 
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
