@@ -73,7 +73,7 @@ function App() {
   const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [currentView, setCurrentView] = useState<'inbox' | 'settings'>('inbox');
+  const [currentView, setCurrentView] = useState<'inbox' | 'settings' | 'analytics' | 'contacts'>('inbox');
 
   const handleLoginSuccess = (newToken: string, loggedInUser: any) => {
     localStorage.setItem('omni_token', newToken);
@@ -156,6 +156,13 @@ function App() {
             title="Inbox"
           >
             💬
+          </button>
+          <button 
+            className={`btn btn-square w-full rounded-xl ${currentView === 'contacts' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+            onClick={() => setCurrentView('contacts')}
+            title="Buku Telepon (Pelanggan)"
+          >
+            👥
           </button>
           {user?.role === 'administrator' && (
             <>
@@ -241,5 +248,7 @@ export default function AppWithErrorBoundary() {
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+  );
+}orBoundary>
   );
 }

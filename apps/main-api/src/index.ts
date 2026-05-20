@@ -492,6 +492,37 @@ app.use('/api/analytics', jwtMiddleware);
 app.use('/api/canned-responses/*', jwtMiddleware);
 app.use('/api/canned-responses', jwtMiddleware);
 app.use('/api/contacts/*', jwtMiddleware);
+app.use('/api/contacts', jwtMiddleware);
+
+// Endpoint daftar semua kontak (CRM) dengan pencarian
+app.get('/api/contacts', async (c) => {
+  try {
+    const search = c.req.query('q') || '';
+    
+    // Cari kontak dan hitung total tiketnya
+    const contacts = await sql`
+      SELECT 
+        c.id, 
+        c.name, 
+        c.phone_number, 
+        c.email, 
+        c.created_at,
+        COUNT(t.id) as total_tickets
+      FROM contacts c
+      LEFT JOIN conversations conv ON c.id = conv.contact_id
+      LEFT JOIN tickets t ON conv.id = t.conversation_id
+      WHERE c.account_id = 1 AND (c.name ILIKE ${`%${search}%`} OR c.phone_number ILIKE ${`%${search}%`})
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+      LIMIT 100
+    `;
+    
+    return c.json(contacts);
+  } catch (error) {
+    console.error('Error fetch contacts:', error);
+    return c.json({ error: 'Gagal mengambil daftar kontak' }, 500);
+  }
+});
 
 // Endpoint update data contact
 app.patch('/api/contacts/:id', async (c) => {
@@ -535,7 +566,9 @@ app.get('/api/conversations', async (c) => {
           t.updated_at, 
           t.assignee_id,
           u.name as assignee_name,
+          con.id as contact_id,
           con.name as contact_name, 
+          con.email as contact_email,
           con.phone_number as contact_phone,
           (SELECT content FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
         FROM tickets t
