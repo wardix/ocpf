@@ -30,6 +30,9 @@ const redisSub = new Redis({
 const QUEUE_INCOMING = 'queue:incoming_messages';
 const QUEUE_OUTGOING = 'queue:outgoing_messages';
 
+// Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
+const sentCache = new Set();
+
 async function startBaileys() {
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
