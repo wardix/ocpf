@@ -83,16 +83,24 @@ async function startBaileys() {
       // ... (kode dump tetap ada)
       
       // ABAIKAN PESAN JIKA:
-      // 1. Dari diri sendiri
-      // 2. Tidak ada objek message
-      // 3. Pesan bertipe protocolMessage (sync kunci, hapus pesan, dll)
-      // 4. Kategori pesan adalah 'peer' (internal sinkronisasi antar perangkat)
+      // 1. Tidak ada objek message
+      // 2. Pesan bertipe protocolMessage (sync kunci, hapus pesan, dll)
+      // 3. Kategori pesan adalah 'peer' (internal sinkronisasi antar perangkat)
       if (
         !msg.message || 
-        msg.key.fromMe || 
         msg.message.protocolMessage || 
         msg.category === 'peer'
       ) return;
+
+      let isHostEcho = false;
+      if (msg.key.fromMe) {
+        if (sentCache.has(msg.key.id)) {
+          // Ini adalah pantulan (echo) dari pesan yang dikirim Dashboard. Abaikan.
+          return;
+        }
+        // Jika tidak ada di cache, berarti dikirim manual langsung dari HP Host!
+        isHostEcho = true;
+      }
 
       let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
       
@@ -247,7 +255,14 @@ async function startBaileys() {
             }
 
             // Kirim pesan melalui Socket WhatsApp
-            await sock.sendMessage(target_id, waMessage);
+            const sentMsg = await sock.sendMessage(target_id, waMessage);
+            
+            if (sentMsg?.key?.id) {
+              sentCache.add(sentMsg.key.id);
+              // Hapus dari cache setelah 1 menit agar memori tidak penuh
+              setTimeout(() => sentCache.delete(sentMsg.key.id), 60000);
+            }
+            
             const sendEnd = Date.now();
             
             console.log(`-> Pesan berhasil dikirim! [DEBUG-LATENCY] (Proses pengiriman WA memakan waktu: ${sendEnd - sendStart}ms)`);

@@ -16,6 +16,7 @@ export interface IncomingMessagePayload {
     timestamp: number;
     participant_id?: string;
     participant_name?: string;
+    is_host_echo?: boolean; // True jika pesan dikirim manual dari HP Host
     media?: {
       mimetype: string;
       data_base64: string;

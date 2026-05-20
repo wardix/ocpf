@@ -199,8 +199,13 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, created_at
       ) VALUES (
-        ${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'Contact', ${contact.id}, 
-        ${finalContent}, 'incoming', 'delivered', to_timestamp(${timestamp})
+        ${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 
+        ${data.is_host_echo ? 'User' : 'Contact'}, 
+        ${data.is_host_echo ? null : contact.id}, 
+        ${finalContent}, 
+        ${data.is_host_echo ? 'outgoing' : 'incoming'}, 
+        'delivered', 
+        to_timestamp(${timestamp})
       )
       RETURNING *;
     `;
@@ -234,7 +239,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     // 5. Evaluasi Chatbot
-    if (ticket.is_bot_active && chatbotRules && chatbotRules.states) {
+    if (!data.is_host_echo && ticket.is_bot_active && chatbotRules && chatbotRules.states) {
       const userText = content.trim();
       let targetNode = null;
       let targetNodeKey = null;

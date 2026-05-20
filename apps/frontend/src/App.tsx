@@ -48,8 +48,24 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 function App() {
+  const getInitialUser = () => {
+    const t = localStorage.getItem('omni_token');
+    if (!t) return null;
+    try {
+      // Decode Base64 dari payload JWT (bagian kedua dari token)
+      const base64Url = t.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  };
+
   const [token, setToken] = useState<string | null>(localStorage.getItem('omni_token'));
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(getInitialUser);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
