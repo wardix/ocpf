@@ -99,10 +99,12 @@ async function startBaileys() {
       if (msg.key.fromMe) {
         if (sentCache.has(msg.key.id)) {
           // Ini adalah pantulan (echo) dari pesan yang dikirim Dashboard. Abaikan.
+          console.log(`[DEBUG-ECHO] Mengabaikan pesan dari cache (Dashboard): ${msg.key.id}`);
           return;
         }
         // Jika tidak ada di cache, berarti dikirim manual langsung dari HP Host!
         isHostEcho = true;
+        console.log(`[DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
       }
 
       let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';

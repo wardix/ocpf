@@ -99,6 +99,9 @@ async function startWorker() {
 
 async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) {
   try {
+    console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
+    console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
+
     const ACCOUNT_ID = 1;
     const INBOX_ID = 1;
 
