@@ -5,6 +5,7 @@ import ContactInfo from './components/ContactInfo'
 import Login from './components/Login'
 import Settings from './components/Settings'
 import Analytics from './components/Analytics'
+import Contacts from './components/Contacts'
 
 interface Message {
   id: number;
