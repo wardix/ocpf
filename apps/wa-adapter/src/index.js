@@ -191,6 +191,7 @@ async function startBaileys() {
         timestamp: msg.messageTimestamp,
         participant_id: participantId,
         participant_name: isGroup ? msg.pushName : null,
+        is_host_echo: isHostEcho,
         media: mediaPayload // Tambahkan data base64 ke payload
       }
     };
