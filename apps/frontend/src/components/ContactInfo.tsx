@@ -11,7 +11,7 @@ interface SelectedConversation {
 interface Props {
   selectedConv: SelectedConversation;
   token: string | null;
-  onUpdate: () => void;
+  onUpdate: (newName: string, newEmail: string) => void;
 }
 
 const ContactInfo = ({ selectedConv, token, onUpdate }: Props) => {
@@ -43,7 +43,7 @@ const ContactInfo = ({ selectedConv, token, onUpdate }: Props) => {
       
       if (response.ok) {
         setIsEditing(false);
-        onUpdate(); // Minta parent komponen refresh data agar nama baru muncul di sidebar
+        onUpdate(formData.name, formData.email); // Beritahu App.tsx data yang baru
       } else {
         alert('Gagal memperbarui kontak');
       }

@@ -213,7 +213,10 @@ function App() {
               <ContactInfo 
                 selectedConv={selectedConv} 
                 token={token} 
-                onUpdate={() => setRefreshKey(k => k + 1)} 
+                onUpdate={(newName, newEmail) => {
+                  setSelectedConv(prev => prev ? { ...prev, name: newName, email: newEmail } : null);
+                  setRefreshKey(k => k + 1);
+                }} 
               />
             </>
           ) : (
