@@ -234,6 +234,8 @@ function App() {
             </div>
           )}
         </>
+      ) : currentView === 'contacts' ? (
+        <Contacts token={token} />
       ) : currentView === 'analytics' ? (
         <Analytics token={token} />
       ) : (
