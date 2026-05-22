@@ -71,6 +71,9 @@ function App() {
   const [user, setUser] = useState<any>(getInitialUser);
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+
   const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
   const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -89,21 +92,32 @@ function App() {
     setSelectedConv(null);
   };
 
-  const fetchMessages = useCallback(async (conversationId: number) => {
+  const fetchMessages = useCallback(async (conversationId: number, beforeId?: number) => {
     if (!token) return;
+    if (beforeId) setIsLoadingOlder(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations/${conversationId}/messages`, {
+      const query = beforeId ? `?before=${beforeId}` : '';
+      const response = await fetch(`${apiUrl}/api/conversations/${conversationId}/messages${query}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
         const data = await response.json();
-        setMessages(data);
+        setHasMoreMessages(data.length === 50); // Jika API mengembalikan 50, berarti kemungkinan masih ada data lampau
+        
+        if (beforeId) {
+          // Tambahkan pesan lama ke posisi paling atas array (karena ascending)
+          setMessages(prev => [...data, ...prev]);
+        } else {
+          setMessages(data);
+        }
       } else if (response.status === 401) {
         handleLogout();
       }
     } catch (err) {
       console.error('Gagal memuat pesan:', err);
+    } finally {
+      if (beforeId) setIsLoadingOlder(false);
     }
   }, [token]);
 
@@ -217,6 +231,13 @@ function App() {
                 onAssign={() => setRefreshKey(k => k + 1)}
                 token={token}
                 currentUser={user}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingOlder={isLoadingOlder}
+                onLoadMore={() => {
+                  if (messages.length > 0) {
+                    fetchMessages(selectedConv.id, messages[0].id);
+                  }
+                }}
               />
               <ContactInfo 
                 selectedConv={selectedConv} 

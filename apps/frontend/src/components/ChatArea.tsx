@@ -39,9 +39,12 @@ interface Props {
   onAssign: () => void;
   token: string | null;
   currentUser: any;
+  hasMoreMessages?: boolean;
+  isLoadingOlder?: boolean;
+  onLoadMore?: () => void;
 }
 
-const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentUser }: Props) => {
+const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentUser, hasMoreMessages, isLoadingOlder, onLoadMore }: Props) => {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -284,7 +287,19 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
             </div>
           )}
 
-          {messages.length > 0 && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
+          {hasMoreMessages && (
+            <div className="flex justify-center pb-4">
+              <button 
+                className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
+                onClick={onLoadMore}
+                disabled={isLoadingOlder}
+              >
+                Muat pesan sebelumnya
+              </button>
+            </div>
+          )}
+
+          {messages.length > 0 && !hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
 
           {messages.map((msg) => {
             if (msg.sender_type === 'System') {

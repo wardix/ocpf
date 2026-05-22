@@ -594,11 +594,13 @@ app.get('/api/conversations', async (c) => {
   }
 });
 
-// Ambil riwayat pesan untuk percakapan tertentu
+// Ambil riwayat pesan untuk percakapan tertentu (dengan pagination cursor)
 app.get('/api/conversations/:id/messages', async (c) => {
   const ticketId = c.req.param('id');
+  const beforeId = c.req.query('before'); // ID pesan terkecil yang sedang tampil di layar
   try {
     // Mengambil pesan berdasarkan wadah abadi (conversation_id) dari tiket ini
+    // Menggunakan ORDER BY DESC LIMIT 50 untuk performa ekstrim
     const messages = await sql`
       SELECT 
         m.*,
@@ -609,10 +611,14 @@ app.get('/api/conversations/:id/messages', async (c) => {
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
       WHERE m.conversation_id = (SELECT conversation_id FROM tickets WHERE id = ${ticketId} LIMIT 1) 
+      AND (${beforeId ? Number(beforeId) : null}::int IS NULL OR m.id < ${beforeId ? Number(beforeId) : null})
       GROUP BY m.id
-      ORDER BY m.created_at ASC
+      ORDER BY m.id DESC
+      LIMIT 50
     `;
-    return c.json(messages);
+    
+    // Karena kita fetch DESC (dari terbaru ke terlama), kita perlu membaliknya kembali agar kronologis (dari atas ke bawah)
+    return c.json(messages.reverse());
   } catch (error) {
     return c.json({ error: 'Gagal mengambil pesan' }, 500);
   }
