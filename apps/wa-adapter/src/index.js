@@ -27,8 +27,11 @@ const redisSub = new Redis({
   port: process.env.REDIS_PORT || 6379,
 });
 
+const INBOX_ID = parseInt(process.env.INBOX_ID) || 1;
+const SESSION_DIR = process.env.SESSION_DIR || 'auth_info_baileys';
+
 const QUEUE_INCOMING = 'queue:incoming_messages';
-const QUEUE_OUTGOING = 'queue:outgoing_messages';
+const QUEUE_OUTGOING = `queue:outgoing_messages:inbox_${INBOX_ID}`;
 
 // Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
 const sentCache = new Set();
@@ -37,9 +40,10 @@ async function startBaileys() {
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`Menggunakan WA Version: ${version.join('.')}, isLatest: ${isLatest}`);
+  console.log(`Menjalankan Adapter untuk INBOX_ID: ${INBOX_ID} dengan sesi: ${SESSION_DIR}`);
 
-  // Menggunakan folder 'auth_info_baileys' untuk menyimpan sesi login QR Code
-  const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), 'auth_info_baileys'));
+  // Menggunakan folder dinamis untuk menyimpan sesi login QR Code
+  const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), SESSION_DIR));
 
   const sock = createWASocket({
     version,
@@ -184,6 +188,7 @@ async function startBaileys() {
     const payload = {
       event: 'message.incoming',
       data: {
+        inbox_id: INBOX_ID,
         source_id: sourceId,
         source_jid: fullJid, 
         push_name: displayName,

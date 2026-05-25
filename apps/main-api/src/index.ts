@@ -54,7 +54,6 @@ const redisWorker = new Redis({
 });
 
 const QUEUE_INCOMING = 'queue:incoming_messages';
-const QUEUE_OUTGOING = 'queue:outgoing_messages';
 const PUB_SUB_CH = 'chat:events';
 
 // Simpan daftar koneksi websocket aktif
@@ -103,7 +102,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
     const ACCOUNT_ID = 1;
-    const INBOX_ID = 1;
+    const INBOX_ID = data.inbox_id || 1; // Mendukung arsitektur Multi-Instance/Multi-Provider
 
     // Pastikan variabel tidak undefined untuk SQL
     const sourceJid = data.source_jid || 'unknown';
@@ -810,11 +809,12 @@ app.post('/api/messages/send', async (c) => {
     const tDbEnd = Date.now();
     console.log(`[DEBUG-LATENCY] (${tDbEnd}) Simpan DB PostgreSQL selesai (Memakan waktu: ${tDbEnd - tDbStart}ms)`);
 
-    // Beritahu WA Adapter via Redis Queue HANYA JIKA BUKAN PRIVATE NOTE
+    // Beritahu Adapter via Redis Queue HANYA JIKA BUKAN PRIVATE NOTE
     if (!is_private) {
       const payload: SendMessagePayload = {
         event: 'message.send',
         data: {
+          inbox_id: inboxId,
           internal_message_id: msg.id,
           target_id: target_id,
           content: content || '',
@@ -825,8 +825,9 @@ app.post('/api/messages/send', async (c) => {
       
       // Sisipkan _queued_at sementara untuk mengukur latency Redis
       const payloadStr = JSON.stringify({ ...payload, _queued_at: Date.now() });
-      await redis.rpush(QUEUE_OUTGOING, payloadStr);
-      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (QUEUE_OUTGOING).`);
+      const targetQueue = `queue:outgoing_messages:inbox_${inboxId}`;
+      await redis.rpush(targetQueue, payloadStr);
+      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (${targetQueue}).`);
     } else {
       console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan adalah Private Note, dilewati dari antrean Redis.`);
     }
@@ -1155,5 +1156,7 @@ const server = Bun.serve({
     },
   },
 });
+
+console.log(`Server API & WebSocket berjalan di port ${server.port}`););
 
 console.log(`Server API & WebSocket berjalan di port ${server.port}`);

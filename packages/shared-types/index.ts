@@ -7,6 +7,7 @@ export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed';
 export interface IncomingMessagePayload {
   event: 'message.incoming';
   data: {
+    inbox_id: number;         // ID Kotak Masuk (untuk Multi-Instance)
     source_id: string;        // ID WhatsApp (nomor atau angka unik grup)
     source_jid: string;       // Alamat lengkap (misal: 12345@g.us, 62812@s.whatsapp.net)
     push_name: string;        // Nama kontak atau nama grup
@@ -29,6 +30,7 @@ export interface IncomingMessagePayload {
 export interface MessageStatusUpdatePayload {
   event: 'message.status_update';
   data: {
+    inbox_id: number;
     wa_message_id: string;
     source_id: string;
     status: MessageStatus;
@@ -39,6 +41,7 @@ export interface MessageStatusUpdatePayload {
 export interface SendMessagePayload {
   event: 'message.send';
   data: {
+    inbox_id: number;
     internal_message_id: number;
     target_id: string;
     content: string;
