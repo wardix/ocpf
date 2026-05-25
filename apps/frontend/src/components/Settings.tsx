@@ -186,4 +186,4 @@ const Settings = ({ token }: Props) => {
   );
 };
 
-export default Settings;ngs;
+export default Settings;
