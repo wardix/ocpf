@@ -493,6 +493,70 @@ app.use('/api/canned-responses/*', jwtMiddleware);
 app.use('/api/canned-responses', jwtMiddleware);
 app.use('/api/contacts/*', jwtMiddleware);
 app.use('/api/contacts', jwtMiddleware);
+app.use('/api/users/*', jwtMiddleware);
+app.use('/api/users', jwtMiddleware);
+
+// Endpoint daftar pengguna/agen (Admin only)
+app.get('/api/users', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    const users = await sql`
+      SELECT u.id, u.name, u.email, au.role, u.created_at
+      FROM users u
+      JOIN account_users au ON u.id = au.user_id
+      WHERE au.account_id = 1
+      ORDER BY u.id ASC
+    `;
+    return c.json(users);
+  } catch (error) {
+    console.error('Error fetch users:', error);
+    return c.json({ error: 'Gagal mengambil daftar pengguna' }, 500);
+  }
+});
+
+// Endpoint untuk menambahkan agen baru (Admin only)
+app.post('/api/users', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { name, email, password, role } = body;
+
+    // Cek duplikasi email
+    const [existing] = await sql`SELECT id FROM users WHERE email = ${email}`;
+    if (existing) {
+      return c.json({ error: 'Email sudah terdaftar' }, 400);
+    }
+
+    const passwordHash = await Bun.password.hash(password, {
+      algorithm: "bcrypt",
+      cost: 10,
+    });
+
+    const [newUser] = await sql`
+      WITH inserted_user AS (
+        INSERT INTO users (name, email, password_hash)
+        VALUES (${name}, ${email}, ${passwordHash})
+        RETURNING id, name, email
+      )
+      INSERT INTO account_users (account_id, user_id, role)
+      SELECT 1, id, ${role} FROM inserted_user
+      RETURNING user_id as id, role;
+    `;
+
+    return c.json({ success: true, data: { id: newUser.id, name, email, role } });
+  } catch (error) {
+    console.error('Error create user:', error);
+    return c.json({ error: 'Gagal membuat pengguna' }, 500);
+  }
+});
 
 // Endpoint daftar semua kontak (CRM) dengan pencarian
 app.get('/api/contacts', async (c) => {

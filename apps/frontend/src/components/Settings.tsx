@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import UserManagement from './UserManagement';
 
 interface CannedResponse {
   id: number;
@@ -185,4 +186,4 @@ const Settings = ({ token }: Props) => {
   );
 };
 
-export default Settings;
+export default Settings;ngs;
