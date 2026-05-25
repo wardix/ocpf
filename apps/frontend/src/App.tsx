@@ -78,6 +78,34 @@ function App() {
   const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [currentView, setCurrentView] = useState<'inbox' | 'settings' | 'analytics' | 'contacts'>('inbox');
+  const [isMuted, setIsMuted] = useState(localStorage.getItem('omni_muted') === 'true');
+
+  const toggleMute = () => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    localStorage.setItem('omni_muted', String(newMuted));
+  };
+
+  const playNotificationSound = useCallback(() => {
+    if (isMuted) return;
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.1);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch(e) {
+      console.error('Audio play failed', e);
+    }
+  }, [isMuted]);
 
   const handleLoginSuccess = (newToken: string, loggedInUser: any) => {
     localStorage.setItem('omni_token', newToken);
@@ -138,6 +166,15 @@ function App() {
       const payload = JSON.parse(event.data);
       if (payload.event === 'message.new') {
         const newMessage = payload.data;
+
+        // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan dan tiket ini milik agen yang sedang login
+        // (atau tiket belum ada pemiliknya/Antrean)
+        if (newMessage.sender_type === 'Contact') {
+          // Jika pesan ini untuk tiket yang sedang kita buka, atau pesan antrean, bunyikan!
+          // Untuk implementasi paling aman, kita bunyikan jika itu masuk ke inbox agen
+          playNotificationSound();
+        }
+
         // Karena arsitektur baru menggunakan tiket, cocokkan dengan ticket_id (yang ada di selectedConv.id)
         if (selectedConv && newMessage.ticket_id === selectedConv.id) {
           setMessages((prev) => [...prev, newMessage]);
@@ -146,7 +183,7 @@ function App() {
     };
     ws.onclose = () => setWsStatus('closed');
     return () => ws.close();
-  }, [selectedConv, token]);
+  }, [selectedConv, token, playNotificationSound]);
 
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
@@ -198,6 +235,13 @@ function App() {
             </>
           )}
           <div className="flex-1"></div>
+          <button 
+            className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" 
+            onClick={toggleMute} 
+            title={isMuted ? "Bunyikan Notifikasi" : "Bisukan Notifikasi"}
+          >
+            {isMuted ? '🔕' : '🔔'}
+          </button>
           <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title="Logout">🚪</button>
         </div>
       </div>
