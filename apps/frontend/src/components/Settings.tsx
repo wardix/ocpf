@@ -181,6 +181,9 @@ const Settings = ({ token }: Props) => {
 
           </div>
         </div>
+
+        <UserManagement token={token} />
+
       </div>
     </div>
   );
