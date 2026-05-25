@@ -63,7 +63,28 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
 
   const handleCopyLink = (type: 'phone' | 'ticket', id: string | number) => {
     const url = `${window.location.origin}/?${type}=${id}`;
-    navigator.clipboard.writeText(url);
+    
+    // Gunakan modern API jika tersedia (HTTPS / Localhost)
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url);
+    } else {
+      // Fallback untuk HTTP biasa (IP Address non-localhost)
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      // Pindahkan ke luar layar agar tidak merusak UI
+      textArea.style.position = "absolute";
+      textArea.style.left = "-999999px";
+      document.body.prepend(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (error) {
+        console.error('Gagal menyalin link:', error);
+      } finally {
+        textArea.remove();
+      }
+    }
+
     setCopiedLink(url);
     setTimeout(() => setCopiedLink(null), 2000);
   };
