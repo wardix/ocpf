@@ -14,12 +14,13 @@ interface CannedResponse {
   content: string;
 }
 
-interface Message {
+export interface Message {
   id: number;
   content: string;
   sender_type: 'Contact' | 'User' | 'System';
   created_at: string;
   conversation_id: number;
+  ticket_id?: number;
   is_private?: boolean;
   attachments?: Attachment[];
 }
@@ -53,11 +54,19 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
   const [isPrivateNote, setIsPrivateNote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // State untuk Canned Responses
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
   const [showCanned, setShowCanned] = useState(false);
   const [cannedSearch, setCannedSearch] = useState('');
+
+  const handleCopyLink = (type: 'phone' | 'ticket', id: string | number) => {
+    const url = `${window.location.origin}/?${type}=${id}`;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(url);
+    setTimeout(() => setCopiedLink(null), 2000);
+  };
 
   useEffect(() => {
     const fetchCanned = async () => {
@@ -239,6 +248,14 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
         </div>
         
         <div className="flex items-center gap-4">
+          <button 
+            className="btn btn-xs btn-ghost text-base-content/50"
+            onClick={() => handleCopyLink('phone', selectedConv.phone)}
+            title="Salin Tautan Percakapan Terkini"
+          >
+            {copiedLink?.includes('phone') ? '✅ Tersalin' : '🔗 Salin Link'}
+          </button>
+          
           {selectedConv.assignee_id === null ? (
             <button 
               className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
@@ -303,10 +320,18 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
 
           {messages.map((msg) => {
             if (msg.sender_type === 'System') {
+              const isCopied = copiedLink?.includes(`ticket=${msg.ticket_id}`);
               return (
-                <div key={msg.id} className="flex justify-center my-2">
-                  <div className="bg-base-300 text-base-content/70 px-4 py-1 rounded-full text-[10px] font-medium shadow-sm">
-                    {msg.content} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div key={msg.id} className="flex justify-center my-2 relative group">
+                  <div className="bg-base-300 text-base-content/70 px-4 py-1 rounded-full text-[10px] font-medium shadow-sm flex items-center gap-2">
+                    <span>{msg.content} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <button 
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:scale-110"
+                      onClick={() => handleCopyLink('ticket', msg.ticket_id || selectedConv.id)}
+                      title="Salin Tautan ke Momen Ini"
+                    >
+                      {isCopied ? '✅' : '🔗'}
+                    </button>
                   </div>
                 </div>
               );

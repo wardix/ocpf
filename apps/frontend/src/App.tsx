@@ -13,6 +13,7 @@ interface Message {
   sender_type: 'Contact' | 'User' | 'System';
   created_at: string;
   conversation_id: number;
+  ticket_id: number;
 }
 
 interface SelectedConversation {
@@ -184,6 +185,46 @@ function App() {
     ws.onclose = () => setWsStatus('closed');
     return () => ws.close();
   }, [selectedConv, token, playNotificationSound]);
+
+  useEffect(() => {
+    if (!token) return;
+    
+    // Auto-loader untuk fitur Deep Linking
+    const params = new URLSearchParams(window.location.search);
+    const phone = params.get('phone');
+    const ticket = params.get('ticket');
+
+    const loadDeepLink = async () => {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      try {
+        let response;
+        if (phone) {
+          response = await fetch(`${apiUrl}/api/conversations/by-phone/${phone}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        } else if (ticket) {
+          response = await fetch(`${apiUrl}/api/conversations/info/${ticket}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        }
+        
+        if (response && response.ok) {
+          const data = await response.json();
+          setSelectedConv({
+            id: data.id,
+            contact_id: data.contact_id,
+            phone: data.contact_phone,
+            name: data.contact_name,
+            email: data.contact_email,
+            assignee_id: data.assignee_id,
+            assignee_name: data.assignee_name
+          });
+        }
+      } catch (err) {
+        console.error('Gagal memuat link percakapan:', err);
+      }
+    };
+
+    if (phone || ticket) {
+      loadDeepLink();
+    }
+  }, [token]);
 
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;

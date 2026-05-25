@@ -658,12 +658,77 @@ app.get('/api/conversations', async (c) => {
   }
 });
 
-// Ambil riwayat pesan untuk percakapan tertentu (dengan pagination cursor)
+// Ambil info metadata sebuah tiket spesifik (untuk Deep Linking Time-Travel)
+app.get('/api/conversations/info/:id', async (c) => {
+  const ticketId = c.req.param('id');
+  try {
+    const [ticketInfo] = await sql`
+      SELECT 
+        t.id, 
+        t.status, 
+        t.assignee_id,
+        u.name as assignee_name,
+        con.id as contact_id,
+        con.name as contact_name, 
+        con.email as contact_email,
+        con.phone_number as contact_phone
+      FROM tickets t
+      JOIN conversations conv ON t.conversation_id = conv.id
+      JOIN contacts con ON conv.contact_id = con.id
+      LEFT JOIN users u ON t.assignee_id = u.id
+      WHERE t.id = ${ticketId} AND t.account_id = 1
+      LIMIT 1
+    `;
+    
+    if (!ticketInfo) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+    return c.json(ticketInfo);
+  } catch (error) {
+    console.error('Error fetch ticket info:', error);
+    return c.json({ error: 'Gagal mengambil info tiket' }, 500);
+  }
+});
+
+// Ambil info tiket terbaru berdasarkan nomor HP (untuk Deep Linking Share Latest)
+app.get('/api/conversations/by-phone/:phone', async (c) => {
+  const phone = c.req.param('phone');
+  try {
+    const [ticketInfo] = await sql`
+      SELECT 
+        t.id, 
+        t.status, 
+        t.assignee_id,
+        u.name as assignee_name,
+        con.id as contact_id,
+        con.name as contact_name, 
+        con.email as contact_email,
+        con.phone_number as contact_phone
+      FROM tickets t
+      JOIN conversations conv ON t.conversation_id = conv.id
+      JOIN contacts con ON conv.contact_id = con.id
+      LEFT JOIN users u ON t.assignee_id = u.id
+      WHERE con.phone_number = ${phone} AND t.account_id = 1
+      ORDER BY t.updated_at DESC
+      LIMIT 1
+    `;
+    
+    if (!ticketInfo) return c.json({ error: 'Kontak atau percakapan tidak ditemukan' }, 404);
+    return c.json(ticketInfo);
+  } catch (error) {
+    console.error('Error fetch by phone:', error);
+    return c.json({ error: 'Gagal mencari percakapan' }, 500);
+  }
+});
+
+// Ambil riwayat pesan untuk percakapan tertentu (dengan pagination cursor dan Time-Travel)
 app.get('/api/conversations/:id/messages', async (c) => {
   const ticketId = c.req.param('id');
   const beforeId = c.req.query('before'); // ID pesan terkecil yang sedang tampil di layar
   try {
-    // Mengambil pesan berdasarkan wadah abadi (conversation_id) dari tiket ini
+    // 1. Cari titik maksimum kejadian tiket ini (untuk Time-Travel)
+    const [ticketMax] = await sql`SELECT MAX(id) as max_id FROM messages WHERE ticket_id = ${ticketId}`;
+    const maxMessageId = ticketMax?.max_id || 999999999; // Fallback aman jika kosong
+
+    // 2. Mengambil pesan berdasarkan wadah abadi (conversation_id) dari tiket ini
     // Menggunakan ORDER BY DESC LIMIT 50 untuk performa ekstrim
     const messages = await sql`
       SELECT 
@@ -675,13 +740,13 @@ app.get('/api/conversations/:id/messages', async (c) => {
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
       WHERE m.conversation_id = (SELECT conversation_id FROM tickets WHERE id = ${ticketId} LIMIT 1) 
+      AND m.id <= ${maxMessageId}
       AND (${beforeId ? Number(beforeId) : null}::int IS NULL OR m.id < ${beforeId ? Number(beforeId) : null})
       GROUP BY m.id
       ORDER BY m.id DESC
       LIMIT 50
     `;
     
-    // Karena kita fetch DESC (dari terbaru ke terlama), kita perlu membaliknya kembali agar kronologis (dari atas ke bawah)
     return c.json(messages.reverse());
   } catch (error) {
     return c.json({ error: 'Gagal mengambil pesan' }, 500);
