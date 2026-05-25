@@ -27,23 +27,28 @@ const redisSub = new Redis({
   port: process.env.REDIS_PORT || 6379,
 });
 
-const INBOX_ID = parseInt(process.env.INBOX_ID) || 1;
-const SESSION_DIR = process.env.SESSION_DIR || 'auth_info_baileys';
-
 const QUEUE_INCOMING = 'queue:incoming_messages';
-const QUEUE_OUTGOING = `queue:outgoing_messages:inbox_${INBOX_ID}`;
+
+// Konfigurasi Inboxes
+// Format JSON: [{"id": 1, "dir": "auth_info_1"}, {"id": 2, "dir": "auth_info_2"}]
+const INBOXES = process.env.INBOXES 
+  ? JSON.parse(process.env.INBOXES) 
+  : [{ id: parseInt(process.env.INBOX_ID) || 1, dir: process.env.SESSION_DIR || 'auth_info_baileys' }];
+
+// Simpan instance socket berdasarkan inbox_id
+const activeSockets = new Map();
 
 // Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
 const sentCache = new Set();
 
-async function startBaileys() {
+async function startBaileysForInbox(inboxId, sessionDir) {
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`Menggunakan WA Version: ${version.join('.')}, isLatest: ${isLatest}`);
-  console.log(`Menjalankan Adapter untuk INBOX_ID: ${INBOX_ID} dengan sesi: ${SESSION_DIR}`);
+  console.log(`[Inbox ${inboxId}] Menggunakan WA Version: ${version.join('.')}, isLatest: ${isLatest}`);
+  console.log(`[Inbox ${inboxId}] Menjalankan sesi di folder: ${sessionDir}`);
 
   // Menggunakan folder dinamis untuk menyimpan sesi login QR Code
-  const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), SESSION_DIR));
+  const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), sessionDir));
 
   const sock = createWASocket({
     version,
@@ -52,12 +57,15 @@ async function startBaileys() {
     browser: ['Ubuntu', 'Chrome', '20.0.04'],
   });
 
+  // Simpan ke memory
+  activeSockets.set(inboxId, sock);
+
   // Listener: Perubahan Koneksi
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('QR Code baru tersedia, silakan scan:');
+      console.log(`[Inbox ${inboxId}] QR Code baru tersedia, silakan scan:`);
       qrcode.generate(qr, { small: true });
     }
 
@@ -65,19 +73,21 @@ async function startBaileys() {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const errorReason = lastDisconnect?.error;
       
-      console.log(`Koneksi terputus! Status: ${statusCode}, Alasan:`, errorReason);
+      console.log(`[Inbox ${inboxId}] Koneksi terputus! Status: ${statusCode}, Alasan:`, errorReason);
 
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
-        console.log('Mencoba menyambung ulang dalam 5 detik...');
-        setTimeout(() => startBaileys(), 5000); 
+        console.log(`[Inbox ${inboxId}] Mencoba menyambung ulang dalam 5 detik...`);
+        setTimeout(() => startBaileysForInbox(inboxId, sessionDir), 5000); 
+      } else {
+        activeSockets.delete(inboxId);
       }
     } else if (connection === 'open') {
-      console.log('WhatsApp Adapter Berhasil Terhubung! ✅');
+      console.log(`[Inbox ${inboxId}] WhatsApp Adapter Berhasil Terhubung! ✅`);
     }
   });
 
-  // Simpan kredensial jika ada perubahan (agar tidak usah scan QR terus)
+  // Simpan kredensial jika ada perubahan
   sock.ev.on('creds.update', saveCreds);
 
   // 1. DARI WA ADAPTER -> KE REDIS (Pesan Masuk)
@@ -86,13 +96,6 @@ async function startBaileys() {
     try {
       const msg = m.messages[0];
       
-      // -- FITUR DUMP PESAN MENTAH UNTUK DEBUGGING --
-      // ... (kode dump tetap ada)
-      
-      // ABAIKAN PESAN JIKA:
-      // 1. Tidak ada objek message
-      // 2. Pesan bertipe protocolMessage (sync kunci, hapus pesan, dll)
-      // 3. Kategori pesan adalah 'peer' (internal sinkronisasi antar perangkat)
       if (
         !msg.message || 
         msg.message.protocolMessage || 
@@ -102,193 +105,184 @@ async function startBaileys() {
       let isHostEcho = false;
       if (msg.key.fromMe) {
         if (sentCache.has(msg.key.id)) {
-          // Ini adalah pantulan (echo) dari pesan yang dikirim Dashboard. Abaikan.
-          console.log(`[DEBUG-ECHO] Mengabaikan pesan dari cache (Dashboard): ${msg.key.id}`);
+          console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Mengabaikan pesan dari cache (Dashboard): ${msg.key.id}`);
           return;
         }
-        // Jika tidak ada di cache, berarti dikirim manual langsung dari HP Host!
         isHostEcho = true;
-        console.log(`[DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
+        console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
       }
 
       let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-      
       let fullJid = msg.key.remoteJid;
       
-      // -- NORMALISASI JID UNTUK MULTI-DEVICE --
-      // Jika pesan berasal dari perangkat pendamping (seperti WA Desktop),
-      // WA menggunakan @lid. Kita prioritaskan @s.whatsapp.net dari remoteJidAlt 
-      // agar percakapan tetap menyatu (tidak terpecah) di database.
+      // Normalisasi JID
       if (fullJid.endsWith('@lid') && msg.key.remoteJidAlt?.endsWith('@s.whatsapp.net')) {
         fullJid = msg.key.remoteJidAlt;
       }
-      // ----------------------------------------
 
       const isGroup = fullJid.endsWith('@g.us');
-      
-      // Ambil angka depan saja untuk ID
       const sourceId = fullJid.split('@')[0];
     
-    let displayName = msg.pushName || 'Unknown';
+      let displayName = msg.pushName || 'Unknown';
 
-    // Jika Grup, coba ambil nama Grup dari Metadata
-    if (isGroup) {
-      try {
-        const groupMetadata = await sock.groupMetadata(fullJid);
-        displayName = groupMetadata.subject || 'WhatsApp Group';
-      } catch (e) {
-        displayName = 'WhatsApp Group';
-      }
-    }
-
-    const participantId = isGroup ? msg.key.participant : null;
-
-    console.log(`[Pesan Masuk] Dari: ${displayName} (${fullJid})`);
-
-    // -- DETEKSI DAN UNDUH MEDIA --
-    let mediaPayload = undefined;
-    let finalMessageType = 'text';
-    
-    // Ambil kunci pertama dari objek message (misal: 'imageMessage', 'documentMessage', 'conversation')
-    const messageTypeKey = Object.keys(msg.message || {})[0];
-    
-    if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
-      finalMessageType = messageTypeKey.replace('Message', ''); // Menjadi 'image', 'document', dll
-      try {
-        console.log(`Mendeteksi lampiran media (${messageTypeKey}), sedang mengunduh...`);
-        
-        const buffer = await downloadMediaMessage(
-          msg,
-          'buffer',
-          { },
-          { 
-            logger: pino({ level: 'silent' }),
-            reuploadRequest: sock.updateMediaMessage
-          }
-        );
-        
-        const mediaMsg = msg.message[messageTypeKey];
-        mediaPayload = {
-          mimetype: mediaMsg.mimetype || 'application/octet-stream',
-          data_base64: buffer.toString('base64'),
-          filename: mediaMsg.fileName || undefined
-        };
-        
-        // Jika ada caption pada gambar/dokumen, kita jadikan sebagai textContent
-        if (mediaMsg.caption) {
-          textContent = mediaMsg.caption;
+      if (isGroup) {
+        try {
+          const groupMetadata = await sock.groupMetadata(fullJid);
+          displayName = groupMetadata.subject || 'WhatsApp Group';
+        } catch (e) {
+          displayName = 'WhatsApp Group';
         }
-        
-        console.log(`Media berhasil diunduh (${buffer.length} bytes).`);
-      } catch (err) {
-        console.error('Gagal mengunduh media dari WA:', err);
       }
-    }
 
-    const payload = {
-      event: 'message.incoming',
-      data: {
-        inbox_id: INBOX_ID,
-        source_id: sourceId,
-        source_jid: fullJid, 
-        push_name: displayName,
-        content: textContent,
-        message_type: finalMessageType, // 'text', 'image', dll
-        wa_message_id: msg.key.id,
-        timestamp: msg.messageTimestamp,
-        participant_id: participantId,
-        participant_name: isGroup ? msg.pushName : null,
-        is_host_echo: isHostEcho,
-        media: mediaPayload // Tambahkan data base64 ke payload
+      const participantId = isGroup ? msg.key.participant : null;
+      console.log(`[Inbox ${inboxId}] Pesan Masuk Dari: ${displayName} (${fullJid})`);
+
+      // Media parsing
+      let mediaPayload = undefined;
+      let finalMessageType = 'text';
+      const messageTypeKey = Object.keys(msg.message || {})[0];
+      
+      if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
+        finalMessageType = messageTypeKey.replace('Message', '');
+        try {
+          console.log(`[Inbox ${inboxId}] Mengunduh media (${messageTypeKey})...`);
+          const buffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            { },
+            { 
+              logger: pino({ level: 'silent' }),
+              reuploadRequest: sock.updateMediaMessage
+            }
+          );
+          
+          const mediaMsg = msg.message[messageTypeKey];
+          mediaPayload = {
+            mimetype: mediaMsg.mimetype || 'application/octet-stream',
+            data_base64: buffer.toString('base64'),
+            filename: mediaMsg.fileName || undefined
+          };
+          
+          if (mediaMsg.caption) textContent = mediaMsg.caption;
+        } catch (err) {
+          console.error(`[Inbox ${inboxId}] Gagal mengunduh media dari WA:`, err);
+        }
       }
-    };
 
-    // Lempar ke Antrean Redis agar Main API (Bun) memprosesnya
-    await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
-    console.log('-> Berhasil dilempar ke antrean Redis (QUEUE_INCOMING).');
+      const payload = {
+        event: 'message.incoming',
+        data: {
+          inbox_id: inboxId,
+          source_id: sourceId,
+          source_jid: fullJid, 
+          push_name: displayName,
+          content: textContent,
+          message_type: finalMessageType,
+          wa_message_id: msg.key.id,
+          timestamp: msg.messageTimestamp,
+          participant_id: participantId,
+          participant_name: isGroup ? msg.pushName : null,
+          is_host_echo: isHostEcho,
+          media: mediaPayload 
+        }
+      };
+
+      await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
     } catch (error) {
-      console.error('Error saat memproses pesan masuk:', error);
+      console.error(`[Inbox ${inboxId}] Error memproses pesan masuk:`, error);
     }
   });
-
-  // =========================================================================
-  // 2. DARI REDIS -> KE WA ADAPTER (Mendengarkan Perintah Kirim Pesan)
-  // =========================================================================
-  // Menggunakan metode BRPOP (Blocking Right Pop) agar Node.js terus mendengarkan antrean tanpa polling berlebihan
-  async function listenForOutgoingMessages() {
-    while (true) {
-      try {
-        // Ambil elemen pertama dari antrean (block selama 0 detik/selamanya jika kosong)
-        const result = await redisSub.brpop(QUEUE_OUTGOING, 0);
-        if (result) {
-          const [queueName, messageDataString] = result;
-          const payload = JSON.parse(messageDataString);
-
-          if (payload.event === 'message.send') {
-            const poppedAt = Date.now();
-            const queuedAt = payload._queued_at || poppedAt;
-            const redisLatency = poppedAt - queuedAt;
-            
-            const { target_id, content, media } = payload.data;
-            console.log(`\n[DEBUG-LATENCY] (${poppedAt}) Mengambil antrean kirim pesan (Latency Antrean Redis: ${redisLatency}ms)`);
-            console.log(`[Kirim Pesan] Ke: ${target_id} - Mengirim via Baileys...`);
-            
-            const sendStart = Date.now();
-            
-            // Siapkan objek pesan
-            let waMessage = {};
-            if (media) {
-              const buffer = Buffer.from(media.data_base64, 'base64');
-              const isDocument = !media.mimetype.startsWith('image/') && !media.mimetype.startsWith('video/');
-              
-              if (isDocument) {
-                waMessage = {
-                  document: buffer,
-                  mimetype: media.mimetype,
-                  fileName: media.filename || 'document.bin',
-                  caption: content || undefined
-                };
-              } else if (media.mimetype.startsWith('video/')) {
-                waMessage = {
-                  video: buffer,
-                  mimetype: media.mimetype,
-                  caption: content || undefined
-                };
-              } else {
-                waMessage = {
-                  image: buffer,
-                  mimetype: media.mimetype,
-                  caption: content || undefined
-                };
-              }
-            } else {
-              waMessage = { text: content };
-            }
-
-            // Kirim pesan melalui Socket WhatsApp
-            const sentMsg = await sock.sendMessage(target_id, waMessage);
-            
-            if (sentMsg?.key?.id) {
-              sentCache.add(sentMsg.key.id);
-              // Hapus dari cache setelah 1 menit agar memori tidak penuh
-              setTimeout(() => sentCache.delete(sentMsg.key.id), 60000);
-            }
-            
-            const sendEnd = Date.now();
-            
-            console.log(`-> Pesan berhasil dikirim! [DEBUG-LATENCY] (Proses pengiriman WA memakan waktu: ${sendEnd - sendStart}ms)`);
-          }
-        }
-      } catch (err) {
-        console.error('Error saat mendengarkan antrean kirim pesan:', err);
-      }
-    }
-  }
-
-  // Mulai mendengarkan antrean pesan keluar di background
-  listenForOutgoingMessages();
 }
 
-// Jalankan Service
-console.log('Memulai WhatsApp Adapter Service (Baileys)...');
-startBaileys();
+// =========================================================================
+// 2. DARI REDIS -> KE WA ADAPTER (Mendengarkan Perintah Kirim Pesan)
+// =========================================================================
+async function listenForOutgoingMessages() {
+  const queues = INBOXES.map(i => `queue:outgoing_messages:inbox_${i.id}`);
+  console.log(`\nMenunggu perintah kirim pesan di antrean: ${queues.join(', ')}`);
+
+  while (true) {
+    try {
+      // brpop menerima array queues. 0 berarti block selamanya sampai ada pesan.
+      const result = await redisSub.brpop(...queues, 0);
+      
+      if (result) {
+        const [queueName, messageDataString] = result;
+        const targetInboxId = parseInt(queueName.split('_').pop());
+        const payload = JSON.parse(messageDataString);
+
+        if (payload.event === 'message.send') {
+          const poppedAt = Date.now();
+          const queuedAt = payload._queued_at || poppedAt;
+          const redisLatency = poppedAt - queuedAt;
+          
+          const { target_id, content, media } = payload.data;
+          console.log(`\n[DEBUG-LATENCY] (${poppedAt}) [Inbox ${targetInboxId}] Mengambil antrean kirim pesan (Latency Antrean Redis: ${redisLatency}ms)`);
+          
+          const sock = activeSockets.get(targetInboxId);
+          if (!sock) {
+            console.error(`[Inbox ${targetInboxId}] Socket tidak ditemukan atau belum siap! Mengabaikan pesan.`);
+            continue;
+          }
+
+          console.log(`[Kirim Pesan] [Inbox ${targetInboxId}] Ke: ${target_id} - Mengirim via Baileys...`);
+          const sendStart = Date.now();
+          
+          let waMessage = {};
+          if (media) {
+            const buffer = Buffer.from(media.data_base64, 'base64');
+            const isDocument = !media.mimetype.startsWith('image/') && !media.mimetype.startsWith('video/');
+            
+            if (isDocument) {
+              waMessage = {
+                document: buffer,
+                mimetype: media.mimetype,
+                fileName: media.filename || 'document.bin',
+                caption: content || undefined
+              };
+            } else if (media.mimetype.startsWith('video/')) {
+              waMessage = {
+                video: buffer,
+                mimetype: media.mimetype,
+                caption: content || undefined
+              };
+            } else {
+              waMessage = {
+                image: buffer,
+                mimetype: media.mimetype,
+                caption: content || undefined
+              };
+            }
+          } else {
+            waMessage = { text: content };
+          }
+
+          const sentMsg = await sock.sendMessage(target_id, waMessage);
+          
+          if (sentMsg?.key?.id) {
+            sentCache.add(sentMsg.key.id);
+            setTimeout(() => sentCache.delete(sentMsg.key.id), 60000);
+          }
+          
+          const sendEnd = Date.now();
+          console.log(`-> [Inbox ${targetInboxId}] Pesan berhasil dikirim! (Proses: ${sendEnd - sendStart}ms)`);
+        }
+      }
+    } catch (err) {
+      console.error('Error saat mendengarkan antrean kirim pesan:', err);
+    }
+  }
+}
+
+// =========================================================================
+// START SERVICE (SESSION MANAGER)
+// =========================================================================
+console.log('Memulai Multi-Session WhatsApp Adapter Service (Baileys)...');
+
+// Inisiasi semua sockets
+for (const inbox of INBOXES) {
+  startBaileysForInbox(inbox.id, inbox.dir);
+}
+
+// Mulai satu central listener untuk semua queue
+listenForOutgoingMessages();
