@@ -331,14 +331,25 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
                     <div className="flex flex-col gap-2 mb-2">
                       {msg.attachments.map(att => {
                         const isImage = att.file_type.startsWith('image/');
+                        const isAudio = att.file_type.startsWith('audio/');
                         const fullUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${att.file_url}`;
-                        return isImage ? (
-                          <img key={att.id} src={fullUrl} alt="Attachment" className="max-w-xs rounded-md shadow-sm border border-base-300/30" />
-                        ) : (
-                          <a key={att.id} href={fullUrl} target="_blank" rel="noreferrer" className="underline font-bold text-xs truncate max-w-xs block">
-                            📎 Download Dokumen
-                          </a>
-                        )
+                        
+                        if (isImage) {
+                          return <img key={att.id} src={fullUrl} alt="Attachment" className="max-w-xs rounded-md shadow-sm border border-base-300/30" />;
+                        } else if (isAudio) {
+                          return (
+                            <audio key={att.id} controls className="max-w-[200px] h-10">
+                              <source src={fullUrl} type={att.file_type} />
+                              Browser Anda tidak mendukung elemen audio.
+                            </audio>
+                          );
+                        } else {
+                          return (
+                            <a key={att.id} href={fullUrl} target="_blank" rel="noreferrer" className="underline font-bold text-xs truncate max-w-xs block">
+                              📎 Download Dokumen
+                            </a>
+                          );
+                        }
                       })}
                     </div>
                   )}
