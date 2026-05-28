@@ -337,13 +337,15 @@ function App() {
               phone: conv.contact_phone,
               name: conv.contact_name,
               email: conv.contact_email,
+              ticket_id: conv.ticket_id,
+              status: conv.status,
               assignee_id: conv.assignee_id,
               assignee_name: conv.assignee_name
             })} 
             refreshKey={refreshKey}
             token={token}
+            onStartChat={startNewChat}
           />
-          
           {selectedConv ? (
             <>
               <ChatArea 
