@@ -624,6 +624,7 @@ app.get('/api/conversations', async (c) => {
     const convs = await sql`
       WITH ActiveConversations AS (
         SELECT 
+          c.id,
           c.id as conversation_id,
           t.id as ticket_id, 
           t.status, 
@@ -634,7 +635,7 @@ app.get('/api/conversations', async (c) => {
           con.email as contact_email,
           con.phone_number as contact_phone,
           (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
-          (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at
+          COALESCE((SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.updated_at) as updated_at
         FROM conversations c
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
@@ -647,7 +648,7 @@ app.get('/api/conversations', async (c) => {
           (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
           (${activeTab === 'all'}::boolean = true)
-      ORDER BY COALESCE(last_message_at, to_timestamp(0)) DESC
+      ORDER BY updated_at DESC
     `;
     return c.json(convs);
   } catch (error) {
