@@ -37,7 +37,7 @@ Tabel polimorfik atau penyimpan konfigurasi spesifik tiap platform (Misal: Token
 *   `id` (Primary Key)
 *   `account_id` (Foreign Key -> accounts.id)
 *   `name` (String) - Nama internal saluran
-*   `provider_type` (Enum: 'whatsapp', 'facebook', 'web_widget', 'api')
+*   `provider_type` (Enum: 'whatsapp', 'telegram', 'facebook', 'web_widget', 'api')
 *   `provider_config` (JSONB) - Menyimpan kredensial spesifik secara fleksibel (misal: API Key, Webhook Secret).
 
 ### `inboxes`
@@ -145,4 +145,4 @@ Menghubungkan `conversations` dengan `labels`.
 *   `label_id` (Foreign Key -> labels.id)
 
 ---
-*Catatan Penting:* Kolom tipe `JSONB` pada tabel `channels` dan `contacts` sangat disarankan jika Anda menggunakan PostgreSQL, karena memberikan fleksibilitas skema tanpa perlu banyak operasi `ALTER TABLE` di masa depan.
+*Catatan Penting:* Kolom tipe `JSONB` pada tabel `channels` dan `contacts` sangat disarankan jika Anda menggunakan PostgreSQL, karena memberikan fleksibilitas skema tanpa perlu banyak operasi `ALTER TABLE` di masa depan.ikan fleksibilitas skema tanpa perlu banyak operasi `ALTER TABLE` di masa depan.
