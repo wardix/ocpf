@@ -77,17 +77,18 @@ const Contacts = ({ token }: Props) => {
                 <th>Email</th>
                 <th>Terdaftar Sejak</th>
                 <th className="text-center">Total Tiket</th>
+                <th className="text-right">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && contacts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 opacity-50">Memuat data kontak...</td>
+                  <td colSpan={7} className="text-center py-8 opacity-50">Memuat data kontak...</td>
                 </tr>
               )}
               {!isLoading && contacts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 opacity-50 text-error">Tidak ada kontak yang ditemukan.</td>
+                  <td colSpan={7} className="text-center py-8 opacity-50 text-error">Tidak ada kontak yang ditemukan.</td>
                 </tr>
               )}
               {contacts.map((c) => (
@@ -108,6 +109,14 @@ const Contacts = ({ token }: Props) => {
                   <td className="text-sm">{new Date(c.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
                   <td className="text-center">
                     <div className="badge badge-ghost">{c.total_tickets}</div>
+                  </td>
+                  <td className="text-right">
+                    <button 
+                      className="btn btn-xs btn-primary btn-outline"
+                      onClick={() => onStartChat(c.phone_number)}
+                    >
+                      💬 Chat
+                    </button>
                   </td>
                 </tr>
               ))}

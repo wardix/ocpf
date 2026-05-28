@@ -186,6 +186,40 @@ function App() {
     return () => ws.close();
   }, [selectedConv, token, playNotificationSound]);
 
+  const startNewChat = async (phone: string, name?: string) => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/conversations/start`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ phone_number: phone, name: name })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Berpindah ke inbox dan langsung buka obrolannya
+        setCurrentView('inbox');
+        setSelectedConv({
+          id: data.data.id,
+          contact_id: data.data.contact_id,
+          phone: data.data.contact_phone,
+          name: data.data.contact_name,
+          email: data.data.contact_email,
+          assignee_id: data.data.assignee_id,
+          assignee_name: data.data.assignee_name
+        });
+        setRefreshKey(k => k + 1);
+      } else {
+        alert('Gagal memulai obrolan baru');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
     
@@ -342,7 +376,7 @@ function App() {
           )}
         </>
       ) : currentView === 'contacts' ? (
-        <Contacts token={token} />
+        <Contacts token={token} onStartChat={startNewChat} />
       ) : currentView === 'analytics' ? (
         <Analytics token={token} />
       ) : (
@@ -357,5 +391,7 @@ export default function AppWithErrorBoundary() {
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+  );
+}dary>
   );
 }

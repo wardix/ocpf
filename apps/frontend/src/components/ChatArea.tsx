@@ -246,7 +246,7 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
     }
   };
 
-  const canReply = selectedConv.assignee_id === currentUser?.id;
+  const canReply = !selectedConv.ticket_id || selectedConv.assignee_id === currentUser?.id;
 
   return (
     <div className="flex-1 flex flex-col bg-base-200/50 h-full relative">
@@ -263,7 +263,9 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
             <h2 className="font-bold text-sm sm:text-base">{selectedConv.name}</h2>
             <p className="text-[10px] text-success font-medium flex gap-2">
               <span>Online</span>
-              <span className="text-base-content/50 font-mono text-[9px]">• #TKT-{String(selectedConv.id).padStart(4, '0')}</span>
+              <span className="text-base-content/50 font-mono text-[9px]">
+                • {selectedConv.ticket_id ? `#TKT-${String(selectedConv.ticket_id).padStart(4, '0')}` : 'Bebas Tiket'}
+              </span>
             </p>
           </div>
         </div>
@@ -277,38 +279,42 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
             {copiedLink?.includes('phone') ? '✅ Tersalin' : '🔗 Salin Link'}
           </button>
           
-          {selectedConv.assignee_id === null ? (
-            <button 
-              className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
-              onClick={handleAssign}
-              disabled={isAssigning}
-            >
-              🙋‍♂️ Ambil Tiket
-            </button>
+          {selectedConv.ticket_id ? (
+            selectedConv.assignee_id === null ? (
+              <button 
+                className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
+                onClick={handleAssign}
+                disabled={isAssigning}
+              >
+                🙋‍♂️ Ambil Tiket
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs badge badge-ghost">
+                  👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
+                </span>
+                {(selectedConv.assignee_id === currentUser?.id || !selectedConv.assignee_id) && (
+                  <div className="flex gap-2">
+                    <button 
+                      className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}
+                      onClick={handleUnassign}
+                      disabled={isUnassigning || isResolving}
+                    >
+                      Lepas Tiket
+                    </button>
+                    <button 
+                      className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
+                      onClick={handleResolve}
+                      disabled={isResolving || isUnassigning}
+                    >
+                      Tutup Tiket
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs badge badge-ghost">
-                👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
-              </span>
-              {(selectedConv.assignee_id === currentUser?.id || !selectedConv.assignee_id) && (
-                <div className="flex gap-2">
-                  <button 
-                    className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}
-                    onClick={handleUnassign}
-                    disabled={isUnassigning || isResolving}
-                  >
-                    Lepas Tiket
-                  </button>
-                  <button 
-                    className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
-                    onClick={handleResolve}
-                    disabled={isResolving || isUnassigning}
-                  >
-                    Tutup Tiket
-                  </button>
-                </div>
-              )}
-            </div>
+             <div className="text-xs italic opacity-50 px-2">Percakapan Outbound</div>
           )}
         </div>
       </div>

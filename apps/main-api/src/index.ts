@@ -172,15 +172,15 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
-    if (!ticket || ticket.status === 'resolved') {
-      // Jika belum ada tiket atau tiket terakhir sudah ditutup, BUAT TIKET BARU
+    if (!data.is_host_echo && (!ticket || ticket.status === 'resolved')) {
+      // Jika pelanggan yang memulai obrolan (bukan host echo) dan belum ada tiket aktif, BUAT TIKET BARU
       [ticket] = await sql`
         INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
         VALUES (${ACCOUNT_ID}, ${conversation.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
         RETURNING id, status, is_bot_active, bot_state;
       `;
-    } else {
-      // Jika tiket masih open/pending/snoozed, cukup update waktunya
+    } else if (ticket && ticket.status !== 'resolved') {
+      // Jika ada tiket aktif, cukup update waktunya
       if (!triggeredGlobalCommand) {
         if (ticket.status === 'snoozed') {
            await sql`UPDATE tickets SET status = 'open', updated_at = NOW() WHERE id = ${ticket.id}`;
@@ -201,7 +201,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, created_at
       ) VALUES (
-        ${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 
+        ${ACCOUNT_ID}, ${conversation.id}, ${ticket && ticket.status !== 'resolved' ? ticket.id : null}, 
         ${data.is_host_echo ? 'User' : 'Contact'}, 
         ${data.is_host_echo ? null : contact.id}, 
         ${finalContent}, 
@@ -622,33 +622,32 @@ app.get('/api/conversations', async (c) => {
     const currentAgentId = jwtPayload?.id;
 
     const convs = await sql`
-      WITH LatestTickets AS (
-        SELECT DISTINCT ON (c.id)
-          t.id, 
+      WITH ActiveConversations AS (
+        SELECT 
+          c.id as conversation_id,
+          t.id as ticket_id, 
           t.status, 
-          t.updated_at, 
           t.assignee_id,
           u.name as assignee_name,
           con.id as contact_id,
           con.name as contact_name, 
           con.email as contact_email,
           con.phone_number as contact_phone,
-          (SELECT content FROM messages WHERE ticket_id = t.id ORDER BY created_at DESC LIMIT 1) as last_message
-        FROM tickets t
-        JOIN conversations c ON t.conversation_id = c.id
+          (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+          (SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message_at
+        FROM conversations c
         JOIN contacts con ON c.contact_id = con.id
+        LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
-        WHERE t.account_id = 1 
-        AND (
-          (${activeTab === 'unassigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NULL) OR
-          (${activeTab === 'mine'}::boolean = true AND t.status != 'resolved' AND t.assignee_id = ${currentAgentId}) OR
-          (${activeTab === 'assigned'}::boolean = true AND t.status != 'resolved' AND t.assignee_id IS NOT NULL) OR
-          (${activeTab === 'all'}::boolean = true)
-        )
-        ORDER BY c.id, t.updated_at DESC
+        WHERE c.account_id = 1 
       )
-      SELECT * FROM LatestTickets
-      ORDER BY updated_at DESC
+      SELECT * FROM ActiveConversations
+      WHERE 
+          (${activeTab === 'unassigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NULL) OR
+          (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
+          (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
+          (${activeTab === 'all'}::boolean = true)
+      ORDER BY COALESCE(last_message_at, to_timestamp(0)) DESC
     `;
     return c.json(convs);
   } catch (error) {
@@ -718,17 +717,20 @@ app.get('/api/conversations/by-phone/:phone', async (c) => {
   }
 });
 
-// Ambil riwayat pesan untuk percakapan tertentu (dengan pagination cursor dan Time-Travel)
+// Ambil riwayat pesan untuk percakapan tertentu (berdasarkan conversation_id)
 app.get('/api/conversations/:id/messages', async (c) => {
-  const ticketId = c.req.param('id');
-  const beforeId = c.req.query('before'); // ID pesan terkecil yang sedang tampil di layar
+  const conversationId = c.req.param('id');
+  const beforeId = c.req.query('before'); 
+  const timeTravelTicketId = c.req.query('ticket_id'); // Opsional untuk time-travel
   try {
-    // 1. Cari titik maksimum kejadian tiket ini (untuk Time-Travel)
-    const [ticketMax] = await sql`SELECT MAX(id) as max_id FROM messages WHERE ticket_id = ${ticketId}`;
-    const maxMessageId = ticketMax?.max_id || 999999999; // Fallback aman jika kosong
+    let maxMessageId = 999999999; 
+    
+    // Jika agen meminta time-travel ke tiket tertentu, batasi max ID
+    if (timeTravelTicketId) {
+      const [ticketMax] = await sql`SELECT MAX(id) as max_id FROM messages WHERE ticket_id = ${timeTravelTicketId}`;
+      if (ticketMax?.max_id) maxMessageId = ticketMax.max_id;
+    }
 
-    // 2. Mengambil pesan berdasarkan wadah abadi (conversation_id) dari tiket ini
-    // Menggunakan ORDER BY DESC LIMIT 50 untuk performa ekstrim
     const messages = await sql`
       SELECT 
         m.*,
@@ -738,7 +740,7 @@ app.get('/api/conversations/:id/messages', async (c) => {
         ) AS attachments
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
-      WHERE m.conversation_id = (SELECT conversation_id FROM tickets WHERE id = ${ticketId} LIMIT 1) 
+      WHERE m.conversation_id = ${conversationId} 
       AND m.id <= ${maxMessageId}
       AND (${beforeId ? Number(beforeId) : null}::int IS NULL OR m.id < ${beforeId ? Number(beforeId) : null})
       GROUP BY m.id
@@ -749,6 +751,77 @@ app.get('/api/conversations/:id/messages', async (c) => {
     return c.json(messages.reverse());
   } catch (error) {
     return c.json({ error: 'Gagal mengambil pesan' }, 500);
+  }
+});
+
+// Endpoint untuk memulai percakapan baru (Outbound) tanpa tiket
+app.post('/api/conversations/start', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    const agentId = jwtPayload.id;
+    const body = await c.req.json();
+    const { phone_number, name } = body;
+
+    if (!phone_number) return c.json({ error: 'Nomor telepon wajib diisi' }, 400);
+
+    // Format nomor (hapus + atau awalan 0)
+    let cleanPhone = phone_number.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.substring(1);
+    const sourceJid = cleanPhone + (cleanPhone.length > 13 ? '@g.us' : '@s.whatsapp.net');
+
+    const ACCOUNT_ID = 1;
+    const INBOX_ID = parseInt(process.env.INBOX_ID || '1'); 
+
+    // 1. Cari atau Buat Kontak
+    let [contact] = await sql`SELECT id, name, email FROM contacts WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} LIMIT 1`;
+    if (!contact) {
+      [contact] = await sql`
+        INSERT INTO contacts (account_id, name, phone_number)
+        VALUES (${ACCOUNT_ID}, ${name || cleanPhone}, ${sourceJid})
+        RETURNING id, name, email;
+      `;
+    }
+
+    // 2. Cari atau Buat Percakapan
+    let [conversation] = await sql`
+      SELECT id FROM conversations
+      WHERE account_id = ${ACCOUNT_ID} AND inbox_id = ${INBOX_ID} AND contact_id = ${contact.id}
+      LIMIT 1
+    `;
+    if (!conversation) {
+      [conversation] = await sql`
+        INSERT INTO conversations (account_id, inbox_id, contact_id)
+        VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
+        RETURNING id;
+      `;
+    }
+
+    // Ambil info tiket jika ada yang aktif
+    const [ticket] = await sql`
+      SELECT t.id, t.status, t.assignee_id, u.name as assignee_name 
+      FROM tickets t 
+      LEFT JOIN users u ON t.assignee_id = u.id
+      WHERE t.conversation_id = ${conversation.id} AND t.status != 'resolved'
+      LIMIT 1
+    `;
+
+    return c.json({
+      success: true,
+      data: {
+        id: conversation.id,
+        contact_id: contact.id,
+        contact_name: contact.name,
+        contact_email: contact.email,
+        contact_phone: sourceJid,
+        ticket_id: ticket?.id || null,
+        status: ticket?.status || null,
+        assignee_id: ticket?.assignee_id || null,
+        assignee_name: ticket?.assignee_name || null
+      }
+    });
+  } catch (error) {
+    console.error('Error start conversation:', error);
+    return c.json({ error: 'Gagal memulai percakapan' }, 500);
   }
 });
 
@@ -763,14 +836,21 @@ app.post('/api/messages/send', async (c) => {
     const body = await c.req.json();
     const { target_id, content, conversation_id, account_id, media, is_private } = body;
 
-    // Ambil conversation_id asli dan assignee_id dari tiket
-    const [ticket] = await sql`SELECT conversation_id, assignee_id FROM tickets WHERE id = ${conversation_id} LIMIT 1`;
-    if (!ticket) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+    // Ambil inbox_id, conversation_id, dan ticket_id dari conversations (LEFT JOIN tiket aktif)
+    const [conv] = await sql`
+      SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id 
+      FROM conversations c
+      LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
+      WHERE c.id = ${conversation_id} LIMIT 1
+    `;
+    if (!conv) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
     
-    // Validasi keamanan: Pastikan tiket ini dipegang oleh agen yang sedang login
-    if (ticket.assignee_id !== agentId) {
-      return c.json({ error: 'Akses ditolak: Anda harus mengambil alih tiket ini terlebih dahulu.' }, 403);
+    // Validasi keamanan: Pastikan jika ada tiket aktif, tiket ini dipegang oleh agen yang sedang login
+    if (conv.ticket_id && conv.assignee_id !== agentId) {
+      return c.json({ error: 'Akses ditolak: Anda harus mengambil alih tiket aktif ini terlebih dahulu.' }, 403);
     }
+
+    const inboxId = conv.inbox_id;
 
     const tDbStart = Date.now();
     const [msg] = await sql`
@@ -778,7 +858,7 @@ app.post('/api/messages/send', async (c) => {
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, is_private
       ) VALUES (
-        ${account_id || 1}, ${ticket.conversation_id}, ${conversation_id}, 'User', ${agentId}, 
+        ${account_id || 1}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
         ${content || ''}, 'outgoing', 'sent', ${is_private || false}
       )
       RETURNING *;

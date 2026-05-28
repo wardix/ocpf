@@ -50,7 +50,21 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   return (
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
       <div className="p-4 border-b border-base-300 bg-base-200 flex flex-col gap-2">
-        <h2 className="font-bold text-lg italic">💬 Inbox</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="font-bold text-lg italic">💬 Inbox</h2>
+          <button 
+            className="btn btn-xs btn-primary btn-outline"
+            onClick={() => {
+              const phone = window.prompt("Masukkan nomor WhatsApp tujuan (Misal: 62812345678):");
+              if (phone) {
+                const name = window.prompt("Masukkan nama kontak (Opsional):") || undefined;
+                onStartChat(phone, name);
+              }
+            }}
+          >
+            ➕ Baru
+          </button>
+        </div>
         <div className="flex gap-2 mt-1 overflow-x-auto whitespace-nowrap pb-2 custom-scrollbar">
           <button 
             className={`btn btn-xs shrink-0 ${activeTab === 'unassigned' ? 'btn-active' : 'btn-ghost'}`}
@@ -110,7 +124,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
               <div className="flex justify-between items-center">
                 <span className="font-bold text-sm truncate">{conv.contact_name}</span>
                 <span className="text-[10px] text-base-content/60 font-mono">
-                  #TKT-{String(conv.id).padStart(4, '0')} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {conv.ticket_id ? `#TKT-${String(conv.ticket_id).padStart(4, '0')}` : 'Outbound'} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
               <span className="text-xs text-base-content/70 truncate mt-1 italic">
