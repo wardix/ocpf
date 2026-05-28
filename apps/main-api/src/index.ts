@@ -1157,6 +1157,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Server API & WebSocket berjalan di port ${server.port}`););
-
 console.log(`Server API & WebSocket berjalan di port ${server.port}`);
