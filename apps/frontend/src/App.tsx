@@ -22,6 +22,8 @@ interface SelectedConversation {
   phone: string;
   name: string;
   email: string | null;
+  ticket_id?: number | null;
+  status?: string | null;
   assignee_id?: number | null;
   assignee_name?: string | null;
 }
@@ -202,15 +204,17 @@ function App() {
         const data = await response.json();
         // Berpindah ke inbox dan langsung buka obrolannya
         setCurrentView('inbox');
-        setSelectedConv({
-          id: data.data.id,
-          contact_id: data.data.contact_id,
-          phone: data.data.contact_phone,
-          name: data.data.contact_name,
-          email: data.data.contact_email,
-          assignee_id: data.data.assignee_id,
-          assignee_name: data.data.assignee_name
-        });
+          setSelectedConv({
+            id: data.id || data.data?.id,
+            contact_id: data.contact_id || data.data?.contact_id,
+            phone: data.contact_phone || data.data?.contact_phone,
+            name: data.contact_name || data.data?.contact_name,
+            email: data.contact_email || data.data?.contact_email,
+            ticket_id: data.ticket_id || data.data?.ticket_id,
+            status: data.status || data.data?.status,
+            assignee_id: data.assignee_id || data.data?.assignee_id,
+            assignee_name: data.assignee_name || data.data?.assignee_name
+          });
         setRefreshKey(k => k + 1);
       } else {
         alert('Gagal memulai obrolan baru');
@@ -241,11 +245,13 @@ function App() {
         if (response && response.ok) {
           const data = await response.json();
           setSelectedConv({
-            id: data.id,
+            id: data.id || data.conversation_id,
             contact_id: data.contact_id,
             phone: data.contact_phone,
             name: data.contact_name,
             email: data.contact_email,
+            ticket_id: data.ticket_id || (data.status ? data.id : null), 
+            status: data.status,
             assignee_id: data.assignee_id,
             assignee_name: data.assignee_name
           });
