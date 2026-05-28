@@ -992,13 +992,13 @@ app.patch('/api/conversations/:id/assign', async (c) => {
     const [ticket] = await sql`
       UPDATE tickets 
       SET assignee_id = ${agentId}, updated_at = NOW() 
-      WHERE id = ${conversationId} AND assignee_id IS NULL
+      WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
       RETURNING *;
     `;
 
     if (!ticket) {
       // Cek apakah memang tidak ketemu atau sudah diambil orang lain
-      const [existing] = await sql`SELECT assignee_id FROM tickets WHERE id = ${conversationId}`;
+      const [existing] = await sql`SELECT assignee_id FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved'`;
       if (!existing) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
       if (existing.assignee_id !== null) return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     }
@@ -1034,7 +1034,7 @@ app.patch('/api/conversations/:id/unassign', async (c) => {
     const [ticket] = await sql`
       UPDATE tickets 
       SET assignee_id = NULL, updated_at = NOW() 
-      WHERE id = ${conversationId} AND assignee_id = ${agentId}
+      WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id = ${agentId}
       RETURNING *;
     `;
 
