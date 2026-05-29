@@ -6,6 +6,7 @@ import Login from './components/Login'
 import Settings from './components/Settings'
 import Analytics from './components/Analytics'
 import Contacts from './components/Contacts'
+import Broadcast from './components/Broadcast'
 
 interface Message {
   id: number;
@@ -300,6 +301,13 @@ function App() {
           {user?.role === 'administrator' && (
             <>
               <button 
+                className={`btn btn-square w-full rounded-xl ${currentView === 'broadcast' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => setCurrentView('broadcast')}
+                title="Pesan Massal (Broadcast)"
+              >
+                📢
+              </button>
+              <button 
                 className={`btn btn-square w-full rounded-xl ${currentView === 'analytics' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => setCurrentView('analytics')}
                 title="Laporan & Analitik"
@@ -385,6 +393,8 @@ function App() {
         </>
       ) : currentView === 'contacts' ? (
         <Contacts token={token} onStartChat={startNewChat} />
+      ) : currentView === 'broadcast' ? (
+        <Broadcast token={token} />
       ) : currentView === 'analytics' ? (
         <Analytics token={token} />
       ) : (

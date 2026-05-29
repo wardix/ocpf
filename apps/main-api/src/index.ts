@@ -612,6 +612,96 @@ app.patch('/api/contacts/:id', async (c) => {
   }
 });
 
+// Endpoint Broadcast (Admin Only)
+app.post('/api/broadcast', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload');
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    const body = await c.req.json();
+    const { contact_ids, content, inbox_id } = body;
+    
+    if (!contact_ids || !Array.isArray(contact_ids) || contact_ids.length === 0) {
+      return c.json({ error: 'Pilih minimal satu kontak' }, 400);
+    }
+    if (!content) {
+      return c.json({ error: 'Isi pesan tidak boleh kosong' }, 400);
+    }
+
+    const ACCOUNT_ID = 1;
+    const INBOX_ID = inbox_id || parseInt(process.env.INBOX_ID || '1');
+    const agentId = jwtPayload.id;
+
+    // Ambil detail kontak yang valid
+    const contacts = await sql`
+      SELECT id, phone_number FROM contacts WHERE id IN ${sql(contact_ids)} AND account_id = ${ACCOUNT_ID}
+    `;
+
+    // Proses asinkron di background (Jangan menahan HTTP response)
+    (async () => {
+      console.log(`[BROADCAST] Memulai broadcast ke ${contacts.length} pelanggan...`);
+      for (const contact of contacts) {
+        try {
+          // Cari atau Buat Percakapan
+          let [conversation] = await sql`
+            SELECT id FROM conversations
+            WHERE account_id = ${ACCOUNT_ID} AND inbox_id = ${INBOX_ID} AND contact_id = ${contact.id}
+            LIMIT 1
+          `;
+          if (!conversation) {
+            [conversation] = await sql`
+              INSERT INTO conversations (account_id, inbox_id, contact_id)
+              VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
+              RETURNING id;
+            `;
+          }
+
+          // Simpan pesan keluar (Tanpa Tiket)
+          const [msg] = await sql`
+            INSERT INTO messages (
+              account_id, conversation_id, ticket_id, sender_type, sender_id, 
+              content, message_type, status, is_private
+            ) VALUES (
+              ${ACCOUNT_ID}, ${conversation.id}, null, 'User', ${agentId}, 
+              ${content}, 'outgoing', 'sent', false
+            )
+            RETURNING *;
+          `;
+
+          // Lempar ke Redis Queue
+          const payload: SendMessagePayload = {
+            event: 'message.send',
+            data: {
+              inbox_id: INBOX_ID,
+              internal_message_id: msg.id,
+              target_id: contact.phone_number,
+              content: content,
+              message_type: 'text'
+            }
+          };
+          
+          const targetQueue = `queue:outgoing_messages:inbox_${INBOX_ID}`;
+          await redis.rpush(targetQueue, JSON.stringify(payload));
+          console.log(`[BROADCAST] Antrean ke ${contact.phone_number} terkirim.`);
+
+          // Sleep 1 detik untuk anti-spam
+          await new Promise(r => setTimeout(r, 1000));
+        } catch (err) {
+          console.error(`[BROADCAST] Gagal mengirim ke contact ${contact.id}:`, err);
+        }
+      }
+      console.log('[BROADCAST] Selesai!');
+    })();
+
+    return c.json({ success: true, message: `Broadcast sedang dikirim ke ${contacts.length} kontak secara background.` });
+  } catch (error) {
+    console.error('Error broadcast:', error);
+    return c.json({ error: 'Gagal memproses broadcast' }, 500);
+  }
+});
+
 // Ambil semua percakapan aktif untuk sidebar
 app.get('/api/conversations', async (c) => {
   try {
