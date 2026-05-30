@@ -337,13 +337,15 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
               const payload: SendMessagePayload = {
                 event: 'message.send',
                 data: {
+                  inbox_id: INBOX_ID,
                   internal_message_id: botMsg.id,
                   target_id: sourceJid,
                   content: finalBotText,
                   message_type: 'text'
                 }
               };
-              await redis.rpush(QUEUE_OUTGOING, JSON.stringify(payload));
+              const targetQueue = `queue:outgoing_messages:inbox_${INBOX_ID}`;
+              await redis.rpush(targetQueue, JSON.stringify(payload));
               return true;
            } else if (step.type === 'api_call') {
               try {
