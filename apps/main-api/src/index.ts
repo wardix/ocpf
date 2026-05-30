@@ -7,6 +7,8 @@ import postgres from 'postgres';
 import Redis from 'ioredis';
 import path from 'path';
 import fs from 'fs';
+import { z } from 'zod';
+import { zValidator } from '@hono/zod-validator';
 import type { 
   IncomingMessagePayload, 
   SendMessagePayload 
@@ -521,9 +523,18 @@ redisSub.on('message', (channel, message) => {
 app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'));
 
 // === ENDPOINT AUTHENTICATION ===
-app.post('/api/auth/login', async (c) => {
+const loginSchema = z.object({
+  email: z.string().email('Format email tidak valid'),
+  password: z.string().min(6, 'Password minimal 6 karakter')
+});
+
+app.post('/api/auth/login', zValidator('json', loginSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
   try {
-    const { email, password } = await c.req.json();
+    const { email, password } = c.req.valid('json');
 
     // Join dengan account_users untuk mendapatkan role dan account_id
     const [user] = await sql`
@@ -606,15 +617,25 @@ app.get('/api/users', async (c) => {
 });
 
 // Endpoint untuk menambahkan agen baru (Admin only)
-app.post('/api/users', async (c) => {
+const createUserSchema = z.object({
+  name: z.string().min(1, 'Nama wajib diisi'),
+  email: z.string().email('Format email tidak valid'),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
+  role: z.enum(['administrator', 'agent'])
+});
+
+app.post('/api/users', zValidator('json', createUserSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const body = await c.req.json();
-    const { name, email, password, role } = body;
+    const { name, email, password, role } = c.req.valid('json');
 
     // Cek duplikasi email
     const [existing] = await sql`SELECT id FROM users WHERE email = ${email}`;
@@ -677,16 +698,28 @@ app.get('/api/contacts', async (c) => {
 });
 
 // Endpoint update data contact
-app.patch('/api/contacts/:id', async (c) => {
-  const contactId = c.req.param('id');
+const updateContactSchema = z.object({
+  name: z.string().min(1, 'Nama wajib diisi'),
+  email: z.string().email('Format email tidak valid').or(z.literal('')),
+});
+
+app.patch('/api/contacts/:id', zValidator('json', updateContactSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
+  const contactId = parseInt(c.req.param('id'), 10);
+  if (isNaN(contactId)) {
+    return c.json({ error: 'ID Kontak tidak valid' }, 400);
+  }
+
   try {
     const jwtPayload = c.get('jwtPayload');
-    const body = await c.req.json();
-    const { name, email } = body;
+    const { name, email } = c.req.valid('json');
 
     const [updatedContact] = await sql`
       UPDATE contacts 
-      SET name = ${name}, email = ${email}, updated_at = NOW() 
+      SET name = ${name}, email = ${email || null}, updated_at = NOW() 
       WHERE id = ${contactId} AND account_id = ${jwtPayload.account_id || 1}
       RETURNING *;
     `;
@@ -703,24 +736,26 @@ app.patch('/api/contacts/:id', async (c) => {
 });
 
 // Endpoint Broadcast (Admin Only)
-app.post('/api/broadcast', async (c) => {
+const broadcastSchema = z.object({
+  contact_ids: z.array(z.number().int()).min(1, 'Pilih minimal satu kontak'),
+  content: z.string().min(1, 'Isi pesan tidak boleh kosong'),
+  inbox_id: z.number().int().optional()
+});
+
+app.post('/api/broadcast', zValidator('json', broadcastSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const body = await c.req.json();
-    const { contact_ids, content, inbox_id } = body;
-    
-    if (!contact_ids || !Array.isArray(contact_ids) || contact_ids.length === 0) {
-      return c.json({ error: 'Pilih minimal satu kontak' }, 400);
-    }
-    if (!content) {
-      return c.json({ error: 'Isi pesan tidak boleh kosong' }, 400);
-    }
+    const { contact_ids, content, inbox_id } = c.req.valid('json');
 
-    const ACCOUNT_ID = 1;
+    const ACCOUNT_ID = jwtPayload.account_id || 1;
     const INBOX_ID = inbox_id || parseInt(process.env.INBOX_ID || '1');
     const agentId = jwtPayload.id;
 
@@ -938,14 +973,20 @@ app.get('/api/conversations/:id/messages', async (c) => {
 });
 
 // Endpoint untuk memulai percakapan baru (Outbound) tanpa tiket
-app.post('/api/conversations/start', async (c) => {
+const startConversationSchema = z.object({
+  phone_number: z.string().min(5, 'Nomor telepon tidak valid'),
+  name: z.string().optional()
+});
+
+app.post('/api/conversations/start', zValidator('json', startConversationSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
     const agentId = jwtPayload.id;
-    const body = await c.req.json();
-    const { phone_number, name } = body;
-
-    if (!phone_number) return c.json({ error: 'Nomor telepon wajib diisi' }, 400);
+    const { phone_number, name } = c.req.valid('json');
 
     // Format nomor (hapus + atau awalan 0)
     let cleanPhone = phone_number.replace(/\D/g, '');
@@ -1009,22 +1050,40 @@ app.post('/api/conversations/start', async (c) => {
 });
 
 // Endpoint kirim pesan
-app.post('/api/messages/send', async (c) => {
+const sendMessageSchema = z.object({
+  target_id: z.string().min(5),
+  content: z.string().optional(),
+  conversation_id: z.number().int(),
+  is_private: z.boolean().optional(),
+  media: z.object({
+    mimetype: z.string(),
+    data_base64: z.string(),
+    filename: z.string().optional()
+  }).optional()
+}).refine(data => data.content || data.media, {
+  message: "Pesan teks atau media harus diisi"
+});
+
+app.post('/api/messages/send', zValidator('json', sendMessageSchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+  }
+}), async (c) => {
   const tStart = Date.now();
   console.log(`\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
   try {
     const jwtPayload = c.get('jwtPayload');
     const agentId = jwtPayload.id;
+    const accountId = jwtPayload.account_id || 1; // Secure: Get from JWT, not client
 
-    const body = await c.req.json();
-    const { target_id, content, conversation_id, account_id, media, is_private } = body;
+    const { target_id, content, conversation_id, media, is_private } = c.req.valid('json');
 
     // Ambil inbox_id, conversation_id, dan ticket_id dari conversations (LEFT JOIN tiket aktif)
     const [conv] = await sql`
       SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id 
       FROM conversations c
       LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
-      WHERE c.id = ${conversation_id} LIMIT 1
+      WHERE c.id = ${conversation_id} AND c.account_id = ${accountId} LIMIT 1
     `;
     if (!conv) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
     
@@ -1041,7 +1100,7 @@ app.post('/api/messages/send', async (c) => {
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, is_private
       ) VALUES (
-        ${account_id || 1}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
+        ${accountId}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
         ${content || ''}, 'outgoing', 'sent', ${is_private || false}
       )
       RETURNING *;
@@ -1128,24 +1187,26 @@ app.post('/api/messages/send', async (c) => {
 });
 
 // Endpoint untuk update status tiket (misal: Tutup Tiket)
-app.patch('/api/conversations/:id/status', async (c) => {
-  const conversationId = c.req.param('id');
+const updateStatusSchema = z.object({
+  status: z.enum(['open', 'pending', 'snoozed', 'resolved'])
+});
+
+app.patch('/api/conversations/:id/status', zValidator('json', updateStatusSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
   try {
     const jwtPayload = c.get('jwtPayload');
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
-
-    const body = await c.req.json();
-    const { status } = body; // 'open', 'resolved', etc.
-
-    if (!['open', 'pending', 'snoozed', 'resolved'].includes(status)) {
-      return c.json({ error: 'Status tidak valid' }, 400);
-    }
+    const { status } = c.req.valid('json');
 
     const [ticket] = await sql`
       UPDATE tickets 
       SET status = ${status}, updated_at = NOW() 
-      WHERE id = ${conversationId}
+      WHERE conversation_id = ${conversationId} AND status != 'resolved'
       RETURNING *;
     `;
 
@@ -1178,7 +1239,9 @@ app.patch('/api/conversations/:id/status', async (c) => {
 
 // Endpoint untuk mengambil alih tiket (Assign to me)
 app.patch('/api/conversations/:id/assign', async (c) => {
-  const conversationId = c.req.param('id');
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
   try {
     const jwtPayload = c.get('jwtPayload');
     const agentId = jwtPayload.id;
@@ -1220,7 +1283,9 @@ app.patch('/api/conversations/:id/assign', async (c) => {
 
 // Endpoint untuk melepas tiket (Unassign)
 app.patch('/api/conversations/:id/unassign', async (c) => {
-  const conversationId = c.req.param('id');
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
   try {
     const jwtPayload = c.get('jwtPayload');
     const agentId = jwtPayload.id;
@@ -1274,15 +1339,21 @@ app.get('/api/canned-responses', async (c) => {
 });
 
 // Endpoint untuk menambah Canned Response
-app.post('/api/canned-responses', async (c) => {
+const cannedResponseSchema = z.object({
+  short_code: z.string().min(1, 'Short code tidak boleh kosong'),
+  content: z.string().min(1, 'Konten tidak boleh kosong')
+});
+
+app.post('/api/canned-responses', zValidator('json', cannedResponseSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const body = await c.req.json();
-    const { short_code, content } = body;
+    const { short_code, content } = c.req.valid('json');
     const [response] = await sql`
       INSERT INTO canned_responses (account_id, short_code, content)
       VALUES (${jwtPayload.account_id}, ${short_code}, ${content})
@@ -1296,20 +1367,23 @@ app.post('/api/canned-responses', async (c) => {
 });
 
 // Endpoint untuk mengupdate Canned Response
-app.put('/api/canned-responses/:id', async (c) => {
+app.put('/api/canned-responses/:id', zValidator('json', cannedResponseSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'ID tidak valid' }, 400);
+
   try {
     const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const id = c.req.param('id');
-    const body = await c.req.json();
-    const { short_code, content } = body;
+    const { short_code, content } = c.req.valid('json');
     const [response] = await sql`
       UPDATE canned_responses
       SET short_code = ${short_code}, content = ${content}
-      WHERE id = ${id} AND account_id = 1
+      WHERE id = ${id} AND account_id = ${jwtPayload.account_id}
       RETURNING *
     `;
     return c.json({ success: true, data: response });
