@@ -15,6 +15,14 @@ import { ServerWebSocket } from 'bun';
 
 const app = new Hono();
 
+// Validasi Keamanan Kritis: Pastikan JWT_SECRET tersedia
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET environment variable is missing.');
+  console.error('Security Policy: Aplikasi dihentikan untuk mencegah kerentanan pemalsuan token JWT.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
 // Load Chatbot Rules
 let chatbotRules: any = null;
 try {
