@@ -372,15 +372,43 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
                 let isSuccess = false;
                 if (step.on_success && step.on_success.condition) {
                    try {
-                     const conditionFunc = new Function('response', `return ${step.on_success.condition};`);
-                     isSuccess = conditionFunc(responseData);
+                     // [SECURITY FIX] Safe condition evaluator (Replacing new Function RCE vulnerability)
+                     const condition = step.on_success.condition;
+                     const match = condition.match(/response\.([\w\.]+)\s*(===|==|!==|!=|>|<|>=|<=)\s*(.+)/);
+
+                     if (match) {
+                       const [_, path, operator, rawValue] = match;
+                       const value = path.split('.').reduce((acc: any, part: string) => acc && acc[part], responseData);
+
+                       let expectedValue: any = rawValue.trim();
+                       if ((expectedValue.startsWith("'") && expectedValue.endsWith("'")) || 
+                           (expectedValue.startsWith('"') && expectedValue.endsWith('"'))) {
+                         expectedValue = expectedValue.slice(1, -1);
+                       } else if (!isNaN(Number(expectedValue))) {
+                         expectedValue = Number(expectedValue);
+                       } else if (expectedValue === 'true') expectedValue = true;
+                       else if (expectedValue === 'false') expectedValue = false;
+                       else if (expectedValue === 'null') expectedValue = null;
+
+                       switch(operator) {
+                         case '==': isSuccess = value == expectedValue; break;
+                         case '===': isSuccess = value === expectedValue; break;
+                         case '!=': isSuccess = value != expectedValue; break;
+                         case '!==': isSuccess = value !== expectedValue; break;
+                         case '>': isSuccess = value > expectedValue; break;
+                         case '<': isSuccess = value < expectedValue; break;
+                         case '>=': isSuccess = value >= expectedValue; break;
+                         case '<=': isSuccess = value <= expectedValue; break;
+                       }
+                     } else {
+                       console.warn('Format condition tidak didukung oleh safe evaluator:', condition);
+                     }
                    } catch (e) {
                      console.error('Condition eval error:', e);
                    }
                 } else if (apiResponse.ok) {
                    isSuccess = true;
                 }
-
                 if (isSuccess && step.on_success && step.on_success.target_state) {
                    targetNodeKey = step.on_success.target_state;
                    return false; // Berhenti eksekusi sequence saat ini dan melompat ke state baru
