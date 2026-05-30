@@ -162,27 +162,38 @@ function App() {
   useEffect(() => {
     if (!token) return;
     
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
-    const ws = new WebSocket(wsUrl);
+    let wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+    if (wsUrl.endsWith('/')) wsUrl = wsUrl.slice(0, -1);
+    const ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
 
     ws.onopen = () => setWsStatus('open');
     ws.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      if (payload.event === 'message.new') {
-        const newMessage = payload.data;
+      // Handle Heartbeat
+      if (event.data === 'ping') {
+        ws.send('pong');
+        return;
+      }
 
-        // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan dan tiket ini milik agen yang sedang login
-        // (atau tiket belum ada pemiliknya/Antrean)
-        if (newMessage.sender_type === 'Contact') {
-          // Jika pesan ini untuk tiket yang sedang kita buka, atau pesan antrean, bunyikan!
-          // Untuk implementasi paling aman, kita bunyikan jika itu masuk ke inbox agen
-          playNotificationSound();
-        }
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.event === 'message.new') {
+          const newMessage = payload.data;
 
-        // Karena arsitektur baru menggunakan tiket, cocokkan dengan ticket_id (yang ada di selectedConv.id)
-        if (selectedConv && newMessage.ticket_id === selectedConv.id) {
-          setMessages((prev) => [...prev, newMessage]);
+          // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan dan tiket ini milik agen yang sedang login
+          // (atau tiket belum ada pemiliknya/Antrean)
+          if (newMessage.sender_type === 'Contact') {
+            // Jika pesan ini untuk tiket yang sedang kita buka, atau pesan antrean, bunyikan!
+            // Untuk implementasi paling aman, kita bunyikan jika itu masuk ke inbox agen
+            playNotificationSound();
+          }
+
+          // Karena arsitektur baru menggunakan tiket, cocokkan dengan ticket_id (yang ada di selectedConv.id)
+          if (selectedConv && newMessage.ticket_id === selectedConv.id) {
+            setMessages((prev) => [...prev, newMessage]);
+          }
         }
+      } catch (e) {
+        console.error('Invalid WS message:', event.data);
       }
     };
     ws.onclose = () => setWsStatus('closed');

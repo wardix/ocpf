@@ -56,8 +56,17 @@ const redisWorker = new Redis({
 const QUEUE_INCOMING = 'queue:incoming_messages';
 const PUB_SUB_CH = 'chat:events';
 
+import { verify } from 'hono/jwt';
+
+type WebSocketData = {
+  accountId: number;
+  userId: number;
+  role: string;
+  isAlive: boolean;
+};
+
 // Simpan daftar koneksi websocket aktif
-const activeWebSockets = new Set<ServerWebSocket<any>>();
+const activeWebSockets = new Set<ServerWebSocket<WebSocketData>>();
 
 // =========================================================================
 // 2. Background Worker: Menyimpan Pesan Masuk (Consumer)
@@ -424,10 +433,25 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 redisSub.subscribe(PUB_SUB_CH);
 redisSub.on('message', (channel, message) => {
   if (channel === PUB_SUB_CH) {
-    // Kirim pesan ke SEMUA koneksi websocket yang aktif
-    activeWebSockets.forEach((ws) => {
-      ws.send(message);
-    });
+    try {
+      const payload = JSON.parse(message);
+      const { data } = payload;
+      const accountId = data?.account_id || 1;
+      const isPrivate = data?.is_private || false;
+
+      // Broadcast hanya ke koneksi websocket yang terautentikasi dan relevan
+      activeWebSockets.forEach((ws) => {
+        // Filter Account ID
+        if (ws.data.accountId !== accountId) return;
+        
+        // Filter Private Notes (Jangan broadcast ke role non-agen jika kelak ada portal klien)
+        if (isPrivate && ws.data.role !== 'agent' && ws.data.role !== 'administrator') return;
+
+        ws.send(message);
+      });
+    } catch (e) {
+      console.error('Broadcast error:', e);
+    }
   }
 });
 
@@ -1303,43 +1327,65 @@ startWorker();
 // =========================================================================
 const PORT = Number(process.env.PORT) || 3000;
 
-const server = Bun.serve({
+const server = Bun.serve<WebSocketData>({
   port: PORT,
-  fetch(req, server) {
-    // Jika request adalah upgrade websocket, lakukan upgrade
-    if (server.upgrade(req)) {
-      return; 
+  async fetch(req, server) {
+    const url = new URL(req.url);
+    if (url.pathname === '/ws') {
+      const token = url.searchParams.get('token');
+      if (!token) {
+        return new Response('Unauthorized: Token required', { status: 401 });
+      }
+
+      try {
+        const payload = await verify(token, JWT_SECRET) as any;
+        const upgradeSuccess = server.upgrade(req, {
+          data: {
+            accountId: 1, // Hardcoded untuk MVP
+            userId: payload.id,
+            role: payload.role,
+            isAlive: true
+          }
+        });
+        
+        if (upgradeSuccess) return;
+        return new Response('Upgrade failed', { status: 500 });
+      } catch (e) {
+        return new Response('Unauthorized: Invalid token', { status: 401 });
+      }
     }
     return app.fetch(req);
   },
   websocket: {
     open(ws) {
-      console.log('Browser/Agen Terhubung via WebSocket 🌐');
+      console.log(`[WS] User ${ws.data.userId} (Role: ${ws.data.role}) Terhubung 🌐`);
       activeWebSockets.add(ws);
     },
     message(ws, message) {
-      // (Optional) Handle pesan dari client jika perlu
+      if (message === 'ping') {
+        ws.send('pong');
+        ws.data.isAlive = true;
+      }
     },
     close(ws) {
-      console.log('Browser/Agen Terputus ❌');
+      console.log(`[WS] User ${ws.data.userId} Terputus ❌`);
       activeWebSockets.delete(ws);
     },
   },
 });
 
-console.log(`Server API & WebSocket berjalan di port ${server.port}`);
-    open(ws) {
-      console.log('Browser/Agen Terhubung via WebSocket 🌐');
-      activeWebSockets.add(ws);
-    },
-    message(ws, message) {
-      // (Optional) Handle pesan dari client jika perlu
-    },
-    close(ws) {
-      console.log('Browser/Agen Terputus ❌');
+// Heartbeat Interval untuk membersihkan koneksi stale/mati
+setInterval(() => {
+  activeWebSockets.forEach((ws) => {
+    if (!ws.data.isAlive) {
+      console.log(`[WS] Terminating stale connection for User ${ws.data.userId}`);
+      ws.close();
       activeWebSockets.delete(ws);
-    },
-  },
-});
+      return;
+    }
+    ws.data.isAlive = false; // Reset, expecting pong
+    ws.send('ping');
+  });
+}, 30000);
 
 console.log(`Server API & WebSocket berjalan di port ${server.port}`);
