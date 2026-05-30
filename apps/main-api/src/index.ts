@@ -110,8 +110,15 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
     console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
-    const ACCOUNT_ID = 1;
     const INBOX_ID = data.inbox_id || 1; // Mendukung arsitektur Multi-Instance/Multi-Provider
+    
+    // Resolve account_id dari inbox
+    const [inbox] = await sql`SELECT account_id FROM inboxes WHERE id = ${INBOX_ID} LIMIT 1`;
+    if (!inbox) {
+      console.error(`Inbox ID ${INBOX_ID} tidak ditemukan di database.`);
+      return null;
+    }
+    const ACCOUNT_ID = inbox.account_id;
 
     // Pastikan variabel tidak undefined untuk SQL
     const sourceJid = data.source_jid || 'unknown';
@@ -480,11 +487,11 @@ app.post('/api/auth/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
 
-    // Join dengan account_users untuk mendapatkan role
+    // Join dengan account_users untuk mendapatkan role dan account_id
     const [user] = await sql`
-      SELECT u.id, u.name, u.email, u.password_hash, au.role 
+      SELECT u.id, u.name, u.email, u.password_hash, au.role, au.account_id 
       FROM users u
-      LEFT JOIN account_users au ON u.id = au.user_id AND au.account_id = 1
+      LEFT JOIN account_users au ON u.id = au.user_id
       WHERE u.email = ${email} 
       LIMIT 1
     `;
@@ -493,17 +500,22 @@ app.post('/api/auth/login', async (c) => {
       return c.json({ error: 'Kredensial tidak valid' }, 401);
     }
 
+    if (!user.account_id) {
+      return c.json({ error: 'User tidak terikat dengan akun manapun' }, 403);
+    }
+
     const isMatch = await Bun.password.verify(password, user.password_hash);
     
     if (!isMatch) {
       return c.json({ error: 'Kredensial tidak valid' }, 401);
     }
 
-    // Buat Token JWT dengan menyertakan role
+    // Buat Token JWT dengan menyertakan role dan account_id
     const payload = {
       id: user.id,
       name: user.name,
       email: user.email,
+      account_id: user.account_id,
       role: user.role || 'agent', // Default ke agent jika role null
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 // 24 Jam
     };
@@ -512,7 +524,7 @@ app.post('/api/auth/login', async (c) => {
     return c.json({ 
       success: true, 
       token, 
-      user: { id: user.id, name: user.name, email: user.email, role: user.role || 'agent' } 
+      user: { id: user.id, name: user.name, email: user.email, role: user.role || 'agent', account_id: user.account_id } 
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -545,7 +557,7 @@ app.get('/api/users', async (c) => {
       SELECT u.id, u.name, u.email, au.role, u.created_at
       FROM users u
       JOIN account_users au ON u.id = au.user_id
-      WHERE au.account_id = 1
+      WHERE au.account_id = ${jwtPayload.account_id}
       ORDER BY u.id ASC
     `;
     return c.json(users);
@@ -584,7 +596,7 @@ app.post('/api/users', async (c) => {
         RETURNING id, name, email
       )
       INSERT INTO account_users (account_id, user_id, role)
-      SELECT 1, id, ${role} FROM inserted_user
+      SELECT ${jwtPayload.account_id}, id, ${role} FROM inserted_user
       RETURNING user_id as id, role;
     `;
 
@@ -599,6 +611,7 @@ app.post('/api/users', async (c) => {
 app.get('/api/contacts', async (c) => {
   try {
     const search = c.req.query('q') || '';
+    const jwtPayload = c.get('jwtPayload');
     
     // Cari kontak dan hitung total tiketnya
     const contacts = await sql`
@@ -612,7 +625,7 @@ app.get('/api/contacts', async (c) => {
       FROM contacts c
       LEFT JOIN conversations conv ON c.id = conv.contact_id
       LEFT JOIN tickets t ON conv.id = t.conversation_id
-      WHERE c.account_id = 1 AND (c.name ILIKE ${`%${search}%`} OR c.phone_number ILIKE ${`%${search}%`})
+      WHERE c.account_id = ${jwtPayload.account_id || 1} AND (c.name ILIKE ${`%${search}%`} OR c.phone_number ILIKE ${`%${search}%`})
       GROUP BY c.id
       ORDER BY c.created_at DESC
       LIMIT 100
@@ -629,13 +642,14 @@ app.get('/api/contacts', async (c) => {
 app.patch('/api/contacts/:id', async (c) => {
   const contactId = c.req.param('id');
   try {
+    const jwtPayload = c.get('jwtPayload');
     const body = await c.req.json();
     const { name, email } = body;
 
     const [updatedContact] = await sql`
       UPDATE contacts 
       SET name = ${name}, email = ${email}, updated_at = NOW() 
-      WHERE id = ${contactId} AND account_id = 1
+      WHERE id = ${contactId} AND account_id = ${jwtPayload.account_id || 1}
       RETURNING *;
     `;
 
@@ -789,6 +803,7 @@ app.get('/api/conversations', async (c) => {
 app.get('/api/conversations/info/:id', async (c) => {
   const ticketId = c.req.param('id');
   try {
+    const jwtPayload = c.get('jwtPayload');
     const [ticketInfo] = await sql`
       SELECT 
         t.id, 
@@ -803,7 +818,7 @@ app.get('/api/conversations/info/:id', async (c) => {
       JOIN conversations conv ON t.conversation_id = conv.id
       JOIN contacts con ON conv.contact_id = con.id
       LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE t.id = ${ticketId} AND t.account_id = 1
+      WHERE t.id = ${ticketId} AND t.account_id = ${jwtPayload.account_id}
       LIMIT 1
     `;
     
@@ -819,6 +834,7 @@ app.get('/api/conversations/info/:id', async (c) => {
 app.get('/api/conversations/by-phone/:phone', async (c) => {
   const phone = c.req.param('phone');
   try {
+    const jwtPayload = c.get('jwtPayload');
     const [ticketInfo] = await sql`
       SELECT 
         t.id, 
@@ -833,7 +849,7 @@ app.get('/api/conversations/by-phone/:phone', async (c) => {
       JOIN conversations conv ON t.conversation_id = conv.id
       JOIN contacts con ON conv.contact_id = con.id
       LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE con.phone_number = ${phone} AND t.account_id = 1
+      WHERE con.phone_number = ${phone} AND t.account_id = ${jwtPayload.account_id}
       ORDER BY t.updated_at DESC
       LIMIT 1
     `;
@@ -898,7 +914,7 @@ app.post('/api/conversations/start', async (c) => {
     if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.substring(1);
     const sourceJid = cleanPhone + (cleanPhone.length > 13 ? '@g.us' : '@s.whatsapp.net');
 
-    const ACCOUNT_ID = 1;
+    const ACCOUNT_ID = jwtPayload.account_id || 1;
     const INBOX_ID = parseInt(process.env.INBOX_ID || '1'); 
 
     // 1. Cari atau Buat Kontak
@@ -1231,7 +1247,7 @@ app.post('/api/canned-responses', async (c) => {
     const { short_code, content } = body;
     const [response] = await sql`
       INSERT INTO canned_responses (account_id, short_code, content)
-      VALUES (1, ${short_code}, ${content})
+      VALUES (${jwtPayload.account_id}, ${short_code}, ${content})
       RETURNING *
     `;
     return c.json({ success: true, data: response });
@@ -1274,7 +1290,7 @@ app.delete('/api/canned-responses/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    await sql`DELETE FROM canned_responses WHERE id = ${id} AND account_id = 1`;
+    await sql`DELETE FROM canned_responses WHERE id = ${id} AND account_id = ${jwtPayload.account_id}`;
     return c.json({ success: true });
   } catch (error) {
     console.error('Error delete canned response:', error);
@@ -1369,7 +1385,7 @@ const server = Bun.serve<WebSocketData>({
         const payload = await verify(token, JWT_SECRET) as any;
         const upgradeSuccess = server.upgrade(req, {
           data: {
-            accountId: 1, // Hardcoded untuk MVP
+            accountId: payload.account_id, 
             userId: payload.id,
             role: payload.role,
             isAlive: true
