@@ -227,20 +227,35 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       try {
         const { mimetype, data_base64, filename } = data.media;
         
-        // Buat nama file unik
-        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
-        const safeFilename = filename || `media_${Date.now()}_${data.wa_message_id}.${ext}`;
-        
-        // Decode base64 dan simpan ke disk
+        // Validasi MIME Type (Whitelist)
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'audio/ogg', 'audio/mpeg', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedMimeTypes.includes(mimetype) && !mimetype.startsWith('audio/')) {
+          throw new Error(`MIME type tidak diizinkan: ${mimetype}`);
+        }
+
         const buffer = Buffer.from(data_base64, 'base64');
+        
+        // Batasi ukuran file (Maksimal 25MB)
+        const MAX_SIZE = 25 * 1024 * 1024;
+        if (buffer.length > MAX_SIZE) {
+          throw new Error('Ukuran file melebihi batas 25MB');
+        }
+
+        // Sanitasi filename asli untuk di database (buang path traversal)
+        const originalName = filename ? filename.replace(/^.*[\\\/]/, '').replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'unnamed_file';
+        
+        // Buat nama file unik untuk di disk (Mencegah Path Traversal)
+        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
+        const safeFilename = `${crypto.randomUUID()}.${ext}`;
+        
         const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
         await Bun.write(uploadPath, buffer);
         
         const fileUrl = `/uploads/${safeFilename}`;
         
         const [attachment] = await sql`
-          INSERT INTO attachments (message_id, file_type, file_url)
-          VALUES (${msg.id}, ${mimetype}, ${fileUrl})
+          INSERT INTO attachments (message_id, file_type, file_url, original_filename)
+          VALUES (${msg.id}, ${mimetype}, ${fileUrl}, ${originalName})
           RETURNING *;
         `;
         attachmentData = attachment;
@@ -982,16 +997,29 @@ app.post('/api/messages/send', async (c) => {
     if (media) {
       try {
         const { mimetype, data_base64, filename } = media;
-        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
-        const safeFilename = filename || `media_out_${Date.now()}_${msg.id}.${ext}`;
+        
+        // Validasi MIME Type
+        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'audio/ogg', 'audio/mpeg', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedMimeTypes.includes(mimetype) && !mimetype.startsWith('audio/')) {
+          throw new Error(`MIME type tidak diizinkan: ${mimetype}`);
+        }
+
         const buffer = Buffer.from(data_base64, 'base64');
+        if (buffer.length > 25 * 1024 * 1024) {
+          throw new Error('Ukuran file melebihi batas 25MB');
+        }
+
+        const originalName = filename ? filename.replace(/^.*[\\\/]/, '').replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'unnamed_file';
+        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
+        const safeFilename = `${crypto.randomUUID()}.${ext}`;
+        
         const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
         await Bun.write(uploadPath, buffer);
         
         const fileUrl = `/uploads/${safeFilename}`;
         const [attachment] = await sql`
-          INSERT INTO attachments (message_id, file_type, file_url)
-          VALUES (${msg.id}, ${mimetype}, ${fileUrl})
+          INSERT INTO attachments (message_id, file_type, file_url, original_filename)
+          VALUES (${msg.id}, ${mimetype}, ${fileUrl}, ${originalName})
           RETURNING *;
         `;
         attachmentData = attachment;
