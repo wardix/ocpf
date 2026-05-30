@@ -468,8 +468,7 @@ app.post('/api/auth/login', async (c) => {
       role: user.role || 'agent', // Default ke agent jika role null
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 // 24 Jam
     };
-    const secret = process.env.JWT_SECRET || 'fallback_secret';
-    const token = await sign(payload, secret);
+    const token = await sign(payload, JWT_SECRET);
 
     return c.json({ 
       success: true, 
@@ -483,7 +482,7 @@ app.post('/api/auth/login', async (c) => {
 });
 
 // === MIDDLEWARE JWT (PROTECT ROUTES BELOW) ===
-const jwtMiddleware = jwt({ secret: process.env.JWT_SECRET || 'fallback_secret', alg: 'HS256' });
+const jwtMiddleware = jwt({ secret: JWT_SECRET, alg: 'HS256' });
 app.use('/api/conversations/*', jwtMiddleware);
 app.use('/api/conversations', jwtMiddleware);
 app.use('/api/messages/*', jwtMiddleware);
@@ -1314,6 +1313,21 @@ const server = Bun.serve({
     return app.fetch(req);
   },
   websocket: {
+    open(ws) {
+      console.log('Browser/Agen Terhubung via WebSocket 🌐');
+      activeWebSockets.add(ws);
+    },
+    message(ws, message) {
+      // (Optional) Handle pesan dari client jika perlu
+    },
+    close(ws) {
+      console.log('Browser/Agen Terputus ❌');
+      activeWebSockets.delete(ws);
+    },
+  },
+});
+
+console.log(`Server API & WebSocket berjalan di port ${server.port}`);
     open(ws) {
       console.log('Browser/Agen Terhubung via WebSocket 🌐');
       activeWebSockets.add(ws);
