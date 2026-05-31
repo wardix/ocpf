@@ -164,41 +164,79 @@ function App() {
     
     let wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
     if (wsUrl.endsWith('/')) wsUrl = wsUrl.slice(0, -1);
-    const ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
+    
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
+    let reconnectAttempts = 0;
+    const maxDelay = 30000; // Max 30 seconds
 
-    ws.onopen = () => setWsStatus('open');
-    ws.onmessage = (event) => {
-      // Handle Heartbeat
-      if (event.data === 'ping') {
-        ws.send('pong');
-        return;
-      }
+    const connectWebSocket = () => {
+      setWsStatus('connecting');
+      ws = new WebSocket(`${wsUrl}/ws?token=${token}`);
 
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload.event === 'message.new') {
-          const newMessage = payload.data;
-
-          // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan dan tiket ini milik agen yang sedang login
-          // (atau tiket belum ada pemiliknya/Antrean)
-          if (newMessage.sender_type === 'Contact') {
-            // Jika pesan ini untuk tiket yang sedang kita buka, atau pesan antrean, bunyikan!
-            // Untuk implementasi paling aman, kita bunyikan jika itu masuk ke inbox agen
-            playNotificationSound();
-          }
-
-          // Karena arsitektur baru menggunakan tiket, cocokkan dengan ticket_id (yang ada di selectedConv.id)
-          if (selectedConv && newMessage.ticket_id === selectedConv.id) {
-            setMessages((prev) => [...prev, newMessage]);
-          }
+      ws.onopen = () => {
+        setWsStatus('open');
+        
+        // Fetch ulang data terbaru jika reconnect berhasil dan ada percakapan aktif
+        if (reconnectAttempts > 0 && selectedConv) {
+          fetchMessages(selectedConv.id);
         }
-      } catch (e) {
-        console.error('Invalid WS message:', event.data);
+        reconnectAttempts = 0; // Reset
+      };
+
+      ws.onmessage = (event) => {
+        // Handle Heartbeat
+        if (event.data === 'ping') {
+          ws?.send('pong');
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.event === 'message.new') {
+            const newMessage = payload.data;
+
+            // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan
+            if (newMessage.sender_type === 'Contact') {
+              playNotificationSound();
+            }
+
+            // Cocokkan dengan conversation_id (selectedConv.id)
+            if (selectedConv && newMessage.conversation_id === selectedConv.id) {
+              setMessages((prev) => [...prev, newMessage]);
+            }
+          }
+        } catch (e) {
+          console.error('Invalid WS message:', event.data);
+        }
+      };
+
+      ws.onclose = () => {
+        setWsStatus('closed');
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxDelay);
+        console.log(`WebSocket ditutup. Mencoba menghubungkan kembali dalam ${delay}ms...`);
+        reconnectTimeout = setTimeout(() => {
+          reconnectAttempts++;
+          connectWebSocket();
+        }, delay);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        ws?.close(); // Memicu onclose yang akan melakukan reconnect
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.onclose = null; // Mencegah reconnect loop saat unmount
+        ws.close();
       }
     };
-    ws.onclose = () => setWsStatus('closed');
-    return () => ws.close();
-  }, [selectedConv, token, playNotificationSound]);
+  }, [selectedConv, token, playNotificationSound, fetchMessages]);
 
   const startNewChat = async (phone: string, name?: string) => {
     if (!token) return;
@@ -283,7 +321,12 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content">
+    <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content relative">
+      {wsStatus !== 'open' && (
+        <div className={`absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md transition-all ${wsStatus === 'connecting' ? 'bg-warning text-warning-content' : 'bg-error text-white'}`}>
+          {wsStatus === 'connecting' ? '⏳ Menghubungkan ke server real-time...' : '❌ Terputus dari server. Mencoba menghubungkan kembali...'}
+        </div>
+      )}
       <div className="w-16 bg-neutral flex flex-col items-center py-4 shrink-0 shadow-lg z-20">
         <div className="tooltip tooltip-right mb-8" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'})`}>
           <div className={`avatar placeholder cursor-pointer ${wsStatus === 'open' ? 'online' : 'offline'}`}>
