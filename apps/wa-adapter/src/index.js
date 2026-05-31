@@ -93,103 +93,104 @@ async function startBaileysForInbox(inboxId, sessionDir) {
   // 1. DARI WA ADAPTER -> KE REDIS (Pesan Masuk)
   // =========================================================================
   sock.ev.on('messages.upsert', async (m) => {
-    try {
-      const msg = m.messages[0];
+    console.log(`[Inbox ${inboxId}] Menerima batch ${m.messages.length} pesan.`);
+    for (const msg of m.messages) {
+      try {
+        if (
+          !msg.message || 
+          msg.message.protocolMessage || 
+          msg.category === 'peer'
+        ) continue;
+
+        let isHostEcho = false;
+        if (msg.key.fromMe) {
+          if (sentCache.has(msg.key.id)) {
+            console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Mengabaikan pesan dari cache (Dashboard): ${msg.key.id}`);
+            continue;
+          }
+          isHostEcho = true;
+          console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
+        }
+
+        let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        let fullJid = msg.key.remoteJid;
+        
+        // Normalisasi JID
+        if (fullJid.endsWith('@lid') && msg.key.remoteJidAlt?.endsWith('@s.whatsapp.net')) {
+          fullJid = msg.key.remoteJidAlt;
+        }
+
+        const isGroup = fullJid.endsWith('@g.us');
+        const sourceId = fullJid.split('@')[0];
       
-      if (
-        !msg.message || 
-        msg.message.protocolMessage || 
-        msg.category === 'peer'
-      ) return;
+        let displayName = msg.pushName || 'Unknown';
 
-      let isHostEcho = false;
-      if (msg.key.fromMe) {
-        if (sentCache.has(msg.key.id)) {
-          console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Mengabaikan pesan dari cache (Dashboard): ${msg.key.id}`);
-          return;
+        if (isGroup) {
+          try {
+            const groupMetadata = await sock.groupMetadata(fullJid);
+            displayName = groupMetadata.subject || 'WhatsApp Group';
+          } catch (e) {
+            displayName = 'WhatsApp Group';
+          }
         }
-        isHostEcho = true;
-        console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
-      }
 
-      let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-      let fullJid = msg.key.remoteJid;
-      
-      // Normalisasi JID
-      if (fullJid.endsWith('@lid') && msg.key.remoteJidAlt?.endsWith('@s.whatsapp.net')) {
-        fullJid = msg.key.remoteJidAlt;
-      }
+        const participantId = isGroup ? msg.key.participant : null;
+        console.log(`[Inbox ${inboxId}] Pesan Masuk Dari: ${displayName} (${fullJid})`);
 
-      const isGroup = fullJid.endsWith('@g.us');
-      const sourceId = fullJid.split('@')[0];
-    
-      let displayName = msg.pushName || 'Unknown';
-
-      if (isGroup) {
-        try {
-          const groupMetadata = await sock.groupMetadata(fullJid);
-          displayName = groupMetadata.subject || 'WhatsApp Group';
-        } catch (e) {
-          displayName = 'WhatsApp Group';
+        // Media parsing
+        let mediaPayload = undefined;
+        let finalMessageType = 'text';
+        const messageTypeKey = Object.keys(msg.message || {})[0];
+        
+        if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
+          finalMessageType = messageTypeKey.replace('Message', '');
+          try {
+            console.log(`[Inbox ${inboxId}] Mengunduh media (${messageTypeKey})...`);
+            const buffer = await downloadMediaMessage(
+              msg,
+              'buffer',
+              { },
+              { 
+                logger: pino({ level: 'silent' }),
+                reuploadRequest: sock.updateMediaMessage
+              }
+            );
+            
+            const mediaMsg = msg.message[messageTypeKey];
+            mediaPayload = {
+              mimetype: mediaMsg.mimetype || 'application/octet-stream',
+              data_base64: buffer.toString('base64'),
+              filename: mediaMsg.fileName || undefined
+            };
+            
+            if (mediaMsg.caption) textContent = mediaMsg.caption;
+          } catch (err) {
+            console.error(`[Inbox ${inboxId}] Gagal mengunduh media dari WA:`, err);
+          }
         }
+
+        const payload = {
+          event: 'message.incoming',
+          data: {
+            inbox_id: inboxId,
+            source_id: sourceId,
+            source_jid: fullJid, 
+            push_name: displayName,
+            content: textContent,
+            message_type: finalMessageType,
+            wa_message_id: msg.key.id,
+            timestamp: msg.messageTimestamp,
+            participant_id: participantId,
+            participant_name: isGroup ? msg.pushName : null,
+            is_host_echo: isHostEcho,
+            media: mediaPayload 
+          }
+        };
+
+        await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
+      } catch (error) {
+        console.error(`[Inbox ${inboxId}] Error memproses satu pesan masuk:`, error);
       }
-
-      const participantId = isGroup ? msg.key.participant : null;
-      console.log(`[Inbox ${inboxId}] Pesan Masuk Dari: ${displayName} (${fullJid})`);
-
-      // Media parsing
-      let mediaPayload = undefined;
-      let finalMessageType = 'text';
-      const messageTypeKey = Object.keys(msg.message || {})[0];
-      
-      if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
-        finalMessageType = messageTypeKey.replace('Message', '');
-        try {
-          console.log(`[Inbox ${inboxId}] Mengunduh media (${messageTypeKey})...`);
-          const buffer = await downloadMediaMessage(
-            msg,
-            'buffer',
-            { },
-            { 
-              logger: pino({ level: 'silent' }),
-              reuploadRequest: sock.updateMediaMessage
-            }
-          );
-          
-          const mediaMsg = msg.message[messageTypeKey];
-          mediaPayload = {
-            mimetype: mediaMsg.mimetype || 'application/octet-stream',
-            data_base64: buffer.toString('base64'),
-            filename: mediaMsg.fileName || undefined
-          };
-          
-          if (mediaMsg.caption) textContent = mediaMsg.caption;
-        } catch (err) {
-          console.error(`[Inbox ${inboxId}] Gagal mengunduh media dari WA:`, err);
-        }
-      }
-
-      const payload = {
-        event: 'message.incoming',
-        data: {
-          inbox_id: inboxId,
-          source_id: sourceId,
-          source_jid: fullJid, 
-          push_name: displayName,
-          content: textContent,
-          message_type: finalMessageType,
-          wa_message_id: msg.key.id,
-          timestamp: msg.messageTimestamp,
-          participant_id: participantId,
-          participant_name: isGroup ? msg.pushName : null,
-          is_host_echo: isHostEcho,
-          media: mediaPayload 
-        }
-      };
-
-      await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
-    } catch (error) {
-      console.error(`[Inbox ${inboxId}] Error memproses pesan masuk:`, error);
     }
   });
 }
