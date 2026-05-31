@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import UserManagement from './UserManagement';
+import { useAuthStore } from '../store/authStore';
 
 interface CannedResponse {
   id: number;
@@ -7,11 +8,8 @@ interface CannedResponse {
   content: string;
 }
 
-interface Props {
-  token: string | null;
-}
-
-const Settings = ({ token }: Props) => {
+const Settings = () => {
+  const { token } = useAuthStore();
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState<number | null>(null);
@@ -205,7 +203,7 @@ const Settings = ({ token }: Props) => {
           </div>
         </div>
 
-        <UserManagement token={token} />
+        <UserManagement />
 
       </div>
     </div>

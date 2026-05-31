@@ -33,19 +33,19 @@ interface SelectedConversation {
   assignee_name?: string | null;
 }
 
+import { useAuthStore } from '../store/authStore';
+import { useChatStore } from '../store/chatStore';
+
 interface Props {
-  messages: Message[];
-  selectedConv: SelectedConversation;
   onResolve: () => void;
   onAssign: () => void;
-  token: string | null;
-  currentUser: any;
-  hasMoreMessages?: boolean;
-  isLoadingOlder?: boolean;
   onLoadMore?: () => void;
 }
 
-const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentUser, hasMoreMessages, isLoadingOlder, onLoadMore }: Props) => {
+const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
+  const { token, user: currentUser } = useAuthStore();
+  const { messages, selectedConv, hasMoreMessages, isLoadingOlder } = useChatStore();
+
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -60,6 +60,8 @@ const ChatArea = ({ messages, selectedConv, onResolve, onAssign, token, currentU
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
   const [showCanned, setShowCanned] = useState(false);
   const [cannedSearch, setCannedSearch] = useState('');
+
+  if (!selectedConv) return null;
 
   const handleCopyLink = (type: 'phone' | 'ticket', id: string | number) => {
     const url = `${window.location.origin}/?${type}=${id}`;

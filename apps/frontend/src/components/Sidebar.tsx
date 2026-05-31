@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import { useAuthStore } from '../store/authStore';
+
 interface Conversation {
   id: number;
   contact_id: number;
@@ -11,16 +13,18 @@ interface Conversation {
   status: string;
   assignee_id?: number | null;
   assignee_name?: string | null;
+  ticket_id?: number | null;
 }
 
 interface Props {
   selectedId: number | null;
-  onSelect: (conv: Conversation) => void;
+  onSelect: (conv: any) => void;
   refreshKey: number;
-  token: string | null;
+  onStartChat: (phone: string, name?: string) => void;
 }
 
-const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
+const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
+  const { token } = useAuthStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'assigned' | 'all'>('unassigned');
   const [page, setPage] = useState(1);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import ContactInfo from './components/ContactInfo'
@@ -8,26 +8,9 @@ import Analytics from './components/Analytics'
 import Contacts from './components/Contacts'
 import Broadcast from './components/Broadcast'
 
-interface Message {
-  id: number;
-  content: string;
-  sender_type: 'Contact' | 'User' | 'System';
-  created_at: string;
-  conversation_id: number;
-  ticket_id: number;
-}
-
-interface SelectedConversation {
-  id: number;
-  contact_id: number;
-  phone: string;
-  name: string;
-  email: string | null;
-  ticket_id?: number | null;
-  status?: string | null;
-  assignee_id?: number | null;
-  assignee_name?: string | null;
-}
+import { useAuthStore } from './store/authStore'
+import { useUiStore } from './store/uiStore'
+import { useChatStore } from './store/chatStore'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -55,40 +38,12 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 function App() {
-  const getInitialUser = () => {
-    const t = localStorage.getItem('omni_token');
-    if (!t) return null;
-    try {
-      // Decode Base64 dari payload JWT (bagian kedua dari token)
-      const base64Url = t.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
-      return JSON.parse(jsonPayload);
-    } catch (e) {
-      return null;
-    }
-  };
-
-  const [token, setToken] = useState<string | null>(localStorage.getItem('omni_token'));
-  const [user, setUser] = useState<any>(getInitialUser);
-
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
-  const [selectedConv, setSelectedConv] = useState<SelectedConversation | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [currentView, setCurrentView] = useState<'inbox' | 'settings' | 'analytics' | 'contacts'>('inbox');
-  const [isMuted, setIsMuted] = useState(localStorage.getItem('omni_muted') === 'true');
-
-  const toggleMute = () => {
-    const newMuted = !isMuted;
-    setIsMuted(newMuted);
-    localStorage.setItem('omni_muted', String(newMuted));
-  };
+  const { token, user, login, logout } = useAuthStore();
+  const { currentView, isMuted, setCurrentView, toggleMute } = useUiStore();
+  const { 
+    selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder,
+    setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, clearChat
+  } = useChatStore();
 
   const playNotificationSound = useCallback(() => {
     if (isMuted) return;
@@ -111,17 +66,9 @@ function App() {
     }
   }, [isMuted]);
 
-  const handleLoginSuccess = (newToken: string, loggedInUser: any) => {
-    localStorage.setItem('omni_token', newToken);
-    setToken(newToken);
-    setUser(loggedInUser);
-  };
-
   const handleLogout = () => {
-    localStorage.removeItem('omni_token');
-    setToken(null);
-    setUser(null);
-    setSelectedConv(null);
+    logout();
+    clearChat();
   };
 
   const fetchMessages = useCallback(async (conversationId: number, beforeId?: number) => {
@@ -135,11 +82,10 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        setHasMoreMessages(data.length === 50); // Jika API mengembalikan 50, berarti kemungkinan masih ada data lampau
+        setHasMoreMessages(data.length === 50); 
         
         if (beforeId) {
-          // Tambahkan pesan lama ke posisi paling atas array (karena ascending)
-          setMessages(prev => [...data, ...prev]);
+          setMessages((prev: any) => [...data, ...prev]);
         } else {
           setMessages(data);
         }
@@ -151,13 +97,13 @@ function App() {
     } finally {
       if (beforeId) setIsLoadingOlder(false);
     }
-  }, [token]);
+  }, [token, setMessages, setHasMoreMessages, setIsLoadingOlder, handleLogout]);
 
   useEffect(() => {
     if (selectedConv) {
       fetchMessages(selectedConv.id);
     }
-  }, [selectedConv, fetchMessages]);
+  }, [selectedConv?.id]); // Hentikan prop drilling effect. Cukup pantau ID-nya saja
 
   useEffect(() => {
     if (!token) return;
@@ -168,7 +114,7 @@ function App() {
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout>;
     let reconnectAttempts = 0;
-    const maxDelay = 30000; // Max 30 seconds
+    const maxDelay = 30000; 
 
     const connectWebSocket = () => {
       setWsStatus('connecting');
@@ -176,16 +122,13 @@ function App() {
 
       ws.onopen = () => {
         setWsStatus('open');
-        
-        // Fetch ulang data terbaru jika reconnect berhasil dan ada percakapan aktif
         if (reconnectAttempts > 0 && selectedConv) {
           fetchMessages(selectedConv.id);
         }
-        reconnectAttempts = 0; // Reset
+        reconnectAttempts = 0;
       };
 
       ws.onmessage = (event) => {
-        // Handle Heartbeat
         if (event.data === 'ping') {
           ws?.send('pong');
           return;
@@ -195,15 +138,11 @@ function App() {
           const payload = JSON.parse(event.data);
           if (payload.event === 'message.new') {
             const newMessage = payload.data;
-
-            // Membunyikan notifikasi HANYA jika pesan masuk dari pelanggan
             if (newMessage.sender_type === 'Contact') {
               playNotificationSound();
             }
-
-            // Cocokkan dengan conversation_id (selectedConv.id)
             if (selectedConv && newMessage.conversation_id === selectedConv.id) {
-              setMessages((prev) => [...prev, newMessage]);
+              setMessages((prev: any) => [...prev, newMessage]);
             }
           }
         } catch (e) {
@@ -214,7 +153,6 @@ function App() {
       ws.onclose = () => {
         setWsStatus('closed');
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxDelay);
-        console.log(`WebSocket ditutup. Mencoba menghubungkan kembali dalam ${delay}ms...`);
         reconnectTimeout = setTimeout(() => {
           reconnectAttempts++;
           connectWebSocket();
@@ -222,8 +160,7 @@ function App() {
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        ws?.close(); // Memicu onclose yang akan melakukan reconnect
+        ws?.close(); 
       };
     };
 
@@ -232,11 +169,11 @@ function App() {
     return () => {
       clearTimeout(reconnectTimeout);
       if (ws) {
-        ws.onclose = null; // Mencegah reconnect loop saat unmount
+        ws.onclose = null; 
         ws.close();
       }
     };
-  }, [selectedConv, token, playNotificationSound, fetchMessages]);
+  }, [selectedConv?.id, token, playNotificationSound]); 
 
   const startNewChat = async (phone: string, name?: string) => {
     if (!token) return;
@@ -252,20 +189,19 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        // Berpindah ke inbox dan langsung buka obrolannya
         setCurrentView('inbox');
-          setSelectedConv({
-            id: data.id || data.data?.id,
-            contact_id: data.contact_id || data.data?.contact_id,
-            phone: data.contact_phone || data.data?.contact_phone,
-            name: data.contact_name || data.data?.contact_name,
-            email: data.contact_email || data.data?.contact_email,
-            ticket_id: data.ticket_id || data.data?.ticket_id,
-            status: data.status || data.data?.status,
-            assignee_id: data.assignee_id || data.data?.assignee_id,
-            assignee_name: data.assignee_name || data.data?.assignee_name
-          });
-        setRefreshKey(k => k + 1);
+        setSelectedConv({
+          id: data.id || data.data?.id,
+          contact_id: data.contact_id || data.data?.contact_id,
+          phone: data.contact_phone || data.data?.contact_phone,
+          name: data.contact_name || data.data?.contact_name,
+          email: data.contact_email || data.data?.contact_email,
+          ticket_id: data.ticket_id || data.data?.ticket_id,
+          status: data.status || data.data?.status,
+          assignee_id: data.assignee_id || data.data?.assignee_id,
+          assignee_name: data.assignee_name || data.data?.assignee_name
+        });
+        triggerRefresh();
       } else {
         alert('Gagal memulai obrolan baru');
       }
@@ -277,7 +213,6 @@ function App() {
   useEffect(() => {
     if (!token) return;
     
-    // Auto-loader untuk fitur Deep Linking
     const params = new URLSearchParams(window.location.search);
     const phone = params.get('phone');
     const ticket = params.get('ticket');
@@ -317,7 +252,7 @@ function App() {
   }, [token]);
 
   if (!token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    return <Login onLoginSuccess={login} />;
   }
 
   return (
@@ -393,35 +328,19 @@ function App() {
         <>
           <Sidebar 
             selectedId={selectedConv?.id || null} 
-            onSelect={(conv) => setSelectedConv({
-              id: conv.id,
-              contact_id: conv.contact_id,
-              phone: conv.contact_phone,
-              name: conv.contact_name,
-              email: conv.contact_email,
-              ticket_id: conv.ticket_id,
-              status: conv.status,
-              assignee_id: conv.assignee_id,
-              assignee_name: conv.assignee_name
-            })} 
+            onSelect={setSelectedConv} 
             refreshKey={refreshKey}
-            token={token}
+           
             onStartChat={startNewChat}
           />
           {selectedConv ? (
             <>
               <ChatArea 
-                messages={messages} 
-                selectedConv={selectedConv}
                 onResolve={() => {
                   setSelectedConv(null);
-                  setRefreshKey(k => k + 1);
+                  triggerRefresh();
                 }}
-                onAssign={() => setRefreshKey(k => k + 1)}
-                token={token}
-                currentUser={user}
-                hasMoreMessages={hasMoreMessages}
-                isLoadingOlder={isLoadingOlder}
+                onAssign={() => triggerRefresh()}
                 onLoadMore={() => {
                   if (messages.length > 0) {
                     fetchMessages(selectedConv.id, messages[0].id);
@@ -429,11 +348,11 @@ function App() {
                 }}
               />
               <ContactInfo 
-                selectedConv={selectedConv} 
-                token={token} 
+                selectedConv={selectedConv as any} 
+                
                 onUpdate={(newName, newEmail) => {
-                  setSelectedConv(prev => prev ? { ...prev, name: newName, email: newEmail } : null);
-                  setRefreshKey(k => k + 1);
+                  setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
+                  triggerRefresh();
                 }} 
               />
             </>
@@ -446,13 +365,13 @@ function App() {
           )}
         </>
       ) : currentView === 'contacts' ? (
-        <Contacts token={token} onStartChat={startNewChat} />
+        <Contacts onStartChat={startNewChat} />
       ) : currentView === 'broadcast' ? (
-        <Broadcast token={token} />
+        <Broadcast />
       ) : currentView === 'analytics' ? (
-        <Analytics token={token} />
+        <Analytics />
       ) : (
-        <Settings token={token} />
+        <Settings />
       )}
     </div>
   )

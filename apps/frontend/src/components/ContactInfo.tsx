@@ -1,31 +1,30 @@
 import React, { useState, useEffect } from 'react';
-
-interface SelectedConversation {
-  id: number;
-  contact_id: number;
-  phone: string;
-  name: string;
-  email: string | null;
-}
+import { useAuthStore } from '../store/authStore';
+import { useChatStore } from '../store/chatStore';
 
 interface Props {
-  selectedConv: SelectedConversation;
-  token: string | null;
   onUpdate: (newName: string, newEmail: string) => void;
 }
 
-const ContactInfo = ({ selectedConv, token, onUpdate }: Props) => {
+const ContactInfo = ({ onUpdate }: Props) => {
+  const { token } = useAuthStore();
+  const { selectedConv } = useChatStore();
+
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setFormData({ 
-      name: selectedConv.name || '', 
-      email: selectedConv.email || '' 
-    });
-    setIsEditing(false);
+    if (selectedConv) {
+      setFormData({ 
+        name: selectedConv.name || '', 
+        email: selectedConv.email || '' 
+      });
+      setIsEditing(false);
+    }
   }, [selectedConv]);
+
+  if (!selectedConv) return null;
 
   const handleSave = async () => {
     if (!token) return;

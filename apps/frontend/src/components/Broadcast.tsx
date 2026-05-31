@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
 
 interface Contact {
   id: number;
@@ -9,11 +10,8 @@ interface Contact {
   total_tickets: number;
 }
 
-interface Props {
-  token: string | null;
-}
-
-const Broadcast = ({ token }: Props) => {
+const Broadcast = () => {
+  const { token } = useAuthStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);

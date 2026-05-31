@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
 
 interface User {
   id: number;
@@ -8,11 +9,8 @@ interface User {
   created_at: string;
 }
 
-interface Props {
-  token: string | null;
-}
-
-const UserManagement = ({ token }: Props) => {
+const UserManagement = () => {
+  const { token } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);

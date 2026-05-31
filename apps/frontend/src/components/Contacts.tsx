@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
+import { useAuthStore } from '../store/authStore';
+
 interface Contact {
   id: number;
   name: string;
@@ -10,11 +12,11 @@ interface Contact {
 }
 
 interface Props {
-  token: string | null;
   onStartChat: (phone: string) => void;
 }
 
-const Contacts = ({ token, onStartChat }: Props) => {
+const Contacts = ({ onStartChat }: Props) => {
+  const { token } = useAuthStore();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);

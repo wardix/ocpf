@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
 
 interface AnalyticsData {
   today: {
@@ -9,11 +10,8 @@ interface AnalyticsData {
   agent_performance: { name: string; resolved_count: string }[];
 }
 
-interface Props {
-  token: string | null;
-}
-
-const Analytics = ({ token }: Props) => {
+const Analytics = () => {
+  const { token } = useAuthStore();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
