@@ -112,7 +112,17 @@ async function startBaileysForInbox(inboxId, sessionDir) {
           console.log(`[Inbox ${inboxId}][DEBUG-ECHO] Terdeteksi pesan manual dari HP Host: ${msg.key.id}`);
         }
 
-        let textContent = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        // Unwrap ViewOnce
+        let actualMessage = msg.message;
+        if (actualMessage.viewOnceMessageV2) {
+          actualMessage = actualMessage.viewOnceMessageV2.message;
+        } else if (actualMessage.viewOnceMessage) {
+          actualMessage = actualMessage.viewOnceMessage.message;
+        } else if (actualMessage.ephemeralMessage) {
+          actualMessage = actualMessage.ephemeralMessage.message;
+        }
+
+        let textContent = actualMessage.conversation || actualMessage.extendedTextMessage?.text || '';
         let fullJid = msg.key.remoteJid;
         
         // Normalisasi JID
@@ -137,17 +147,17 @@ async function startBaileysForInbox(inboxId, sessionDir) {
         const participantId = isGroup ? msg.key.participant : null;
         console.log(`[Inbox ${inboxId}] Pesan Masuk Dari: ${displayName} (${fullJid})`);
 
-        // Media parsing
+        // Media & Type parsing
         let mediaPayload = undefined;
         let finalMessageType = 'text';
-        const messageTypeKey = Object.keys(msg.message || {})[0];
+        const messageTypeKey = Object.keys(actualMessage || {}).filter(k => k !== 'messageContextInfo')[0];
         
-        if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage'].includes(messageTypeKey)) {
+        if (['imageMessage', 'documentMessage', 'audioMessage', 'videoMessage', 'stickerMessage'].includes(messageTypeKey)) {
           finalMessageType = messageTypeKey.replace('Message', '');
           try {
             console.log(`[Inbox ${inboxId}] Mengunduh media (${messageTypeKey})...`);
             const buffer = await downloadMediaMessage(
-              msg,
+              msg, // Pass original msg
               'buffer',
               { },
               { 
@@ -156,17 +166,46 @@ async function startBaileysForInbox(inboxId, sessionDir) {
               }
             );
             
-            const mediaMsg = msg.message[messageTypeKey];
+            const mediaMsg = actualMessage[messageTypeKey];
             mediaPayload = {
-              mimetype: mediaMsg.mimetype || 'application/octet-stream',
+              mimetype: mediaMsg.mimetype || (messageTypeKey === 'stickerMessage' ? 'image/webp' : 'application/octet-stream'),
               data_base64: buffer.toString('base64'),
-              filename: mediaMsg.fileName || undefined
+              filename: mediaMsg.fileName || (messageTypeKey === 'stickerMessage' ? 'sticker.webp' : undefined)
             };
             
             if (mediaMsg.caption) textContent = mediaMsg.caption;
           } catch (err) {
             console.error(`[Inbox ${inboxId}] Gagal mengunduh media dari WA:`, err);
+            textContent = `[Gagal mengunduh ${finalMessageType}]`;
           }
+        } else if (messageTypeKey === 'locationMessage' || messageTypeKey === 'liveLocationMessage') {
+          finalMessageType = 'location';
+          const loc = actualMessage[messageTypeKey];
+          textContent = `📍 [Lokasi]: https://maps.google.com/?q=${loc.degreesLatitude},${loc.degreesLongitude}`;
+        } else if (messageTypeKey === 'contactMessage') {
+          finalMessageType = 'contact';
+          const contact = actualMessage[messageTypeKey];
+          textContent = `👤 [Kontak]: ${contact.displayName}\n${contact.vcard}`;
+        } else if (messageTypeKey === 'reactionMessage') {
+          finalMessageType = 'reaction';
+          const reaction = actualMessage[messageTypeKey];
+          textContent = `[Reaksi: ${reaction.text}]`;
+        } else if (messageTypeKey === 'pollCreationMessage' || messageTypeKey === 'pollCreationMessageV3') {
+          finalMessageType = 'poll';
+          const poll = actualMessage[messageTypeKey];
+          textContent = `📊 [Polling]: ${poll.name}\n${poll.options?.map(o => '- ' + o.optionName).join('\n') || ''}`;
+        } else if (!textContent && messageTypeKey) {
+           textContent = `[Tipe pesan tidak didukung: ${messageTypeKey}]`;
+           finalMessageType = 'unknown';
+           
+           // Dump for debugging per GEMINI.md
+           const fs = require('fs');
+           const path = require('path');
+           const dumpDir = path.join(process.cwd(), 'message_dumps');
+           if (!fs.existsSync(dumpDir)) fs.mkdirSync(dumpDir, { recursive: true });
+           const dumpPath = path.join(dumpDir, `${Date.now()}_${msg.key.id}.json`);
+           fs.writeFileSync(dumpPath, JSON.stringify(msg, null, 2));
+           console.log(`[Inbox ${inboxId}] Tipe pesan tidak didukung (${messageTypeKey}), raw dump disimpan di ${dumpPath}`);
         }
 
         const payload = {
