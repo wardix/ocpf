@@ -132,12 +132,7 @@ const Contacts = ({ token, onStartChat }: Props) => {
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
-  );
-};
-
-export default Contacts;justify-between items-center">
+        <div className="p-4 border-t border-base-200 bg-base-100 flex justify-between items-center">
           <span className="text-sm opacity-70">Halaman {page} dari {totalPages || 1}</span>
           <div className="btn-group">
             <button 
