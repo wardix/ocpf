@@ -110,12 +110,14 @@ Menyimpan file media yang diunggah.
 *   `message_id` (Foreign Key -> messages.id)
 *   `file_type` (String) - Mime type (image/png, application/pdf).
 *   `file_url` (String) - URL lokasi file (S3, lokal).
+*   `original_filename` (String, Nullable) - Nama file asli sebelum disanitasi.
 
 ### `conversation_events` (Audit Trail)
 Tabel untuk mencatat log aktivitas atau perubahan status pada percakapan.
 *   `id` (Primary Key)
 *   `account_id` (Foreign Key -> accounts.id)
 *   `conversation_id` (Foreign Key -> conversations.id)
+*   `ticket_id` (Foreign Key -> tickets.id, Nullable)
 *   `actor_type` (String) - Siapa yang melakukan aksi ('User', 'Contact', 'System').
 *   `actor_id` (BIGINT, Nullable) - ID dari aktor yang melakukan aksi.
 *   `event_type` (String) - Jenis kejadian (misal: 'status_changed').

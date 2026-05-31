@@ -1,5 +1,5 @@
 -- =========================================================================
--- Database Schema for Omnichannel Platform (PostgreSQL)
+-- Database Schema for Omnichannel Platform (PostgreSQL) - V3 Architecture
 -- =========================================================================
 
 -- -------------------------------------------------------------------------
@@ -81,24 +81,38 @@ CREATE TABLE contact_inboxes (
 );
 
 -- -------------------------------------------------------------------------
--- 4. Conversations & Messages
+-- 4. Conversations, Tickets, & Messages
 -- -------------------------------------------------------------------------
+-- Wadah abadi untuk semua histori interaksi antara Pelanggan dan Inbox tertentu
 CREATE TABLE conversations (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     inbox_id BIGINT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
     contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-    assignee_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    status conversation_status DEFAULT 'open',
-    snoozed_until TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Siklus hidup spesifik dari sebuah issue / percakapan aktif
+CREATE TABLE tickets (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    assignee_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    status conversation_status DEFAULT 'open',
+    is_bot_active BOOLEAN DEFAULT TRUE,
+    bot_state VARCHAR(255) DEFAULT 'start',
+    snoozed_until TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE messages (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    ticket_id BIGINT REFERENCES tickets(id) ON DELETE CASCADE,
     sender_type sender_type NOT NULL,
     sender_id BIGINT, -- ID of the Contact, User, or NULL if System
     content TEXT,
@@ -112,13 +126,15 @@ CREATE TABLE attachments (
     id BIGSERIAL PRIMARY KEY,
     message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
     file_type VARCHAR(255) NOT NULL,
-    file_url VARCHAR(1024) NOT NULL
+    file_url VARCHAR(1024) NOT NULL,
+    original_filename VARCHAR(255)
 );
 
 CREATE TABLE conversation_events (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    ticket_id BIGINT REFERENCES tickets(id) ON DELETE CASCADE,
     actor_type VARCHAR(50), 
     actor_id BIGINT,        
     event_type VARCHAR(50), 
@@ -127,7 +143,19 @@ CREATE TABLE conversation_events (
 );
 
 -- -------------------------------------------------------------------------
--- 5. Tags / Labels
+-- 5. Canned Responses
+-- -------------------------------------------------------------------------
+CREATE TABLE canned_responses (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    short_code VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (account_id, short_code)
+);
+
+-- -------------------------------------------------------------------------
+-- 6. Tags / Labels
 -- -------------------------------------------------------------------------
 CREATE TABLE labels (
     id BIGSERIAL PRIMARY KEY,
@@ -144,14 +172,19 @@ CREATE TABLE conversation_labels (
 );
 
 -- -------------------------------------------------------------------------
--- 6. Indexes for Performance (Important for high concurrency)
+-- 7. Indexes for Performance (Important for high concurrency)
 -- -------------------------------------------------------------------------
 CREATE INDEX idx_conversations_account_id ON conversations(account_id);
 CREATE INDEX idx_conversations_inbox_id ON conversations(inbox_id);
 CREATE INDEX idx_conversations_contact_id ON conversations(contact_id);
-CREATE INDEX idx_conversations_status ON conversations(status);
 
--- Messages will grow very large, indexing is crucial here
+CREATE INDEX idx_tickets_conversation_id ON tickets(conversation_id);
+CREATE INDEX idx_tickets_status ON tickets(status);
+CREATE INDEX idx_tickets_assignee_id ON tickets(assignee_id);
+
+CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX idx_messages_ticket_id ON messages(ticket_id);
+CREATE INDEX idx_messages_created_at ON messages(created_at);
 CREATE INDEX idx_messages_conversation_id_created_at ON messages(conversation_id, created_at);
 CREATE INDEX idx_messages_account_id_created_at ON messages(account_id, created_at);
 

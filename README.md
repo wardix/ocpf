@@ -41,13 +41,32 @@ Proyek ini menggunakan **Bun Workspaces** untuk mengelola beberapa layanan dalam
 Pastikan **PostgreSQL** dan **Valkey/Redis** sudah berjalan di mesin Anda.
 
 ### 2. Inisialisasi Database
-Jalankan script SQL yang ada di file `init.sql` (di luar folder omnichannel-platform) ke dalam database PostgreSQL Anda.
+Jalankan script SQL yang ada di file `init.sql` (di dalam root proyek omnichannel-platform) ke dalam database PostgreSQL Anda. File `init.sql` ini adalah representasi terlengkap (*Single Source of Truth*) dari skema arsitektur V3 saat ini.
+
+```bash
+# Contoh menggunakan psql CLI:
+psql -U username -d nama_database -f init.sql
+```
+
 Setelah tabel dibuat, masukkan **Seed Data** awal agar sistem bisa bekerja:
 ```sql
 INSERT INTO accounts (id, name) VALUES (1, 'Akun Utama');
 INSERT INTO channels (id, account_id, name, provider_type) VALUES (1, 1, 'WhatsApp Utama', 'whatsapp');
 INSERT INTO inboxes (id, account_id, channel_id, name) VALUES (1, 1, 1, 'Inbox WA CS');
 ```
+
+*Catatan: Skrip migrasi (`apps/main-api/migrate-*.ts`) yang sebelumnya digunakan untuk tambal sulam skema (seperti memisahkan tabel `tickets` dan `conversations`) tidak lagi wajib dijalankan karena seluruh pembaruan telah digabungkan secara utuh ke dalam `init.sql`.*
+
+### 2.1. Evaluasi Framework Migrasi Database (Roadmap)
+Mengingat proyek ini telah bertransisi penuh ke arsitektur V3 (multi-tenancy dan pemisahan tiket), metode migrasi "tambal sulam" menggunakan *raw TS script* (`migrate-tickets.ts`, dll) sudah mulai berisiko menimbulkan *Schema Drift* (kondisi di mana struktur basis data di lapangan berbeda dengan dokumen rancangan).
+
+**Rekomendasi Framework:**
+Untuk pengembangan tahap selanjutnya (V4), sangat disarankan untuk mengadopsi _Migration Framework_ profesional. Mengingat `main-api` tidak menggunakan ORM (seperti Prisma atau TypeORM) demi efisiensi memori, berikut adalah kandidat utamanya:
+1.  **`node-pg-migrate`**: Sangat direkomendasikan karena murni dirancang untuk PostgreSQL, sangat ringan, mendukung penulisan migrasi menggunakan Raw SQL (`pgm.sql()`), dan tidak memaksakan *query builder* berat ke dalam kode.
+2.  **`knex.js`**: Populer, tetapi membawa beban pustaka *query builder* yang tidak kita gunakan di aplikasi utama (karena kita menggunakan `postgres.js`).
+3.  **`golang-migrate`**: Opsi solid dan independen dari bahasa jika DevOps ingin memisahkan proses *deployment* migrasi dari siklus kode *Node.js/Bun*.
+
+Saat ini, `init.sql` dapat digunakan untuk inisialisasi awal ( *fresh install* ), namun penerapan `node-pg-migrate` harus dijadikan prioritas teknis di masa mendatang.
 
 ### 3. Konfigurasi Environment Variables
 Pastikan file `.env` sudah dikonfigurasi dengan benar di masing-masing folder:
