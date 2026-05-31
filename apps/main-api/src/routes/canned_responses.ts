@@ -10,13 +10,34 @@ cannedResponsesRoutes.use('/*', jwtMiddleware);
 
 cannedResponsesRoutes.get('/', async (c) => {
   try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    const accountId = jwtPayload.account_id || 1;
+
+    // Pagination params
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
+    const offset = (page - 1) * perPage;
+
+    const [totalRow] = await sql`SELECT COUNT(*) as total FROM canned_responses WHERE account_id = ${accountId}`;
+    const total = parseInt(totalRow?.total || '0', 10);
+
     const responses = await sql`
       SELECT id, short_code, content 
       FROM canned_responses 
-      WHERE account_id = 1 
+      WHERE account_id = ${accountId} 
       ORDER BY short_code ASC
+      LIMIT ${perPage} OFFSET ${offset}
     `;
-    return c.json(responses);
+
+    return c.json({
+      data: responses,
+      meta: {
+        total,
+        page,
+        per_page: perPage,
+        has_more: offset + responses.length < total
+      }
+    });
   } catch (error) {
     console.error('Error fetch canned responses:', error);
     return c.json({ error: 'Gagal mengambil balasan cepat' }, 500);

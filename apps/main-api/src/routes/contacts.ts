@@ -11,8 +11,20 @@ contactsRoutes.use('/*', jwtMiddleware);
 contactsRoutes.get('/', async (c) => {
   try {
     const search = c.req.query('q') || '';
-    const jwtPayload = c.get('jwtPayload');
-    
+    const jwtPayload = c.get('jwtPayload') as any;
+    const accountId = jwtPayload.account_id || 1;
+
+    // Pagination params
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
+    const offset = (page - 1) * perPage;
+
+    const [totalRow] = await sql`
+      SELECT COUNT(*) as total FROM contacts
+      WHERE account_id = ${accountId} AND (name ILIKE ${'%' + search + '%'} OR phone_number ILIKE ${'%' + search + '%'})
+    `;
+    const total = parseInt(totalRow?.total || '0', 10);
+
     const contacts = await sql`
       SELECT 
         c.id, 
@@ -24,13 +36,21 @@ contactsRoutes.get('/', async (c) => {
       FROM contacts c
       LEFT JOIN conversations conv ON c.id = conv.contact_id
       LEFT JOIN tickets t ON conv.id = t.conversation_id
-      WHERE c.account_id = ${jwtPayload.account_id || 1} AND (c.name ILIKE ${'%' + search + '%'} OR c.phone_number ILIKE ${'%' + search + '%'})
+      WHERE c.account_id = ${accountId} AND (c.name ILIKE ${'%' + search + '%'} OR c.phone_number ILIKE ${'%' + search + '%'})
       GROUP BY c.id
       ORDER BY c.created_at DESC
-      LIMIT 100
+      LIMIT ${perPage} OFFSET ${offset}
     `;
     
-    return c.json(contacts);
+    return c.json({
+      data: contacts,
+      meta: {
+        total,
+        page,
+        per_page: perPage,
+        has_more: offset + contacts.length < total
+      }
+    });
   } catch (error) {
     console.error('Error fetch contacts:', error);
     return c.json({ error: 'Gagal mengambil daftar kontak' }, 500);

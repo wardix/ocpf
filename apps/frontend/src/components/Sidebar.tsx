@@ -23,29 +23,50 @@ interface Props {
 const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'assigned' | 'all'>('unassigned');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const fetchConversations = async () => {
+  const fetchConversations = async (pageNum = 1, append = false) => {
     if (!token) return;
+    if (pageNum > 1) setIsLoadingMore(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}`, {
+      const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}&page=${pageNum}&per_page=25`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
-        const data = await response.json();
-        setConversations(data);
+        const result = await response.json();
+        setHasMore(result.meta.has_more);
+        if (append) {
+          setConversations(prev => {
+            const newConvs = result.data.filter((newC: any) => !prev.some(oldC => oldC.id === newC.id));
+            return [...prev, ...newConvs];
+          });
+        } else {
+          setConversations(result.data);
+        }
       }
     } catch (err) {
       console.error('Gagal memuat sidebar:', err);
+    } finally {
+      if (pageNum > 1) setIsLoadingMore(false);
     }
   };
 
   useEffect(() => {
-    fetchConversations();
-    // Refresh sidebar setiap 10 detik agar tetap up to date
-    const interval = setInterval(fetchConversations, 10000);
+    setPage(1);
+    fetchConversations(1, false);
+    // Refresh sidebar setiap 10 detik agar tetap up to date (hanya page 1)
+    const interval = setInterval(() => fetchConversations(1, false), 10000);
     return () => clearInterval(interval);
   }, [refreshKey, activeTab]);
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchConversations(nextPage, true);
+  };
 
   return (
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
@@ -142,6 +163,18 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, token }: Props) => {
             </div>
           </div>
         ))}
+
+        {hasMore && (
+          <div className="p-4 flex justify-center">
+            <button 
+              className={`btn btn-sm btn-outline btn-primary w-full ${isLoadingMore ? 'loading' : ''}`}
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? 'Memuat...' : 'Muat Lebih Banyak'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

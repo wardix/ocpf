@@ -12,8 +12,33 @@ conversationsRoutes.use('/*', jwtMiddleware);
 conversationsRoutes.get('/', async (c) => {
   try {
     const activeTab = c.req.query('tab') || 'unassigned';
-    const jwtPayload = c.get('jwtPayload');
+    const jwtPayload = c.get('jwtPayload') as any;
     const currentAgentId = jwtPayload?.id;
+    const accountId = jwtPayload?.account_id || 1;
+
+    // Pagination params
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
+    const offset = (page - 1) * perPage;
+
+    // Menghitung total data untuk tab ini
+    const [totalRow] = await sql`
+      WITH FilteredConvs AS (
+        SELECT 
+          c.id, t.status, t.assignee_id
+        FROM conversations c
+        LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
+        WHERE c.account_id = ${accountId}
+      )
+      SELECT COUNT(*) as total FROM FilteredConvs
+      WHERE 
+          (${activeTab === 'unassigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NULL) OR
+          (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
+          (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
+          (${activeTab === 'all'}::boolean = true)
+    `;
+
+    const total = parseInt(totalRow?.total || '0', 10);
 
     const convs = await sql`
       WITH ActiveConversations AS (
@@ -34,7 +59,7 @@ conversationsRoutes.get('/', async (c) => {
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
-        WHERE c.account_id = 1 
+        WHERE c.account_id = ${accountId} 
       )
       SELECT * FROM ActiveConversations
       WHERE 
@@ -43,8 +68,18 @@ conversationsRoutes.get('/', async (c) => {
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
           (${activeTab === 'all'}::boolean = true)
       ORDER BY updated_at DESC
+      LIMIT ${perPage} OFFSET ${offset}
     `;
-    return c.json(convs);
+
+    return c.json({
+      data: convs,
+      meta: {
+        total,
+        page,
+        per_page: perPage,
+        has_more: offset + convs.length < total
+      }
+    });
   } catch (error) {
     console.error(error);
     return c.json({ error: 'Gagal mengambil daftar percakapan' }, 500);

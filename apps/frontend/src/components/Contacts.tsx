@@ -11,12 +11,15 @@ interface Contact {
 
 interface Props {
   token: string | null;
+  onStartChat: (phone: string) => void;
 }
 
-const Contacts = ({ token }: Props) => {
+const Contacts = ({ token, onStartChat }: Props) => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -24,12 +27,13 @@ const Contacts = ({ token }: Props) => {
       setIsLoading(true);
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${apiUrl}/api/contacts?q=${encodeURIComponent(search)}`, {
+        const response = await fetch(`${apiUrl}/api/contacts?q=${encodeURIComponent(search)}&page=${page}&per_page=25`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
-          const data = await response.json();
-          setContacts(data);
+          const result = await response.json();
+          setContacts(result.data);
+          setTotalPages(Math.ceil(result.meta.total / result.meta.per_page));
         }
       } catch (err) {
         console.error('Gagal mengambil kontak:', err);
@@ -44,7 +48,12 @@ const Contacts = ({ token }: Props) => {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [token, search]);
+  }, [token, search, page]);
+
+  // Reset page ke 1 jika melakukan pencarian
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   return (
     <div className="flex-1 flex flex-col bg-base-200/50 h-full p-8 overflow-y-auto">
@@ -122,6 +131,30 @@ const Contacts = ({ token }: Props) => {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Contacts;justify-between items-center">
+          <span className="text-sm opacity-70">Halaman {page} dari {totalPages || 1}</span>
+          <div className="btn-group">
+            <button 
+              className="btn btn-sm btn-outline" 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              « Prev
+            </button>
+            <button 
+              className="btn btn-sm btn-outline" 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next »
+            </button>
+          </div>
         </div>
       </div>
     </div>

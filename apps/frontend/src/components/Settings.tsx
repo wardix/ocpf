@@ -16,17 +16,20 @@ const Settings = ({ token }: Props) => {
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState<number | null>(null);
   const [formData, setFormData] = useState({ short_code: '', content: '' });
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const fetchCanned = async () => {
     if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/canned-responses`, {
+      const response = await fetch(`${apiUrl}/api/canned-responses?page=${page}&per_page=25`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
-        const data = await response.json();
-        setCannedResponses(data);
+        const result = await response.json();
+        setCannedResponses(result.data);
+        setTotalPages(Math.ceil(result.meta.total / result.meta.per_page));
       }
     } catch (err) {
       console.error('Gagal mengambil canned responses:', err);
@@ -35,7 +38,7 @@ const Settings = ({ token }: Props) => {
 
   useEffect(() => {
     fetchCanned();
-  }, [token]);
+  }, [token, page]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,6 +180,26 @@ const Settings = ({ token }: Props) => {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="flex justify-between items-center mt-4">
+              <span className="text-sm opacity-70">Halaman {page} dari {totalPages || 1}</span>
+              <div className="btn-group">
+                <button 
+                  className="btn btn-sm btn-outline" 
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  « Prev
+                </button>
+                <button 
+                  className="btn btn-sm btn-outline" 
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  Next »
+                </button>
+              </div>
             </div>
 
           </div>
