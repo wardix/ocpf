@@ -41,6 +41,8 @@ const activeSockets = new Map();
 // Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
 const sentCache = new Set();
 
+let isShuttingDown = false;
+
 async function startBaileysForInbox(inboxId, sessionDir) {
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -241,10 +243,10 @@ async function listenForOutgoingMessages() {
   const queues = INBOXES.map(i => `queue:outgoing_messages:inbox_${i.id}`);
   console.log(`\nMenunggu perintah kirim pesan di antrean: ${queues.join(', ')}`);
 
-  while (true) {
+  while (!isShuttingDown) {
     try {
-      // brpop menerima array queues. 0 berarti block selamanya sampai ada pesan.
-      const result = await redisSub.brpop(...queues, 0);
+      // brpop menerima array queues. 5 berarti block selama 5 detik agar loop bisa dihentikan gracefully
+      const result = await redisSub.brpop(...queues, 5);
       
       if (result) {
         const [queueName, messageDataString] = result;
@@ -326,3 +328,34 @@ for (const inbox of INBOXES) {
 
 // Mulai satu central listener untuk semua queue
 listenForOutgoingMessages();
+
+// =========================================================================
+// GRACEFUL SHUTDOWN HANDLERS
+// =========================================================================
+async function handleShutdown(signal) {
+  if (isShuttingDown) return;
+  console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menutup proses secara anggun...`);
+  isShuttingDown = true;
+
+  try {
+    // Putuskan koneksi WhatsApp (Baileys)
+    for (const [inboxId, sock] of activeSockets.entries()) {
+      console.log(`[SHUTDOWN] Menutup koneksi WA untuk Inbox ${inboxId}...`);
+      sock.ws.close();
+    }
+    
+    // Putuskan koneksi Redis
+    console.log('[SHUTDOWN] Menutup koneksi Redis...');
+    await redis.quit();
+    await redisSub.quit();
+    
+    console.log('[SHUTDOWN] Semua layanan terputus. Goodbye! 👋');
+    process.exit(0);
+  } catch (err) {
+    console.error('[SHUTDOWN] Terjadi kesalahan saat menutup layanan:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
