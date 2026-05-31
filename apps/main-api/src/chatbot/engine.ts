@@ -17,6 +17,7 @@ export function loadChatbotRules() {
 }
 
 export async function evaluateChatbot(
+  tx: any,
   ticket: any,
   content: string,
   sourceJid: string,

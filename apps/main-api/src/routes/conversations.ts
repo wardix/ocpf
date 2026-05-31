@@ -311,34 +311,40 @@ conversationsRoutes.patch('/:id/assign', async (c) => {
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
 
-    const [ticket] = await sql`
-      UPDATE tickets 
-      SET assignee_id = ${agentId}, updated_at = NOW() 
-      WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
-      RETURNING *;
-    `;
+    const ticket = await sql.begin(async (tx) => {
+      const [updatedTicket] = await tx`
+        UPDATE tickets 
+        SET assignee_id = ${agentId}, updated_at = NOW() 
+        WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
+        RETURNING *;
+      `;
 
-    if (!ticket) {
-      const [existing] = await sql`SELECT assignee_id FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved'`;
-      if (!existing) return c.json({ error: 'Tiket tidak ditemukan' }, 404);
-      if (existing.assignee_id !== null) return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
-    }
+      if (!updatedTicket) {
+        const [existing] = await tx`SELECT assignee_id FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved'`;
+        if (!existing) throw new Error('NOT_FOUND');
+        if (existing.assignee_id !== null) throw new Error('ALREADY_ASSIGNED');
+      }
 
-    await sql`
-      INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
-      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
-    `;
-    
-    const [sysMsg] = await sql`
-      INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
-      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket #TKT-${String(ticket.id).padStart(4, '0')} diambil alih oleh ${agentName}`}, 'template', 'sent')
-      RETURNING *;
-    `;
-    await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+      await tx`
+        INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
+      `;
+      
+      const [sysMsg] = await tx`
+        INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'System', NULL, ${`Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} diambil alih oleh ${agentName}`}, 'template', 'sent')
+        RETURNING *;
+      `;
+      await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+
+      return updatedTicket;
+    });
 
     return c.json({ success: true, data: ticket });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error assign ticket:', error);
+    if (error.message === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+    if (error.message === 'ALREADY_ASSIGNED') return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     return c.json({ success: false, error: 'Gagal mengambil tiket' }, 500);
   }
 });
@@ -352,32 +358,37 @@ conversationsRoutes.patch('/:id/unassign', async (c) => {
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
 
-    const [ticket] = await sql`
-      UPDATE tickets 
-      SET assignee_id = NULL, updated_at = NOW() 
-      WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id = ${agentId}
-      RETURNING *;
-    `;
+    const ticket = await sql.begin(async (tx) => {
+      const [updatedTicket] = await tx`
+        UPDATE tickets 
+        SET assignee_id = NULL, updated_at = NOW() 
+        WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id = ${agentId}
+        RETURNING *;
+      `;
 
-    if (!ticket) {
-      return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
-    }
+      if (!updatedTicket) {
+        throw new Error('NOT_FOUND_OR_NOT_OWNED');
+      }
 
-    await sql`
-      INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
-      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'User', ${agentId}, 'unassigned', ${sql.json({ old_assignee_id: agentId })});
-    `;
-    
-    const [sysMsg] = await sql`
-      INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
-      VALUES (${ticket.account_id}, ${ticket.conversation_id}, ${ticket.id}, 'System', NULL, ${`Tiket #TKT-${String(ticket.id).padStart(4, '0')} dilepas oleh ${agentName}`}, 'template', 'sent')
-      RETURNING *;
-    `;
-    await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+      await tx`
+        INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${agentId}, 'unassigned', ${sql.json({ old_assignee_id: agentId })});
+      `;
+      
+      const [sysMsg] = await tx`
+        INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'System', NULL, ${`Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} dilepas oleh ${agentName}`}, 'template', 'sent')
+        RETURNING *;
+      `;
+      await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+
+      return updatedTicket;
+    });
 
     return c.json({ success: true, data: ticket });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error unassign ticket:', error);
+    if (error.message === 'NOT_FOUND_OR_NOT_OWNED') return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
     return c.json({ success: false, error: 'Gagal melepas tiket' }, 500);
   }
 });

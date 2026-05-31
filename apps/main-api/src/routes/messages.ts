@@ -54,50 +54,55 @@ messagesRoutes.post('/send', zValidator('json', sendMessageSchema, (result, c) =
     const inboxId = conv.inbox_id;
 
     const tDbStart = Date.now();
-    const [msg] = await sql`
-      INSERT INTO messages (
-        account_id, conversation_id, ticket_id, sender_type, sender_id, 
-        content, message_type, status, is_private
-      ) VALUES (
-        ${accountId}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
-        ${content || ''}, 'outgoing', 'sent', ${is_private || false}
-      )
-      RETURNING *;
-    `;
-    
     let attachmentData = null;
-    if (media) {
-      try {
-        const { mimetype, data_base64, filename } = media;
-        
-        const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'audio/ogg', 'audio/mpeg', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!allowedMimeTypes.includes(mimetype) && !mimetype.startsWith('audio/')) {
-          throw new Error(`MIME type tidak diizinkan: ${mimetype}`);
-        }
 
-        const buffer = Buffer.from(data_base64, 'base64');
-        if (buffer.length > 25 * 1024 * 1024) {
-          throw new Error('Ukuran file melebihi batas 25MB');
-        }
+    const msg = await sql.begin(async (tx) => {
+      const [insertedMsg] = await tx`
+        INSERT INTO messages (
+          account_id, conversation_id, ticket_id, sender_type, sender_id, 
+          content, message_type, status, is_private
+        ) VALUES (
+          ${accountId}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
+          ${content || ''}, 'outgoing', 'sent', ${is_private || false}
+        )
+        RETURNING *;
+      `;
+      
+      if (media) {
+        try {
+          const { mimetype, data_base64, filename } = media;
+          
+          const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'audio/ogg', 'audio/mpeg', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+          if (!allowedMimeTypes.includes(mimetype) && !mimetype.startsWith('audio/')) {
+            throw new Error(`MIME type tidak diizinkan: ${mimetype}`);
+          }
 
-        const originalName = filename ? filename.replace(/^.*[\\\\\\/]/, '').replace(/[^a-zA-Z0-9.\\-_]/g, '_') : 'unnamed_file';
-        const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
-        const safeFilename = `${crypto.randomUUID()}.${ext}`;
-        
-        const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
-        await Bun.write(uploadPath, buffer);
-        
-        const fileUrl = `/uploads/${safeFilename}`;
-        const [attachment] = await sql`
-          INSERT INTO attachments (message_id, file_type, file_url, original_filename)
-          VALUES (${msg.id}, ${mimetype}, ${fileUrl}, ${originalName})
-          RETURNING *;
-        `;
-        attachmentData = attachment;
-      } catch (err) {
-        console.error('Gagal memproses lampiran media yang dikirim:', err);
+          const buffer = Buffer.from(data_base64, 'base64');
+          if (buffer.length > 25 * 1024 * 1024) {
+            throw new Error('Ukuran file melebihi batas 25MB');
+          }
+
+          const originalName = filename ? filename.replace(/^.*[\\\\\\/]/, '').replace(/[^a-zA-Z0-9.\\-_]/g, '_') : 'unnamed_file';
+          const ext = mimetype.split('/')[1]?.split(';')[0] || 'bin';
+          const safeFilename = `${crypto.randomUUID()}.${ext}`;
+          
+          const uploadPath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
+          await Bun.write(uploadPath, buffer);
+          
+          const fileUrl = `/uploads/${safeFilename}`;
+          const [attachment] = await tx`
+            INSERT INTO attachments (message_id, file_type, file_url, original_filename)
+            VALUES (${insertedMsg.id}, ${mimetype}, ${fileUrl}, ${originalName})
+            RETURNING *;
+          `;
+          attachmentData = attachment;
+        } catch (err: any) {
+          console.error('Gagal memproses lampiran media yang dikirim:', err);
+          throw new Error('ATTACHMENT_FAILED: ' + err.message); // Akan mentrigger rollback tx
+        }
       }
-    }
+      return insertedMsg;
+    });
     
     const tDbEnd = Date.now();
     console.log(`[DEBUG-LATENCY] (${tDbEnd}) Simpan DB PostgreSQL selesai (Memakan waktu: ${tDbEnd - tDbStart}ms)`);

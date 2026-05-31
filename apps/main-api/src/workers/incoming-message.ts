@@ -38,41 +38,42 @@ export async function startWorker() {
 
 async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) {
   try {
-    console.log(`\\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
-    console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
+    return await db.begin(async (tx) => {
+      console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
+      console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
-    const INBOX_ID = data.inbox_id || 1; 
-    
-    const [inbox] = await db`SELECT account_id FROM inboxes WHERE id = ${INBOX_ID} LIMIT 1`;
-    if (!inbox) {
-      console.error(`Inbox ID ${INBOX_ID} tidak ditemukan di database.`);
-      return null;
-    }
-    const ACCOUNT_ID = inbox.account_id;
+      const INBOX_ID = data.inbox_id || 1; 
+
+      const [inbox] = await tx`SELECT account_id FROM inboxes WHERE id = ${INBOX_ID} LIMIT 1`;
+      if (!inbox) {
+        console.error(`Inbox ID ${INBOX_ID} tidak ditemukan di database.`);
+        return null;
+      }
+      const ACCOUNT_ID = inbox.account_id;
 
     const sourceJid = data.source_jid || 'unknown';
     const displayName = data.push_name || 'Unknown User';
     const timestamp = data.timestamp || Math.floor(Date.now() / 1000);
     const content = data.content || '';
 
-    let [contact] = await db`
+    let [contact] = await tx`
       SELECT id FROM contacts WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} LIMIT 1
     `;
     
     if (!contact) {
-      [contact] = await db`
+      [contact] = await tx`
         INSERT INTO contacts (account_id, name, phone_number)
         VALUES (${ACCOUNT_ID}, ${displayName}, ${sourceJid})
         RETURNING id;
       `;
     } else {
-      await db`
+      await tx`
         UPDATE contacts SET name = ${displayName}, updated_at = NOW() 
         WHERE id = ${contact.id} AND name != ${displayName}
       `;
     }
 
-    let [conversation] = await db`
+    let [conversation] = await tx`
       SELECT id FROM conversations
       WHERE account_id = ${ACCOUNT_ID} 
         AND inbox_id = ${INBOX_ID} 
@@ -81,14 +82,14 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     `;
 
     if (!conversation) {
-      [conversation] = await db`
+      [conversation] = await tx`
         INSERT INTO conversations (account_id, inbox_id, contact_id)
         VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
         RETURNING id;
       `;
     }
 
-    let [ticket] = await db`
+    let [ticket] = await tx`
       SELECT id, status, is_bot_active, bot_state FROM tickets
       WHERE account_id = ${ACCOUNT_ID} AND conversation_id = ${conversation.id}
       ORDER BY updated_at DESC
@@ -103,7 +104,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         const targetState = chatbotRules.global_commands[commandKey];
         
         if (ticket && ticket.status !== 'resolved') {
-          [ticket] = await db`
+          [ticket] = await tx`
             UPDATE tickets 
             SET is_bot_active = true, bot_state = ${targetState}, updated_at = NOW() 
             WHERE id = ${ticket.id}
@@ -114,7 +115,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     if (!data.is_host_echo && (!ticket || ticket.status === 'resolved')) {
-      [ticket] = await db`
+      [ticket] = await tx`
         INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
         VALUES (${ACCOUNT_ID}, ${conversation.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
         RETURNING id, status, is_bot_active, bot_state;
@@ -122,10 +123,10 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     } else if (ticket && ticket.status !== 'resolved') {
       if (!triggeredGlobalCommand) {
         if (ticket.status === 'snoozed') {
-           await db`UPDATE tickets SET status = 'open', updated_at = NOW() WHERE id = ${ticket.id}`;
+           await tx`UPDATE tickets SET status = 'open', updated_at = NOW() WHERE id = ${ticket.id}`;
            ticket.status = 'open';
         } else {
-           await db`UPDATE tickets SET updated_at = NOW() WHERE id = ${ticket.id}`;
+           await tx`UPDATE tickets SET updated_at = NOW() WHERE id = ${ticket.id}`;
         }
       }
     }
@@ -134,7 +135,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       ? `[${data.participant_name || 'Member'}]: ${content}` 
       : content;
 
-    const [msg] = await db`
+    const [msg] = await tx`
       INSERT INTO messages (
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, created_at
@@ -177,7 +178,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         
         const fileUrl = `/uploads/${safeFilename}`;
         
-        const [attachment] = await db`
+        const [attachment] = await tx`
           INSERT INTO attachments (message_id, file_type, file_url, original_filename)
           VALUES (${msg.id}, ${mimetype}, ${fileUrl}, ${originalName})
           RETURNING *;
@@ -189,7 +190,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     if (!data.is_host_echo && ticket.is_bot_active) {
-      await evaluateChatbot(ticket, content, sourceJid, displayName, triggeredGlobalCommand, ACCOUNT_ID, conversation.id, INBOX_ID);
+      await evaluateChatbot(tx, ticket, content, sourceJid, displayName, triggeredGlobalCommand, ACCOUNT_ID, conversation.id, INBOX_ID);
     }
 
     return { 
@@ -197,6 +198,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       contact_name: displayName,
       attachments: attachmentData ? [attachmentData] : [] 
     };
+    });
   } catch (error) {
     console.error("Gagal menyimpan ke database:", error);
     return null;
