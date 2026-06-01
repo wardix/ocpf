@@ -33,8 +33,8 @@ export const websocketHandlers = {
     activeWebSockets.add(ws);
   },
   message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
-    if (message === 'ping') {
-      ws.send('pong');
+    if (message === 'pong' || message === 'ping') {
+      if (message === 'ping') ws.send('pong');
       ws.data.isAlive = true;
     }
   },

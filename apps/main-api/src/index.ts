@@ -75,7 +75,7 @@ const server = Bun.serve({
       try {
         const { verify } = await import('hono/jwt');
         const { JWT_SECRET } = await import('./middleware/auth');
-        const payload = await verify(token, JWT_SECRET) as any;
+        const payload = await verify(token, JWT_SECRET, 'HS256') as any;
         
         const upgradeSuccess = server.upgrade(req, {
           data: {
@@ -88,8 +88,9 @@ const server = Bun.serve({
         
         if (upgradeSuccess) return;
         return new Response('Upgrade failed', { status: 500 });
-      } catch (e) {
-        return new Response('Unauthorized: Invalid token', { status: 401 });
+      } catch (e: any) {
+        console.error('WS Upgrade Token Error:', e);
+        return new Response('Unauthorized: Invalid token ' + e.message, { status: 401 });
       }
     }
     return app.fetch(req);
