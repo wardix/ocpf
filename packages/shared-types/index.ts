@@ -1,6 +1,18 @@
 // packages/shared-types/index.ts
 
-export type MessageType = 'text' | 'image' | 'document';
+export type MessageType = 
+  | 'text' 
+  | 'image' 
+  | 'document' 
+  | 'audio' 
+  | 'video' 
+  | 'sticker' 
+  | 'location' 
+  | 'contact' 
+  | 'reaction' 
+  | 'poll' 
+  | 'unknown';
+
 export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed';
 
 // Payload dari WA Adapter -> Main API (Incoming Message)
@@ -15,8 +27,8 @@ export interface IncomingMessagePayload {
     message_type: MessageType;
     wa_message_id: string;
     timestamp: number;
-    participant_id?: string;
-    participant_name?: string;
+    participant_id?: string | null;
+    participant_name?: string | null;
     is_host_echo?: boolean; // True jika pesan dikirim manual dari HP Host
     media?: {
       mimetype: string;
@@ -44,8 +56,9 @@ export interface SendMessagePayload {
     inbox_id: number;
     internal_message_id: number;
     target_id: string;
-    content: string;
+    content?: string;
     message_type: MessageType;
+    is_private?: boolean;
     media?: {
       mimetype: string;
       data_base64: string;

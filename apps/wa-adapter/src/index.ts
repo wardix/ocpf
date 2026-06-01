@@ -12,19 +12,20 @@ import path from 'path';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs/promises';
+import type { IncomingMessagePayload, MessageStatusUpdatePayload, SendMessagePayload, MessageType, MessageStatus } from '@omnichannel/shared-types';
 
 // Jika makeWASocket adalah undefined (masalah ESM), coba ambil dari .default
-const createWASocket = typeof makeWASocket === 'function' ? makeWASocket : makeWASocket.default;
+const createWASocket = typeof makeWASocket === 'function' ? makeWASocket : (makeWASocket as any).default;
 
 // Koneksi ke Redis (untuk Queue & Pub/Sub)
 const redis = new Redis({
   host: process.env.REDIS_HOST || '127.0.0.1',
-  port: process.env.REDIS_PORT || 6379,
+  port: Number(process.env.REDIS_PORT) || 6379,
 });
 // Koneksi Redis terpisah untuk mode 'Subscriber' (mendengarkan perintah dari Main API)
 const redisSub = new Redis({
   host: process.env.REDIS_HOST || '127.0.0.1',
-  port: process.env.REDIS_PORT || 6379,
+  port: Number(process.env.REDIS_PORT) || 6379,
 });
 
 const QUEUE_INCOMING = 'queue:incoming_messages';
@@ -33,7 +34,7 @@ const QUEUE_INCOMING = 'queue:incoming_messages';
 // Format JSON: [{"id": 1, "dir": "auth_info_1"}, {"id": 2, "dir": "auth_info_2"}]
 const INBOXES = process.env.INBOXES 
   ? JSON.parse(process.env.INBOXES) 
-  : [{ id: parseInt(process.env.INBOX_ID) || 1, dir: process.env.SESSION_DIR || 'auth_info_baileys' }];
+  : [{ id: parseInt(process.env.INBOX_ID || "1") || 1, dir: process.env.SESSION_DIR || 'auth_info_baileys' }];
 
 // Simpan instance socket berdasarkan inbox_id
 const activeSockets = new Map();
@@ -43,7 +44,7 @@ const sentCache = new Set();
 
 let isShuttingDown = false;
 
-async function startBaileysForInbox(inboxId, sessionDir) {
+async function startBaileysForInbox(inboxId: number, sessionDir: string) {
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`[Inbox ${inboxId}] Menggunakan WA Version: ${version.join('.')}, isLatest: ${isLatest}`);
@@ -63,7 +64,7 @@ async function startBaileysForInbox(inboxId, sessionDir) {
   activeSockets.set(inboxId, sock);
 
   // Listener: Perubahan Koneksi
-  sock.ev.on('connection.update', (update) => {
+  sock.ev.on('connection.update', (update: any) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
@@ -94,7 +95,7 @@ async function startBaileysForInbox(inboxId, sessionDir) {
 
   // 1. DARI WA ADAPTER -> KE REDIS (Pesan Masuk)
   // =========================================================================
-  sock.ev.on('messages.upsert', async (m) => {
+  sock.ev.on('messages.upsert', async (m: any) => {
     console.log(`[Inbox ${inboxId}] Menerima batch ${m.messages.length} pesan.`);
     for (const msg of m.messages) {
       try {
@@ -195,7 +196,7 @@ async function startBaileysForInbox(inboxId, sessionDir) {
         } else if (messageTypeKey === 'pollCreationMessage' || messageTypeKey === 'pollCreationMessageV3') {
           finalMessageType = 'poll';
           const poll = actualMessage[messageTypeKey];
-          textContent = `📊 [Polling]: ${poll.name}\n${poll.options?.map(o => '- ' + o.optionName).join('\n') || ''}`;
+          textContent = `📊 [Polling]: ${poll.name}\n${poll.options?.map((o: any) => '- ' + o.optionName).join('\n') || ''}`;
         } else if (!textContent && messageTypeKey) {
            textContent = `[Tipe pesan tidak didukung: ${messageTypeKey}]`;
            finalMessageType = 'unknown';
@@ -210,7 +211,7 @@ async function startBaileysForInbox(inboxId, sessionDir) {
            console.log(`[Inbox ${inboxId}] Tipe pesan tidak didukung (${messageTypeKey}), raw dump disimpan di ${dumpPath}`);
         }
 
-        const payload = {
+        const payload: IncomingMessagePayload = {
           event: 'message.incoming',
           data: {
             inbox_id: inboxId,
@@ -218,9 +219,9 @@ async function startBaileysForInbox(inboxId, sessionDir) {
             source_jid: fullJid, 
             push_name: displayName,
             content: textContent,
-            message_type: finalMessageType,
-            wa_message_id: msg.key.id,
-            timestamp: msg.messageTimestamp,
+            message_type: finalMessageType as MessageType,
+            wa_message_id: msg.key.id!,
+            timestamp: msg.messageTimestamp as number,
             participant_id: participantId,
             participant_name: isGroup ? msg.pushName : null,
             is_host_echo: isHostEcho,
@@ -240,7 +241,7 @@ async function startBaileysForInbox(inboxId, sessionDir) {
 // 2. DARI REDIS -> KE WA ADAPTER (Mendengarkan Perintah Kirim Pesan)
 // =========================================================================
 async function listenForOutgoingMessages() {
-  const queues = INBOXES.map(i => `queue:outgoing_messages:inbox_${i.id}`);
+  const queues = INBOXES.map((i: any) => `queue:outgoing_messages:inbox_${i.id}`);
   console.log(`\nMenunggu perintah kirim pesan di antrean: ${queues.join(', ')}`);
 
   while (!isShuttingDown) {
@@ -250,8 +251,9 @@ async function listenForOutgoingMessages() {
       
       if (result) {
         const [queueName, messageDataString] = result;
-        const targetInboxId = parseInt(queueName.split('_').pop());
-        const payload = JSON.parse(messageDataString);
+        const targetInboxId = parseInt(queueName.split('_').pop() || '1');
+        const parsed = JSON.parse(messageDataString);
+        const payload = parsed as SendMessagePayload & { _queued_at?: number };
 
         if (payload.event === 'message.send') {
           const poppedAt = Date.now();
@@ -332,7 +334,7 @@ listenForOutgoingMessages();
 // =========================================================================
 // GRACEFUL SHUTDOWN HANDLERS
 // =========================================================================
-async function handleShutdown(signal) {
+async function handleShutdown(signal: string) {
   if (isShuttingDown) return;
   console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menutup proses secara anggun...`);
   isShuttingDown = true;

@@ -2,39 +2,50 @@
 
 Dokumen ini mendefinisikan struktur data JSON yang digunakan untuk komunikasi antara **Main API (Bun)** dan **WhatsApp Adapter Service (Node.js)** melalui *Redis Queue / Pub-Sub*.
 
-Semua data yang masuk ke antrean Redis harus dibungkus dalam format JSON dengan kunci utama `event` dan `data`.
+Semua data yang masuk ke antrean Redis harus dibungkus dalam format JSON dengan kunci utama `event` dan `data`. Paket npm `@omnichannel/shared-types` mengikat struktur ini secara *type-safe*.
 
 ---
 
-## 1. Dari WA Adapter (Node.js) -> ke Main API (Bun)
+## 1. Dari WA Adapter -> ke Main API (Incoming)
 
 ### Event: `message.incoming`
-Dikirim oleh Baileys saat ada pesan baru masuk dari pelanggan.
+Dikirim oleh Baileys saat ada pesan baru masuk dari pelanggan atau sinkronisasi gema host (*host echo*).
 *   **Queue Name:** `queue:incoming_messages`
 
 ```json
 {
   "event": "message.incoming",
   "data": {
-    "source_id": "6281234567890@s.whatsapp.net", // ID spesifik WhatsApp (No Pelanggan)
-    "push_name": "Budi Santoso",                 // Nama profil WA Pelanggan
-    "content": "Halo, saya mau tanya harga",     // Isi pesan teks
-    "message_type": "text",                      // Bisa berupa: 'text', 'image', 'document'
-    "wa_message_id": "3EB0XXXXXXX",              // ID unik pesan dari sistem WhatsApp
-    "timestamp": 1696123456                      // Unix timestamp dari WhatsApp
+    "inbox_id": 1,                               // Wajib: Menandakan dari inbox/channel mana pesan ini berasal
+    "source_id": "6281234567890",                // ID unik sumber
+    "source_jid": "6281234567890@s.whatsapp.net",// JID asli dari Baileys
+    "push_name": "Budi Santoso",                 // Nama pengguna/grup
+    "content": "Halo, saya mau tanya harga",
+    "message_type": "text",                      // Enum: text, image, document, audio, video, sticker, location, contact, reaction, poll, unknown
+    "wa_message_id": "3EB0XXXXXXX",
+    "timestamp": 1696123456,
+    "participant_id": null,                      // Terisi jika pesan ini dari dalam Grup WA
+    "participant_name": null,
+    "is_host_echo": false,                       // True jika dikirim secara manual dari HP admin
+    "media": {                                   // Opsional, hanya jika ada lampiran
+      "mimetype": "image/jpeg",
+      "data_base64": "/9j/4AAQSkZJRg...",
+      "filename": "foto_produk.jpg"
+    }
   }
 }
 ```
 
 ### Event: `message.status_update`
-Dikirim oleh Baileys saat status pesan yang kita kirim berubah (Misal: dari Terkirim menjadi Dibaca/Centang Biru).
-*   **Queue Name:** `queue:incoming_messages` (Bisa menggunakan antrean yang sama)
+Dikirim oleh Baileys saat status pesan berubah (misal: dikirim, dibaca).
+*   **Queue Name:** `queue:incoming_messages`
 
 ```json
 {
   "event": "message.status_update",
   "data": {
-    "wa_message_id": "3EB0XXXXXXX", // ID pesan WA yang sebelumnya dikirim
+    "inbox_id": 1,
+    "wa_message_id": "3EB0XXXXXXX",
     "source_id": "6281234567890@s.whatsapp.net",
     "status": "read"                // Enum: 'sent', 'delivered', 'read', 'failed'
   }
@@ -43,33 +54,27 @@ Dikirim oleh Baileys saat status pesan yang kita kirim berubah (Misal: dari Terk
 
 ---
 
-## 2. Dari Main API (Bun) -> ke WA Adapter (Node.js)
+## 2. Dari Main API -> ke WA Adapter (Outgoing)
 
 ### Event: `message.send`
-Dikirim oleh Main API saat Agen membalas pesan dari Dashboard.
-*   **Queue Name:** `queue:outgoing_messages`
+Dikirim oleh Main API ke antrean spesifik inbox.
+*   **Queue Name Dinamis:** `queue:outgoing_messages:inbox_{INBOX_ID}`
 
 ```json
 {
   "event": "message.send",
   "data": {
-    "internal_message_id": 10542,                // ID pesan di tabel `messages` PostgreSQL kita (berguna untuk update status nantinya)
-    "target_id": "6281234567890@s.whatsapp.net", // Nomor tujuan
+    "inbox_id": 1,
+    "internal_message_id": 10542,                // ID pesan di tabel `messages`
+    "target_id": "6281234567890@s.whatsapp.net", // JID tujuan
     "content": "Baik Pak Budi, harganya Rp100.000",
-    "message_type": "text" 
-  }
-}
-```
-
-### Event: `session.logout` (Opsional/Masa Depan)
-Perintah dari Dashboard (Admin) untuk memaksa keluar/memutus koneksi nomor WA.
-*   **Queue Name:** `queue:outgoing_messages`
-
-```json
-{
-  "event": "session.logout",
-  "data": {
-    "reason": "user_requested"
+    "message_type": "text",
+    "is_private": false,                         // Abaikan dari pengiriman jika ini sekadar private note antar agen
+    "media": {                                   // Opsional
+      "mimetype": "application/pdf",
+      "data_base64": "JVBERi0xLjQK...",
+      "filename": "invoice.pdf"
+    }
   }
 }
 ```
