@@ -12,6 +12,7 @@ import path from 'path';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs/promises';
+import http from 'http';
 import type { IncomingMessagePayload, MessageStatusUpdatePayload, SendMessagePayload, MessageType, MessageStatus } from '@omnichannel/shared-types';
 
 // Jika makeWASocket adalah undefined (masalah ESM), coba ambil dari .default
@@ -38,6 +39,7 @@ const INBOXES = process.env.INBOXES
 
 // Simpan instance socket berdasarkan inbox_id
 const activeSockets = new Map();
+const activeSocketStatuses = new Map<number, string>();
 
 // Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
 const sentCache = new Set();
@@ -62,6 +64,7 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
 
   // Simpan ke memory
   activeSockets.set(inboxId, sock);
+  activeSocketStatuses.set(inboxId, 'connecting');
 
   // Listener: Perubahan Koneksi
   sock.ev.on('connection.update', (update: any) => {
@@ -70,22 +73,26 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
     if (qr) {
       console.log(`[Inbox ${inboxId}] QR Code baru tersedia, silakan scan:`);
       qrcode.generate(qr, { small: true });
+      activeSocketStatuses.set(inboxId, 'qr_ready');
     }
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
       const errorReason = lastDisconnect?.error;
       
       console.log(`[Inbox ${inboxId}] Koneksi terputus! Status: ${statusCode}, Alasan:`, errorReason);
 
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) {
+        activeSocketStatuses.set(inboxId, 'disconnected (reconnecting)');
         console.log(`[Inbox ${inboxId}] Mencoba menyambung ulang dalam 5 detik...`);
         setTimeout(() => startBaileysForInbox(inboxId, sessionDir), 5000); 
       } else {
+        activeSocketStatuses.set(inboxId, 'logged_out');
         activeSockets.delete(inboxId);
       }
     } else if (connection === 'open') {
+      activeSocketStatuses.set(inboxId, 'connected');
       console.log(`[Inbox ${inboxId}] WhatsApp Adapter Berhasil Terhubung! ✅`);
     }
   });
@@ -361,3 +368,34 @@ async function handleShutdown(signal: string) {
 
 process.on('SIGINT', () => handleShutdown('SIGINT'));
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
+// =========================================================================
+// HEALTH CHECK SERVER
+// =========================================================================
+const HEALTH_PORT = process.env.WA_ADAPTER_PORT || 3001;
+
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    
+    const sessions = INBOXES.map((inbox: any) => ({
+      inbox_id: inbox.id,
+      wa_status: activeSocketStatuses.get(inbox.id) || 'unknown'
+    }));
+
+    const responsePayload = {
+      status: 'healthy',
+      redis: redis.status === 'ready' && redisSub.status === 'ready' ? 'connected' : 'disconnected',
+      sessions: sessions
+    };
+    
+    res.end(JSON.stringify(responsePayload));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+healthServer.listen(HEALTH_PORT, () => {
+  console.log(`[HEALTH] Liveness Probe Server berjalan di port ${HEALTH_PORT}`);
+});
