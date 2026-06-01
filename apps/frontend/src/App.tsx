@@ -43,8 +43,8 @@ function App() {
   const { token, user, login, logout } = useAuthStore();
   const { currentView, isMuted, setCurrentView, toggleMute } = useUiStore();
   const { 
-    selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder,
-    setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, clearChat
+    selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading,
+    setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat
   } = useChatStore();
   const { addToast } = useToastStore();
 
