@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
 import { jwtMiddleware } from '../middleware/auth';
+import { rateLimiter } from '../middleware/rate-limiter';
 import path from 'path';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
 
@@ -25,7 +26,14 @@ const sendMessageSchema = z.object({
   message: "Pesan teks atau media harus diisi"
 });
 
-messagesRoutes.post('/send', zValidator('json', sendMessageSchema, (result, c) => {
+// Rate limit pengiriman pesan: Maksimal 30 request per menit per user
+const sendMessageRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: (c) => `message_send:${(c.get('jwtPayload') as any)?.id || 'unknown'}`
+});
+
+messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMessageSchema, (result, c) => {
   if (!result.success) {
     return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
   }

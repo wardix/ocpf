@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { JWT_SECRET } from '../middleware/auth';
 import { sign } from 'hono/jwt';
+import { rateLimiter } from '../middleware/rate-limiter';
 
 export const authRoutes = new Hono();
 
@@ -12,7 +13,14 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Password minimal 6 karakter')
 });
 
-authRoutes.post('/login', zValidator('json', loginSchema, (result, c) => {
+// Rate limit khusus login: Maksimal 5 attempt per menit per IP
+const loginRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: (c) => `login:${c.req.header('x-forwarded-for') || 'unknown-ip'}`
+});
+
+authRoutes.post('/login', loginRateLimiter, zValidator('json', loginSchema, (result, c) => {
   if (!result.success) {
     return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
   }

@@ -6,6 +6,7 @@ import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
 import { redisSub, PUB_SUB_CH } from './config/redis';
 import { activeWebSockets } from './websocket/handler';
+import { rateLimiter } from './middleware/rate-limiter';
 
 // Import Routes
 import { authRoutes } from './routes/auth';
@@ -22,6 +23,17 @@ const app = new Hono();
 // Global Middleware
 app.use('/api/*', cors());
 app.use('/ws', cors());
+
+// General Rate Limiter: 100 requests per minute per IP
+app.use('/api/*', rateLimiter({
+  windowMs: 60 * 1000, 
+  max: 100,
+  keyGenerator: (c) => {
+    // Di Bun/Hono, kita bisa mendapatkan IP dari header atau menggunakan default
+    const ip = c.req.header('x-forwarded-for') || 'unknown-ip';
+    return `general:${ip}`;
+  }
+}));
 
 // Static Files
 app.use('/uploads/*', serveStatic({ root: './public' }));

@@ -5,6 +5,7 @@ import { sql } from '../config/database';
 import { redis } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
 import { jwtMiddleware } from '../middleware/auth';
+import { rateLimiter } from '../middleware/rate-limiter';
 
 const app = new Hono();
 app.use('/*', jwtMiddleware);
@@ -15,7 +16,14 @@ const broadcastSchema = z.object({
   inbox_id: z.number().int().optional()
 });
 
-app.post('/', zValidator('json', broadcastSchema, (result, c) => {
+// Rate limit khusus broadcast: Maksimal 1 request per menit per user
+const broadcastRateLimiter = rateLimiter({
+  windowMs: 60 * 1000,
+  max: 1,
+  keyGenerator: (c) => `broadcast:${(c.get('jwtPayload') as any)?.id || 'unknown'}`
+});
+
+app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result, c) => {
   if (!result.success) {
     return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
   }
