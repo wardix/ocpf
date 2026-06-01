@@ -15,8 +15,9 @@ import { conversationsRoutes } from './routes/conversations';
 import { messagesRoutes } from './routes/messages';
 import { usersRoutes } from './routes/users';
 import { cannedResponsesRoutes } from './routes/canned_responses';
-import { analyticsRoutes } from './routes/analytics';
-import broadcastRoutes from './routes/broadcast'; // broadcast.ts menggunakan export default app;
+import analyticsRoutes from './routes/analytics';
+import broadcastRoutes from './routes/broadcast'; 
+import docsRoutes from './routes/docs';
 
 const app = new Hono();
 
@@ -137,3 +138,4 @@ const server = Bun.serve({
 setupWebSocket(server);
 
 console.log(`Server API & WebSocket berjalan di port ${server.port}`);
+& WebSocket berjalan di port ${server.port}`);
