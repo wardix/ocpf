@@ -20,9 +20,33 @@ import broadcastRoutes from './routes/broadcast'; // broadcast.ts menggunakan ex
 
 const app = new Hono();
 
+// Setup CORS Configuration
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map(o => o.trim());
+
+const corsOptions = {
+  origin: (origin: string | undefined) => {
+    // Izinkan requests tanpa origin (misalnya, aplikasi mobile atau server-to-server) 
+    // jika kita tidak dalam mode strict, tapi untuk keamanan API web, idealnya divalidasi
+    if (!origin) return allowedOrigins[0];
+    
+    if (allowedOrigins.includes(origin)) {
+      return origin;
+    }
+    // Fallback jika tidak match
+    return null;
+  },
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  exposeHeaders: ['Retry-After'],
+  credentials: true,
+  maxAge: 86400, // Cache preflight requests selama 24 jam
+};
+
 // Global Middleware
-app.use('/api/*', cors());
-app.use('/ws', cors());
+app.use('/api/*', cors(corsOptions));
+app.use('/ws', cors(corsOptions));
 
 // General Rate Limiter: 100 requests per minute per IP
 app.use('/api/*', rateLimiter({
