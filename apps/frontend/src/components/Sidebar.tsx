@@ -30,10 +30,13 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const fetchConversations = async (pageNum = 1, append = false) => {
     if (!token) return;
     if (pageNum > 1) setIsLoadingMore(true);
+    if (pageNum === 1 && !append) setIsInitialLoading(true);
+    
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}&page=${pageNum}&per_page=25`, {
@@ -55,6 +58,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
       console.error('Gagal memuat sidebar:', err);
     } finally {
       if (pageNum > 1) setIsLoadingMore(false);
+      setIsInitialLoading(false);
     }
   };
 
@@ -123,52 +127,68 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {conversations.length === 0 && (
-          <div className="p-8 text-center opacity-30 italic text-sm whitespace-normal">
-            {activeTab === 'unassigned' ? 'Hore! Tidak ada antrean tiket baru.' : 
-             activeTab === 'mine' ? 'Anda belum mengambil tiket apa pun.' :
-             activeTab === 'assigned' ? 'Belum ada tiket yang sedang ditangani.' : 
-             'Belum ada tiket sama sekali.'}
+        {isInitialLoading ? (
+          // Skeleton Loader
+          Array.from({ length: 6 }).map((_, idx) => (
+            <div key={idx} className="flex gap-3 p-4 border-b border-base-200">
+              <div className="skeleton w-12 h-12 rounded-full shrink-0"></div>
+              <div className="flex flex-col flex-1 gap-2 justify-center">
+                <div className="skeleton h-4 w-24"></div>
+                <div className="skeleton h-3 w-full"></div>
+              </div>
+            </div>
+          ))
+        ) : conversations.length === 0 ? (
+          // Empty State
+          <div className="flex flex-col items-center justify-center h-full opacity-50 p-8 text-center">
+            <span className="text-5xl mb-4">📭</span>
+            <p className="font-bold text-lg mb-1">Kotak Masuk Kosong</p>
+            <p className="text-xs whitespace-normal">
+              {activeTab === 'unassigned' ? 'Hore! Tidak ada antrean tiket baru.' : 
+               activeTab === 'mine' ? 'Anda belum mengambil tiket apa pun.' :
+               activeTab === 'assigned' ? 'Belum ada tiket yang sedang ditangani.' : 
+               'Belum ada tiket sama sekali.'}
+            </p>
           </div>
+        ) : (
+          conversations.map((conv) => (
+            <div 
+              key={conv.id} 
+              onClick={() => onSelect(conv)}
+              className={`flex gap-3 p-4 cursor-pointer hover:bg-base-200 transition-colors border-b border-base-200 ${
+                selectedId === conv.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
+              }`}
+            >
+              <div className="avatar placeholder">
+                <div className="bg-neutral text-neutral-content rounded-full w-12 shadow-sm">
+                  <span>{conv.contact_name.substring(0, 2).toUpperCase()}</span>
+                </div>
+              </div>
+              <div className="flex flex-col flex-1 overflow-hidden">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-sm truncate">{conv.contact_name}</span>
+                  <span className="text-[10px] text-base-content/60 font-mono">
+                    {conv.ticket_id ? `#TKT-${String(conv.ticket_id).padStart(4, '0')}` : 'Outbound'} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <span className="text-xs text-base-content/70 truncate mt-1 italic">
+                  {conv.last_message || 'Tidak ada pesan...'}
+                </span>
+                <div className="flex gap-1 mt-2 flex-wrap">
+                   <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
+                   {conv.status === 'open' && <div className="badge badge-success badge-xs text-white">Active</div>}
+                   {conv.assignee_name && (
+                     <div className="badge badge-neutral badge-outline text-[9px] h-4 truncate max-w-[80px]">
+                       {conv.assignee_name}
+                     </div>
+                   )}
+                </div>
+              </div>
+            </div>
+          ))
         )}
 
-        {conversations.map((conv) => (
-          <div 
-            key={conv.id} 
-            onClick={() => onSelect(conv)}
-            className={`flex gap-3 p-4 cursor-pointer hover:bg-base-200 transition-colors border-b border-base-200 ${
-              selectedId === conv.id ? 'bg-primary/10 border-l-4 border-l-primary' : ''
-            }`}
-          >
-            <div className="avatar placeholder">
-              <div className="bg-neutral text-neutral-content rounded-full w-12 shadow-sm">
-                <span>{conv.contact_name.substring(0, 2).toUpperCase()}</span>
-              </div>
-            </div>
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-sm truncate">{conv.contact_name}</span>
-                <span className="text-[10px] text-base-content/60 font-mono">
-                  {conv.ticket_id ? `#TKT-${String(conv.ticket_id).padStart(4, '0')}` : 'Outbound'} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              </div>
-              <span className="text-xs text-base-content/70 truncate mt-1 italic">
-                {conv.last_message || 'Tidak ada pesan...'}
-              </span>
-              <div className="flex gap-1 mt-2 flex-wrap">
-                 <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
-                 {conv.status === 'open' && <div className="badge badge-success badge-xs text-white">Active</div>}
-                 {conv.assignee_name && (
-                   <div className="badge badge-neutral badge-outline text-[9px] h-4 truncate max-w-[80px]">
-                     {conv.assignee_name}
-                   </div>
-                 )}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {hasMore && (
+        {hasMore && !isInitialLoading && (
           <div className="p-4 flex justify-center">
             <button 
               className={`btn btn-sm btn-outline btn-primary w-full ${isLoadingMore ? 'loading' : ''}`}

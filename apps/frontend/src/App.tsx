@@ -7,10 +7,12 @@ import Settings from './components/Settings'
 import Analytics from './components/Analytics'
 import Contacts from './components/Contacts'
 import Broadcast from './components/Broadcast'
+import { ToastContainer } from './components/ToastContainer'
 
 import { useAuthStore } from './store/authStore'
 import { useUiStore } from './store/uiStore'
 import { useChatStore } from './store/chatStore'
+import { useToastStore } from './store/toastStore'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -44,6 +46,7 @@ function App() {
     selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder,
     setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, clearChat
   } = useChatStore();
+  const { addToast } = useToastStore();
 
   const playNotificationSound = useCallback(() => {
     if (isMuted) return;
@@ -90,14 +93,19 @@ function App() {
           setMessages(data);
         }
       } else if (response.status === 401) {
+        addToast('Sesi Anda telah habis. Silakan login kembali.', 'error');
         handleLogout();
+      } else {
+        addToast('Gagal memuat pesan dari server', 'error');
       }
     } catch (err) {
       console.error('Gagal memuat pesan:', err);
+      addToast('Terjadi kesalahan jaringan saat memuat pesan.', 'error');
     } finally {
       if (beforeId) setIsLoadingOlder(false);
+      else setIsInitialChatLoading(false);
     }
-  }, [token, setMessages, setHasMoreMessages, setIsLoadingOlder, handleLogout]);
+  }, [token, setMessages, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, handleLogout]);
 
   useEffect(() => {
     if (selectedConv) {
@@ -257,6 +265,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content relative">
+      <ToastContainer />
       {wsStatus !== 'open' && (
         <div className={`absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md transition-all ${wsStatus === 'connecting' ? 'bg-warning text-warning-content' : 'bg-error text-white'}`}>
           {wsStatus === 'connecting' ? '⏳ Menghubungkan ke server real-time...' : '❌ Terputus dari server. Mencoba menghubungkan kembali...'}

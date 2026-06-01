@@ -92,45 +92,64 @@ const Contacts = ({ onStartChat }: Props) => {
               </tr>
             </thead>
             <tbody>
-              {isLoading && contacts.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 opacity-50">Memuat data kontak...</td>
-                </tr>
-              )}
-              {!isLoading && contacts.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 opacity-50 text-error">Tidak ada kontak yang ditemukan.</td>
-                </tr>
-              )}
-              {contacts.map((c) => (
-                <tr key={c.id} className="hover">
-                  <td className="font-mono text-xs opacity-50">#{c.id}</td>
-                  <td>
-                    <div className="flex items-center space-x-3">
-                      <div className="avatar placeholder">
-                        <div className="bg-neutral text-neutral-content rounded-full w-8">
-                          <span className="text-xs">{c.name.substring(0, 2).toUpperCase()}</span>
-                        </div>
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, idx) => (
+                  <tr key={`skeleton-${idx}`}>
+                    <td><div className="skeleton h-4 w-6"></div></td>
+                    <td>
+                      <div className="flex items-center space-x-3">
+                        <div className="skeleton w-8 h-8 rounded-full"></div>
+                        <div className="skeleton h-4 w-32"></div>
                       </div>
-                      <div className="font-bold">{c.name}</div>
+                    </td>
+                    <td><div className="skeleton h-4 w-24"></div></td>
+                    <td><div className="skeleton h-4 w-32"></div></td>
+                    <td><div className="skeleton h-4 w-24"></div></td>
+                    <td className="text-center"><div className="skeleton h-4 w-6 mx-auto"></div></td>
+                    <td className="text-right"><div className="skeleton h-6 w-16 ml-auto"></div></td>
+                  </tr>
+                ))
+              ) : contacts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-16">
+                    <div className="flex flex-col items-center justify-center opacity-40">
+                      <span className="text-6xl mb-4">👥</span>
+                      <p className="font-bold text-lg">Tidak Ada Kontak</p>
+                      <p className="text-sm">Belum ada pelanggan yang tersimpan di sistem.</p>
                     </div>
                   </td>
-                  <td className="font-mono text-primary text-sm">{c.phone_number}</td>
-                  <td className="text-sm opacity-70">{c.email || '-'}</td>
-                  <td className="text-sm">{new Date(c.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
-                  <td className="text-center">
-                    <div className="badge badge-ghost">{c.total_tickets}</div>
-                  </td>
-                  <td className="text-right">
-                    <button 
-                      className="btn btn-xs btn-primary btn-outline"
-                      onClick={() => onStartChat(c.phone_number)}
-                    >
-                      💬 Chat
-                    </button>
-                  </td>
                 </tr>
-              ))}
+              ) : (
+                contacts.map((c) => (
+                  <tr key={c.id} className="hover">
+                    <td className="font-mono text-xs opacity-50">#{c.id}</td>
+                    <td>
+                      <div className="flex items-center space-x-3">
+                        <div className="avatar placeholder">
+                          <div className="bg-neutral text-neutral-content rounded-full w-8">
+                            <span className="text-xs">{c.name.substring(0, 2).toUpperCase()}</span>
+                          </div>
+                        </div>
+                        <div className="font-bold">{c.name}</div>
+                      </div>
+                    </td>
+                    <td className="font-mono text-primary text-sm">{c.phone_number}</td>
+                    <td className="text-sm opacity-70">{c.email || '-'}</td>
+                    <td className="text-sm">{new Date(c.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                    <td className="text-center">
+                      <div className="badge badge-ghost">{c.total_tickets}</div>
+                    </td>
+                    <td className="text-right">
+                      <button 
+                        className="btn btn-xs btn-primary btn-outline"
+                        onClick={() => onStartChat(c.phone_number)}
+                      >
+                        💬 Chat
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

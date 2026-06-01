@@ -44,7 +44,8 @@ interface Props {
 
 const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const { token, user: currentUser } = useAuthStore();
-  const { messages, selectedConv, hasMoreMessages, isLoadingOlder } = useChatStore();
+  const { messages, selectedConv, hasMoreMessages, isLoadingOlder, isInitialChatLoading } = useChatStore();
+  const { addToast } = useToastStore();
 
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -134,13 +135,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         }
       });
       if (response.ok) {
-        onAssign(); // Panggil fungsi refresh sidebar di App.tsx
+        addToast('Tiket berhasil diambil alih', 'success');
+        onAssign(); 
       } else {
         const errData = await response.json();
-        alert(errData.error || 'Gagal mengambil tiket');
+        addToast(errData.error || 'Gagal mengambil tiket', 'error');
       }
     } catch (err) {
       console.error('Gagal mengambil tiket:', err);
+      addToast('Terjadi kesalahan jaringan', 'error');
     } finally {
       setIsAssigning(false);
     }
@@ -161,13 +164,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         }
       });
       if (response.ok) {
-        onResolve(); // Melepas tiket memiliki efek UI yang sama dengan resolve (menutup chat dan refresh)
+        addToast('Tiket berhasil dilepas ke antrean', 'info');
+        onResolve(); 
       } else {
         const errData = await response.json();
-        alert(errData.error || 'Gagal melepas tiket');
+        addToast(errData.error || 'Gagal melepas tiket', 'error');
       }
     } catch (err) {
       console.error('Gagal melepas tiket:', err);
+      addToast('Terjadi kesalahan jaringan', 'error');
     } finally {
       setIsUnassigning(false);
     }
@@ -189,10 +194,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         body: JSON.stringify({ status: 'resolved' })
       });
       if (response.ok) {
-        onResolve(); // Panggil fungsi reset di App.tsx
+        addToast('Tiket berhasil ditutup', 'success');
+        onResolve(); 
+      } else {
+        const errData = await response.json();
+        addToast(errData.error || 'Gagal menutup tiket', 'error');
       }
     } catch (err) {
       console.error('Gagal menutup tiket:', err);
+      addToast('Terjadi kesalahan jaringan', 'error');
     } finally {
       setIsResolving(false);
     }
@@ -240,9 +250,13 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         setInputText(''); // Reset input setelah berhasil kirim
         clearFile(); // Hapus file yang dipilih
         setIsPrivateNote(false); // Reset mode ke publik
+      } else {
+        const errData = await response.json();
+        addToast(errData.error || 'Gagal mengirim pesan', 'error');
       }
     } catch (err) {
       console.error('Gagal kirim pesan:', err);
+      addToast('Terjadi kesalahan jaringan saat mengirim pesan', 'error');
     } finally {
       setIsSending(false);
     }
@@ -326,28 +340,46 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         {/* Kita balik urutannya agar scroll otomatis ke bawah */}
         <div className="flex flex-col space-y-4">
           
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-64 opacity-20">
-              <span className="text-4xl mb-2">💬</span>
-              <p className="text-sm italic">Belum ada percakapan...</p>
+          {isInitialChatLoading ? (
+            // Skeleton Loader for Chat
+            <div className="flex flex-col gap-4 w-full opacity-50 p-4">
+              <div className="flex gap-4 items-center">
+                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+                <div className="skeleton h-16 w-1/2"></div>
+              </div>
+              <div className="flex gap-4 items-center flex-row-reverse">
+                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+                <div className="skeleton h-12 w-1/3"></div>
+              </div>
+              <div className="flex gap-4 items-center">
+                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+                <div className="skeleton h-24 w-2/3"></div>
+              </div>
             </div>
-          )}
-
-          {hasMoreMessages && (
-            <div className="flex justify-center pb-4">
-              <button 
-                className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
-                onClick={onLoadMore}
-                disabled={isLoadingOlder}
-              >
-                Muat pesan sebelumnya
-              </button>
+          ) : messages.length === 0 ? (
+            // Empty State
+            <div className="flex flex-col items-center justify-center h-64 opacity-40">
+              <span className="text-6xl mb-4">💬</span>
+              <h3 className="font-bold text-lg mb-1">Belum Ada Obrolan</h3>
+              <p className="text-sm">Kirim pesan pertama untuk memulai percakapan ini.</p>
             </div>
-          )}
+          ) : (
+            <>
+              {hasMoreMessages && (
+                <div className="flex justify-center pb-4">
+                  <button 
+                    className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
+                    onClick={onLoadMore}
+                    disabled={isLoadingOlder}
+                  >
+                    Muat pesan sebelumnya
+                  </button>
+                </div>
+              )}
 
-          {messages.length > 0 && !hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
+              {!hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
 
-          {messages.map((msg) => {
+              {messages.map((msg) => {
             if (msg.sender_type === 'System') {
               const isCopied = copiedLink?.includes(`ticket=${msg.ticket_id}`);
               return (
