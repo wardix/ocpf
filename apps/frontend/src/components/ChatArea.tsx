@@ -447,6 +447,8 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               </div>
             );
           })}
+            </>
+          )}
 
         </div>
       </div>
