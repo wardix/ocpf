@@ -196,9 +196,12 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
     const jwtPayload = c.get('jwtPayload');
     const { phone_number, name } = c.req.valid('json');
 
-    let cleanPhone = phone_number.replace(/\\D/g, '');
+    let cleanPhone = phone_number.replace(/[^\d-]/g, '');
     if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.substring(1);
-    const sourceJid = cleanPhone + (cleanPhone.length > 13 ? '@g.us' : '@s.whatsapp.net');
+    
+    // Deteksi grup WA: Jika ada tanda hubung, atau panjangnya lebih dari 15 digit
+    const isGroup = cleanPhone.includes('-') || cleanPhone.length > 15;
+    const sourceJid = cleanPhone + (isGroup ? '@g.us' : '@s.whatsapp.net');
 
     const ACCOUNT_ID = jwtPayload.account_id || 1;
     const INBOX_ID = parseInt(process.env.INBOX_ID || '1'); 
