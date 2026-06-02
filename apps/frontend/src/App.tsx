@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback } from 'react'
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import ContactInfo from './components/ContactInfo'
@@ -40,8 +41,10 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { token, user, login, logout } = useAuthStore();
-  const { currentView, isMuted, setCurrentView, toggleMute } = useUiStore();
+  const { isMuted, toggleMute } = useUiStore();
   const { 
     selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading,
     setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat
@@ -197,9 +200,10 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
-        setCurrentView('inbox');
+        const convId = data.id || data.data?.id;
+        navigate(`/inbox/${convId}`);
         setSelectedConv({
-          id: data.id || data.data?.id,
+          id: convId,
           contact_id: data.contact_id || data.data?.contact_id,
           phone: data.contact_phone || data.data?.contact_phone,
           name: data.contact_name || data.data?.contact_name,
@@ -237,8 +241,10 @@ function App() {
         
         if (response && response.ok) {
           const data = await response.json();
+          const convId = data.id || data.conversation_id;
+          navigate(`/inbox/${convId}`, { replace: true });
           setSelectedConv({
-            id: data.id || data.conversation_id,
+            id: convId,
             contact_id: data.contact_id,
             phone: data.contact_phone,
             name: data.contact_name,
@@ -283,15 +289,15 @@ function App() {
         </div>
         <div className="flex flex-col gap-6 text-neutral-content/60 w-full px-2">
           <button 
-            className={`btn btn-square w-full rounded-xl ${currentView === 'inbox' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-            onClick={() => setCurrentView('inbox')}
+            className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/inbox') || location.pathname === '/' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+            onClick={() => navigate('/inbox')}
             title="Inbox"
           >
             💬
           </button>
           <button 
-            className={`btn btn-square w-full rounded-xl ${currentView === 'contacts' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-            onClick={() => setCurrentView('contacts')}
+            className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/contacts') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+            onClick={() => navigate('/contacts')}
             title="Buku Telepon (Pelanggan)"
           >
             👥
@@ -299,22 +305,22 @@ function App() {
           {user?.role === 'administrator' && (
             <>
               <button 
-                className={`btn btn-square w-full rounded-xl ${currentView === 'broadcast' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-                onClick={() => setCurrentView('broadcast')}
+                className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/broadcast') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => navigate('/broadcast')}
                 title="Pesan Massal (Broadcast)"
               >
                 📢
               </button>
               <button 
-                className={`btn btn-square w-full rounded-xl ${currentView === 'analytics' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-                onClick={() => setCurrentView('analytics')}
+                className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/analytics') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => navigate('/analytics')}
                 title="Laporan & Analitik"
               >
                 📊
               </button>
               <button 
-                className={`btn btn-square w-full rounded-xl ${currentView === 'settings' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
-                onClick={() => setCurrentView('settings')}
+                className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/settings') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => navigate('/settings')}
                 title="Pengaturan"
               >
                 ⚙️
@@ -333,64 +339,76 @@ function App() {
         </div>
       </div>
 
-      {currentView === 'inbox' ? (
-        <>
-          <Sidebar 
-            selectedId={selectedConv?.id || null} 
-            onSelect={(conv) => setSelectedConv({
-              id: conv.id,
-              contact_id: conv.contact_id,
-              phone: conv.contact_phone,
-              name: conv.contact_name,
-              email: conv.contact_email,
-              ticket_id: conv.ticket_id,
-              status: conv.status,
-              assignee_id: conv.assignee_id,
-              assignee_name: conv.assignee_name
-            })} 
-            refreshKey={refreshKey}
-            onStartChat={startNewChat}
-          />
-          {selectedConv ? (
-            <>
-              <ChatArea 
-                onResolve={() => {
-                  setSelectedConv(null);
-                  triggerRefresh();
-                }}
-                onAssign={() => triggerRefresh()}
-                onLoadMore={() => {
-                  if (messages.length > 0) {
-                    fetchMessages(selectedConv.id, messages[0].id);
-                  }
-                }}
-              />
-              <ContactInfo 
-                selectedConv={selectedConv as any} 
-                
-                onUpdate={(newName, newEmail) => {
-                  setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
-                  triggerRefresh();
-                }} 
-              />
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
-               <span className="text-6xl mb-4">📥</span>
-               <h2 className="text-xl font-bold">Pilih percakapan untuk memulai</h2>
-               <p className="text-sm">Silakan pilih salah satu pesan di samping kiri.</p>
-            </div>
-          )}
-        </>
-      ) : currentView === 'contacts' ? (
-        <Contacts onStartChat={startNewChat} />
-      ) : currentView === 'broadcast' ? (
-        <Broadcast />
-      ) : currentView === 'analytics' ? (
-        <Analytics />
-      ) : (
-        <Settings />
-      )}
+      <Routes>
+        <Route path="/" element={<Navigate to="/inbox" replace />} />
+        <Route path="/inbox/*" element={
+          <>
+            <Sidebar 
+              selectedId={selectedConv?.id || null} 
+              onSelect={(conv) => {
+                setSelectedConv({
+                  id: conv.id,
+                  contact_id: conv.contact_id,
+                  phone: conv.contact_phone,
+                  name: conv.contact_name,
+                  email: conv.contact_email,
+                  ticket_id: conv.ticket_id,
+                  status: conv.status,
+                  assignee_id: conv.assignee_id,
+                  assignee_name: conv.assignee_name
+                });
+                navigate(`/inbox/${conv.id}`);
+              }} 
+              refreshKey={refreshKey}
+              onStartChat={startNewChat}
+            />
+            <Routes>
+              <Route path=":conversationId" element={
+                selectedConv ? (
+                  <>
+                    <ChatArea 
+                      onResolve={() => {
+                        setSelectedConv(null);
+                        navigate('/inbox');
+                        triggerRefresh();
+                      }}
+                      onAssign={() => triggerRefresh()}
+                      onLoadMore={() => {
+                        if (messages.length > 0) {
+                          fetchMessages(selectedConv.id, messages[0].id);
+                        }
+                      }}
+                    />
+                    <ContactInfo 
+                      selectedConv={selectedConv as any} 
+                      onUpdate={(newName, newEmail) => {
+                        setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
+                        triggerRefresh();
+                      }} 
+                    />
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
+                    <span className="text-6xl mb-4">⏳</span>
+                    <h2 className="text-xl font-bold">Memuat percakapan...</h2>
+                  </div>
+                )
+              } />
+              <Route path="" element={
+                <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
+                  <span className="text-6xl mb-4">📥</span>
+                  <h2 className="text-xl font-bold">Pilih percakapan untuk memulai</h2>
+                  <p className="text-sm">Silakan pilih salah satu pesan di samping kiri.</p>
+                </div>
+              } />
+            </Routes>
+          </>
+        } />
+        <Route path="/contacts" element={<Contacts onStartChat={startNewChat} />} />
+        <Route path="/broadcast" element={<Broadcast />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
     </div>
   )
 }
