@@ -36,6 +36,8 @@ interface SelectedConversation {
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useToastStore } from '../store/toastStore';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { MessageBubble } from './MessageBubble';
 
 interface Props {
   onResolve: () => void;
@@ -47,6 +49,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const { token, user: currentUser } = useAuthStore();
   const { messages, selectedConv, hasMoreMessages, isLoadingOlder, isInitialChatLoading } = useChatStore();
   const { addToast } = useToastStore();
+
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 80, // Default estimated height
+    overscan: 10,
+  });
 
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -337,121 +348,73 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
       </div>
 
       {/* Ruang Pesan Dinamis */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 flex flex-col-reverse">
-        {/* Kita balik urutannya agar scroll otomatis ke bawah */}
-        <div className="flex flex-col space-y-4">
-          
-          {isInitialChatLoading ? (
-            // Skeleton Loader for Chat
-            <div className="flex flex-col gap-4 w-full opacity-50 p-4">
-              <div className="flex gap-4 items-center">
-                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
-                <div className="skeleton h-16 w-1/2"></div>
-              </div>
-              <div className="flex gap-4 items-center flex-row-reverse">
-                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
-                <div className="skeleton h-12 w-1/3"></div>
-              </div>
-              <div className="flex gap-4 items-center">
-                <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
-                <div className="skeleton h-24 w-2/3"></div>
-              </div>
+      <div ref={parentRef} className="flex-1 overflow-y-auto p-6 bg-base-200/50 flex flex-col-reverse">
+        
+        {isInitialChatLoading ? (
+          // Skeleton Loader for Chat
+          <div className="flex flex-col gap-4 w-full opacity-50 p-4">
+            <div className="flex gap-4 items-center">
+              <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+              <div className="skeleton h-16 w-1/2"></div>
             </div>
-          ) : messages.length === 0 ? (
-            // Empty State
-            <div className="flex flex-col items-center justify-center h-64 opacity-40">
-              <span className="text-6xl mb-4">💬</span>
-              <h3 className="font-bold text-lg mb-1">Belum Ada Obrolan</h3>
-              <p className="text-sm">Kirim pesan pertama untuk memulai percakapan ini.</p>
+            <div className="flex gap-4 items-center flex-row-reverse">
+              <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+              <div className="skeleton h-12 w-1/3"></div>
             </div>
-          ) : (
-            <>
-              {hasMoreMessages && (
-                <div className="flex justify-center pb-4">
-                  <button 
-                    className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
-                    onClick={onLoadMore}
-                    disabled={isLoadingOlder}
-                  >
-                    Muat pesan sebelumnya
-                  </button>
-                </div>
-              )}
-
-              {!hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest">Awal Percakapan</div>}
-
-              {messages.map((msg) => {
-            if (msg.sender_type === 'System') {
-              const isCopied = copiedLink?.includes(`ticket=${msg.ticket_id}`);
+            <div className="flex gap-4 items-center">
+              <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
+              <div className="skeleton h-24 w-2/3"></div>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
+          // Empty State
+          <div className="flex flex-col items-center justify-center h-64 opacity-40">
+            <span className="text-6xl mb-4">💬</span>
+            <h3 className="font-bold text-lg mb-1">Belum Ada Obrolan</h3>
+            <p className="text-sm">Kirim pesan pertama untuk memulai percakapan ini.</p>
+          </div>
+        ) : (
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const msg = messages[virtualRow.index];
               return (
-                <div key={msg.id} className="flex justify-center my-2 relative group">
-                  <div className="bg-base-300 text-base-content/70 px-4 py-1 rounded-full text-[10px] font-medium shadow-sm flex items-center gap-2">
-                    <span>{msg.content} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    <button 
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:scale-110"
-                      onClick={() => handleCopyLink('ticket', msg.ticket_id || selectedConv.id)}
-                      title="Salin Tautan ke Momen Ini"
-                    >
-                      {isCopied ? '✅' : '🔗'}
-                    </button>
-                  </div>
+                <div
+                  key={msg.id}
+                  data-index={virtualRow.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${rowVirtualizer.getTotalSize() - virtualRow.start - virtualRow.size}px)`,
+                  }}
+                >
+                  <MessageBubble 
+                    msg={msg} 
+                    selectedConvId={selectedConv.id} 
+                    selectedConvName={selectedConv.name} 
+                    copiedLink={copiedLink} 
+                    handleCopyLink={handleCopyLink} 
+                    measureElement={rowVirtualizer.measureElement}
+                  />
                 </div>
               );
-            }
+            })}
 
-            return (
-              <div key={msg.id} className={`chat ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
-                <div className="chat-header text-[10px] opacity-50 mb-1">
-                  {msg.sender_type === 'Contact' ? selectedConv.name : 'Anda'} 
-                  {msg.is_private && <span className="ml-1 text-warning font-bold">(Private Note)</span>}
-                  <time className="ml-1 opacity-50">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </time>
-                </div>
-                <div className={`chat-bubble text-sm shadow-sm ${
-                  msg.sender_type === 'Contact' 
-                    ? 'bg-white text-base-content' 
-                    : msg.is_private ? 'bg-warning text-warning-content' : 'bg-primary text-primary-content'
-                }`}>
-                  {/* Render Media Attachments */}
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="flex flex-col gap-2 mb-2">
-                      {msg.attachments.map(att => {
-                        const isImage = att.file_type.startsWith('image/');
-                        const isAudio = att.file_type.startsWith('audio/');
-                        const fullUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${att.file_url}`;
-                        
-                        if (isImage) {
-                          return <img key={att.id} src={fullUrl} alt="Attachment" className="max-w-xs rounded-md shadow-sm border border-base-300/30" />;
-                        } else if (isAudio) {
-                          return (
-                            <audio key={att.id} controls className="max-w-[200px] h-10">
-                              <source src={fullUrl} type={att.file_type} />
-                              Browser Anda tidak mendukung elemen audio.
-                            </audio>
-                          );
-                        } else {
-                          return (
-                            <a key={att.id} href={fullUrl} target="_blank" rel="noreferrer" className="underline font-bold text-xs truncate max-w-xs block">
-                              📎 Download Dokumen
-                            </a>
-                          );
-                        }
-                      })}
-                    </div>
-                  )}
-                  {msg.content}
-                </div>
-                <div className="chat-footer opacity-50 text-[10px] mt-1">
-                  {msg.sender_type === 'Contact' ? 'Diterima' : 'Terkirim ✓'}
-                </div>
+            {hasMoreMessages && (
+              <div className="flex justify-center pb-4 absolute w-full" style={{ bottom: `${rowVirtualizer.getTotalSize() + 20}px` }}>
+                <button 
+                  className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
+                  onClick={onLoadMore}
+                  disabled={isLoadingOlder}
+                >
+                  Muat pesan sebelumnya
+                </button>
               </div>
-            );
-          })}
-            </>
-          )}
-
-        </div>
+            )}
+            {!hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest absolute w-full" style={{ bottom: `${rowVirtualizer.getTotalSize()}px` }}>Awal Percakapan</div>}
+          </div>
+        )}
       </div>
 
       {/* Area Input Pesan Bawah */}
