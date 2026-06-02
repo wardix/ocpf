@@ -20,14 +20,13 @@ export interface MessageProps {
   selectedConvName: string;
   copiedLink: string | null;
   handleCopyLink: (type: 'phone' | 'ticket', id: string | number) => void;
-  measureElement?: (el: HTMLElement | null) => void;
 }
 
-const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedLink, handleCopyLink, measureElement }: MessageProps) => {
+const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedLink, handleCopyLink }: MessageProps) => {
   if (msg.sender_type === 'System') {
     const isCopied = copiedLink?.includes(`ticket=${msg.ticket_id}`);
     return (
-      <div ref={measureElement} className="flex justify-center my-2 relative group w-full">
+      <div className="flex justify-center my-2 relative group w-full">
         <div className="bg-base-300 text-base-content/70 px-4 py-1 rounded-full text-[10px] font-medium shadow-sm flex items-center gap-2">
           <span>{msg.content} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           <button 
@@ -43,7 +42,7 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
   }
 
   return (
-    <div ref={measureElement} className={`chat w-full ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
+    <div className={`chat w-full ${msg.sender_type === 'Contact' ? 'chat-start' : 'chat-end'}`}>
       <div className="chat-header text-[10px] opacity-50 mb-1">
         {msg.sender_type === 'Contact' ? selectedConvName : 'Anda'} 
         {msg.is_private && <span className="ml-1 text-warning font-bold">(Private Note)</span>}
@@ -65,10 +64,7 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
               const fullUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${att.file_url}`;
               
               if (isImage) {
-                return <img key={att.id} src={fullUrl} alt="Attachment" className="max-w-xs rounded-md shadow-sm border border-base-300/30" onLoad={() => {
-                  // Re-measure after image loads if using react-virtual
-                  if(measureElement) measureElement(null); 
-                }} />;
+                return <img key={att.id} src={fullUrl} alt="Attachment" className="max-w-xs rounded-md shadow-sm border border-base-300/30" />;
               } else if (isAudio) {
                 return (
                   <audio key={att.id} controls className="max-w-[200px] h-10">

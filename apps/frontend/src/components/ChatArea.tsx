@@ -381,6 +381,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                 <div
                   key={msg.id}
                   data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
                   style={{
                     position: 'absolute',
                     top: 0,
@@ -395,7 +396,6 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                     selectedConvName={selectedConv.name} 
                     copiedLink={copiedLink} 
                     handleCopyLink={handleCopyLink} 
-                    measureElement={rowVirtualizer.measureElement}
                   />
                 </div>
               );
