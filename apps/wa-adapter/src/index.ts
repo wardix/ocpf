@@ -44,6 +44,14 @@ const activeSocketStatuses = new Map<number, string>();
 // Cache untuk menyimpan ID pesan yang dikirim dari Dashboard agar tidak diproses ganda
 const sentCache = new Set();
 
+// Cache untuk Group Metadata agar tidak menembak server WhatsApp tiap pesan
+interface GroupCacheItem {
+  subject: string;
+  timestamp: number;
+}
+const groupMetadataCache = new Map<string, GroupCacheItem>();
+const GROUP_CACHE_TTL = 5 * 60 * 1000; // 5 Menit
+
 let isShuttingDown = false;
 
 async function startBaileysForInbox(inboxId: number, sessionDir: string) {
@@ -100,6 +108,16 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
   // Simpan kredensial jika ada perubahan
   sock.ev.on('creds.update', saveCreds);
 
+  // Invalidate group cache jika ada update dari WA
+  sock.ev.on('groups.update', (updates: any[]) => {
+    for (const update of updates) {
+      if (update.id && groupMetadataCache.has(update.id)) {
+        console.log(`[Inbox ${inboxId}] Invalidating group cache for ${update.id}`);
+        groupMetadataCache.delete(update.id);
+      }
+    }
+  });
+
   // 1. DARI WA ADAPTER -> KE REDIS (Pesan Masuk)
   // =========================================================================
   sock.ev.on('messages.upsert', async (m: any) => {
@@ -146,11 +164,19 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
         let displayName = msg.pushName || 'Unknown';
 
         if (isGroup) {
-          try {
-            const groupMetadata = await sock.groupMetadata(fullJid);
-            displayName = groupMetadata.subject || 'WhatsApp Group';
-          } catch (e) {
-            displayName = 'WhatsApp Group';
+          const now = Date.now();
+          const cached = groupMetadataCache.get(fullJid);
+          
+          if (cached && (now - cached.timestamp < GROUP_CACHE_TTL)) {
+            displayName = cached.subject;
+          } else {
+            try {
+              const groupMetadata = await sock.groupMetadata(fullJid);
+              displayName = groupMetadata.subject || 'WhatsApp Group';
+              groupMetadataCache.set(fullJid, { subject: displayName, timestamp: now });
+            } catch (e) {
+              displayName = 'WhatsApp Group';
+            }
           }
         }
 
