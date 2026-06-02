@@ -74,6 +74,13 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [showCanned, setShowCanned] = useState(false);
   const [cannedSearch, setCannedSearch] = useState('');
 
+  // Auto scroll ke bawah saat pesan baru tiba (hanya jika scroll sudah di bawah)
+  useEffect(() => {
+    if (parentRef.current && messages.length > 0 && !isLoadingOlder) {
+      parentRef.current.scrollTop = parentRef.current.scrollHeight;
+    }
+  }, [messages.length, isLoadingOlder]);
+
   if (!selectedConv) return null;
 
   const handleCopyLink = (type: 'phone' | 'ticket', id: string | number) => {
@@ -348,11 +355,11 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
       </div>
 
       {/* Ruang Pesan Dinamis */}
-      <div ref={parentRef} className="flex-1 overflow-y-auto p-6 bg-base-200/50 flex flex-col-reverse">
+      <div ref={parentRef} className="flex-1 overflow-y-auto p-6 bg-base-200/50 flex flex-col">
         
         {isInitialChatLoading ? (
           // Skeleton Loader for Chat
-          <div className="flex flex-col gap-4 w-full opacity-50 p-4">
+          <div className="flex flex-col gap-4 w-full opacity-50 p-4 mt-auto">
             <div className="flex gap-4 items-center">
               <div className="skeleton w-10 h-10 rounded-full shrink-0"></div>
               <div className="skeleton h-16 w-1/2"></div>
@@ -368,13 +375,27 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           </div>
         ) : messages.length === 0 ? (
           // Empty State
-          <div className="flex flex-col items-center justify-center h-64 opacity-40">
+          <div className="flex flex-col items-center justify-center h-full opacity-40">
             <span className="text-6xl mb-4">💬</span>
             <h3 className="font-bold text-lg mb-1">Belum Ada Obrolan</h3>
             <p className="text-sm">Kirim pesan pertama untuk memulai percakapan ini.</p>
           </div>
         ) : (
           <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            
+            {hasMoreMessages && (
+              <div className="flex justify-center pb-4 absolute w-full" style={{ top: '0px', zIndex: 10 }}>
+                <button 
+                  className={`btn btn-sm btn-outline btn-primary bg-base-100 ${isLoadingOlder ? 'loading' : ''}`}
+                  onClick={onLoadMore}
+                  disabled={isLoadingOlder}
+                >
+                  Muat pesan sebelumnya
+                </button>
+              </div>
+            )}
+            {!hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest absolute w-full" style={{ top: '0px' }}>Awal Percakapan</div>}
+
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
               const msg = messages[virtualRow.index];
               return (
@@ -387,7 +408,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                     top: 0,
                     left: 0,
                     width: '100%',
-                    transform: `translateY(${rowVirtualizer.getTotalSize() - virtualRow.start - virtualRow.size}px)`,
+                    transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
                   <MessageBubble 
@@ -400,19 +421,6 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                 </div>
               );
             })}
-
-            {hasMoreMessages && (
-              <div className="flex justify-center pb-4 absolute w-full" style={{ bottom: `${rowVirtualizer.getTotalSize() + 20}px` }}>
-                <button 
-                  className={`btn btn-sm btn-outline btn-primary ${isLoadingOlder ? 'loading' : ''}`}
-                  onClick={onLoadMore}
-                  disabled={isLoadingOlder}
-                >
-                  Muat pesan sebelumnya
-                </button>
-              </div>
-            )}
-            {!hasMoreMessages && <div className="divider text-[10px] opacity-30 uppercase tracking-widest absolute w-full" style={{ bottom: `${rowVirtualizer.getTotalSize()}px` }}>Awal Percakapan</div>}
           </div>
         )}
       </div>
