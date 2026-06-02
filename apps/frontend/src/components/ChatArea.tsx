@@ -35,6 +35,7 @@ interface SelectedConversation {
 
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
+import { useToastStore } from '../store/toastStore';
 
 interface Props {
   onResolve: () => void;
