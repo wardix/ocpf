@@ -268,6 +268,38 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
       }
     }
   });
+  // 1b. DARI WA ADAPTER -> KE REDIS (Status Update Pesan)
+  sock.ev.on('messages.update', async (updates: any[]) => {
+    for (const update of updates) {
+      try {
+        if (update.update.status) {
+          const statusMap: Record<number, MessageStatus> = { 2: 'sent', 3: 'delivered', 4: 'read' };
+          const statusStr = statusMap[update.update.status];
+          if (statusStr) {
+            let fullJid = update.key.remoteJid;
+            if (fullJid?.endsWith('@lid') && update.key.remoteJidAlt?.endsWith('@s.whatsapp.net')) {
+              fullJid = update.key.remoteJidAlt;
+            }
+            const sourceId = fullJid?.split('@')[0] || '';
+
+            const payload: MessageStatusUpdatePayload = {
+              event: 'message.status_update',
+              data: {
+                inbox_id: inboxId,
+                wa_message_id: update.key.id!,
+                source_id: sourceId,
+                status: statusStr,
+                timestamp: Math.floor(Date.now() / 1000)
+              }
+            };
+            await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
+          }
+        }
+      } catch (err) {
+        console.error(`[Inbox ${inboxId}] Error memproses status update:`, err);
+      }
+    }
+  });
 }
 
 // =========================================================================
@@ -339,6 +371,20 @@ async function listenForOutgoingMessages() {
           if (sentMsg?.key?.id) {
             sentCache.add(sentMsg.key.id);
             setTimeout(() => sentCache.delete(sentMsg.key.id), 60000);
+
+            // Beri tahu Main API bahwa internal_message_id ini memiliki wa_message_id X
+            const bindingPayload = {
+              event: 'message.status_update',
+              data: {
+                inbox_id: targetInboxId,
+                wa_message_id: sentMsg.key.id,
+                internal_message_id: payload.data.internal_message_id, // Custom properti ini untuk sinkronisasi awal
+                source_id: target_id.split('@')[0],
+                status: 'sent',
+                timestamp: Math.floor(Date.now() / 1000)
+              }
+            };
+            await redis.rpush(QUEUE_INCOMING, JSON.stringify(bindingPayload));
           }
           
           const sendEnd = Date.now();

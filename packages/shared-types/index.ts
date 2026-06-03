@@ -46,6 +46,7 @@ export interface MessageStatusUpdatePayload {
     wa_message_id: string;
     source_id: string;
     status: MessageStatus;
+    timestamp?: number;
   };
 }
 

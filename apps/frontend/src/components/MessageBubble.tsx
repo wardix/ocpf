@@ -14,6 +14,7 @@ export interface MessageProps {
     created_at: string;
     ticket_id?: number;
     is_private?: boolean;
+    status?: 'sent' | 'delivered' | 'read' | 'failed';
     attachments?: Attachment[];
   };
   selectedConvId: number;
@@ -84,13 +85,21 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
         )}
         {msg.content}
       </div>
-      <div className="chat-footer opacity-50 text-[10px] mt-1">
-        {msg.sender_type === 'Contact' ? 'Diterima' : 'Terkirim ✓'}
+      <div className="chat-footer opacity-50 text-[10px] mt-1 flex items-center gap-1">
+        {msg.sender_type === 'Contact' ? 'Diterima' : (
+          <>
+            <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            {msg.status === 'failed' && <span className="text-error font-bold" title="Gagal Terkirim">❌</span>}
+            {msg.status === 'sent' && <span title="Terkirim">✓</span>}
+            {msg.status === 'delivered' && <span title="Tersampaikan">✓✓</span>}
+            {msg.status === 'read' && <span className="text-info font-bold" title="Dibaca">✓✓</span>}
+          </>
+        )}
       </div>
     </div>
   );
 };
 
 export const MessageBubble = memo(MessageBubbleComponent, (prev, next) => {
-  return prev.msg.id === next.msg.id && prev.copiedLink === next.copiedLink;
+  return prev.msg.id === next.msg.id && prev.copiedLink === next.copiedLink && prev.msg.status === next.msg.status;
 });

@@ -16,18 +16,53 @@ export async function startWorker() {
           console.log(messageStr);
           console.log('-----------------------------------------');
 
-          const payload = JSON.parse(messageStr) as IncomingMessagePayload;
+          const payload = JSON.parse(messageStr) as any;
           
           if (payload.event === 'message.incoming') {
             const savedMessage = await processIncomingMessageToDB(payload.data);
-          
-          if (savedMessage) {
-            await redis.publish(PUB_SUB_CH, JSON.stringify({
-              event: 'message.new',
-              data: savedMessage
-            }));
+            if (savedMessage) {
+              await redis.publish(PUB_SUB_CH, JSON.stringify({
+                event: 'message.new',
+                data: savedMessage
+              }));
+            }
+          } else if (payload.event === 'message.status_update') {
+            const { wa_message_id, status, internal_message_id } = payload.data as any;
+            
+            // Prioritas 1: Jika ada internal_message_id (dari wa-adapter saat baru dikirim)
+            if (internal_message_id) {
+              const [updated] = await db`
+                UPDATE messages 
+                SET wa_message_id = ${wa_message_id}, status = ${status} 
+                WHERE id = ${internal_message_id}
+                RETURNING *
+              `;
+              if (updated) {
+                await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.status_changed', data: updated }));
+              }
+            } else {
+              // Prioritas 2: Update berdasarkan wa_message_id
+              const validTransitions: Record<string, string[]> = {
+                'sent': ['delivered', 'read', 'failed'],
+                'delivered': ['read'],
+                'read': [],
+                'failed': []
+              };
+
+              const [currentMsg] = await db`SELECT id, status FROM messages WHERE wa_message_id = ${wa_message_id} LIMIT 1`;
+              
+              if (currentMsg) {
+                // Pastikan status tidak downgrade (misal read ke delivered)
+                const allowedNext = validTransitions[currentMsg.status] || [];
+                if (allowedNext.includes(status) || currentMsg.status === status) {
+                  const [updated] = await db`
+                    UPDATE messages SET status = ${status} WHERE id = ${currentMsg.id} RETURNING *
+                  `;
+                  await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.status_changed', data: updated }));
+                }
+              }
+            }
           }
-        }
       }
     } catch (err) {
       console.error('Worker processing error:', err);
@@ -138,7 +173,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     const [msg] = await tx`
       INSERT INTO messages (
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
-        content, message_type, status, created_at
+        content, message_type, status, created_at, wa_message_id
       ) VALUES (
         ${ACCOUNT_ID}, ${conversation.id}, ${ticket && ticket.status !== 'resolved' ? ticket.id : null}, 
         ${data.is_host_echo ? 'User' : 'Contact'}, 
@@ -146,7 +181,8 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         ${finalContent}, 
         ${data.is_host_echo ? 'outgoing' : 'incoming'}, 
         'delivered', 
-        to_timestamp(${timestamp})
+        to_timestamp(${timestamp}),
+        ${data.wa_message_id}
       )
       RETURNING *;
     `;
