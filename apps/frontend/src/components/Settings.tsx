@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import UserManagement from './UserManagement';
 import { useAuthStore } from '../store/authStore';
+import { ConfirmModal } from './ConfirmModal';
 
 interface CannedResponse {
   id: number;
@@ -16,6 +17,7 @@ const Settings = () => {
   const [formData, setFormData] = useState({ short_code: '', content: '' });
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const fetchCanned = async () => {
     if (!token) return;
@@ -71,9 +73,8 @@ const Settings = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!token || !window.confirm('Yakin ingin menghapus template ini?')) return;
-    
+  const executeDelete = async (id: number) => {
+    if (!token) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/canned-responses/${id}`, {
@@ -86,6 +87,8 @@ const Settings = () => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setDeleteConfirmId(null);
     }
   };
 
@@ -171,7 +174,7 @@ const Settings = () => {
                       <td className="text-right">
                         <div className="flex gap-1 justify-end">
                           <button onClick={() => handleEdit(item)} className="btn btn-xs btn-outline">Edit</button>
-                          <button onClick={() => handleDelete(item.id)} className="btn btn-xs btn-outline btn-error">Hapus</button>
+                          <button onClick={() => setDeleteConfirmId(item.id)} className="btn btn-xs btn-outline btn-error">Hapus</button>
                         </div>
                       </td>
                     </tr>
@@ -206,6 +209,18 @@ const Settings = () => {
         <UserManagement />
 
       </div>
+
+      <ConfirmModal
+        isOpen={deleteConfirmId !== null}
+        title="Hapus Template"
+        message="Apakah Anda yakin ingin menghapus template balasan cepat ini? Tindakan ini tidak dapat dibatalkan."
+        confirmText="Ya, Hapus"
+        variant="error"
+        onConfirm={() => {
+          if (deleteConfirmId !== null) executeDelete(deleteConfirmId);
+        }}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </div>
   );
 };

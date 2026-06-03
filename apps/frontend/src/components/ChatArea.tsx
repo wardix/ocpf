@@ -38,6 +38,7 @@ import { useChatStore } from '../store/chatStore';
 import { useToastStore } from '../store/toastStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageBubble } from './MessageBubble';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
   onResolve: () => void;
@@ -64,6 +65,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [isResolving, setIsResolving] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ type: 'resolve' | 'unassign' } | null>(null);
   const [isPrivateNote, setIsPrivateNote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -169,8 +171,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   };
 
   const handleUnassign = async () => {
-    const confirm = window.confirm("Apakah Anda yakin ingin melepas tiket ini kembali ke antrean?");
-    if (!confirm || !token) return;
+    if (!token) return;
 
     setIsUnassigning(true);
     try {
@@ -198,8 +199,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   };
 
   const handleResolve = async () => {
-    const confirm = window.confirm("Apakah Anda yakin ingin menutup tiket obrolan ini?");
-    if (!confirm || !token) return;
+    if (!token) return;
 
     setIsResolving(true);
     try {
@@ -332,14 +332,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                   <div className="flex gap-2">
                     <button 
                       className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}
-                      onClick={handleUnassign}
+                      onClick={() => setConfirmAction({ type: 'unassign' })}
                       disabled={isUnassigning || isResolving}
                     >
                       Lepas Tiket
                     </button>
                     <button 
                       className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
-                      onClick={handleResolve}
+                      onClick={() => setConfirmAction({ type: 'resolve' })}
                       disabled={isResolving || isUnassigning}
                     >
                       Tutup Tiket
@@ -538,6 +538,25 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         </div>
       </div>
 
+      <ConfirmModal
+        isOpen={confirmAction?.type === 'resolve'}
+        title="Tutup Tiket"
+        message="Apakah Anda yakin ingin menutup tiket obrolan ini? Percakapan akan dipindahkan ke tab Selesai."
+        confirmText="Ya, Tutup Tiket"
+        variant="error"
+        onConfirm={() => { handleResolve(); setConfirmAction(null); }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmModal
+        isOpen={confirmAction?.type === 'unassign'}
+        title="Lepas Tiket"
+        message="Apakah Anda yakin ingin melepas tiket ini? Tiket akan kembali ke antrean dan agen lain dapat mengambilnya."
+        confirmText="Ya, Lepas Tiket"
+        variant="warning"
+        onConfirm={() => { handleUnassign(); setConfirmAction(null); }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Contact {
   id: number;
@@ -18,6 +19,7 @@ const Broadcast = () => {
   const [selectedContactIds, setSelectedContactIds] = useState<number[]>([]);
   const [messageContent, setMessageContent] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const fetchContacts = async () => {
     if (!token) return;
@@ -69,9 +71,11 @@ const Broadcast = () => {
       return;
     }
 
-    const confirm = window.confirm(`Kirim broadcast ini ke ${selectedContactIds.length} pelanggan?`);
-    if (!confirm) return;
+    setIsConfirmOpen(true);
+  };
 
+  const executeSendBroadcast = async () => {
+    setIsConfirmOpen(false);
     setIsSending(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -208,6 +212,16 @@ const Broadcast = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        title="Kirim Pesan Massal"
+        message={`Apakah Anda yakin ingin mengirim broadcast promosi/pengumuman ini ke ${selectedContactIds.length} pelanggan terpilih?`}
+        confirmText="Ya, Kirim Broadcast"
+        variant="primary"
+        onConfirm={executeSendBroadcast}
+        onCancel={() => setIsConfirmOpen(false)}
+      />
     </div>
   );
 };
