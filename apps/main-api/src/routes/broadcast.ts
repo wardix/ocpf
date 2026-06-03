@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { rateLimiter } from '../middleware/rate-limiter';
 
 const app = new Hono();
@@ -33,10 +33,10 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
+    const ACCOUNT_ID = getAccountId(c);
 
     const { contact_ids, content, inbox_id } = c.req.valid('json');
 
-    const ACCOUNT_ID = jwtPayload.account_id || 1;
     const INBOX_ID = inbox_id || parseInt(process.env.INBOX_ID || '1');
     const agentId = jwtPayload.id;
 

@@ -2,18 +2,17 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 
 export const contactsRoutes = new Hono();
 
 contactsRoutes.use('/*', jwtMiddleware);
 
+// Endpoint daftar semua kontak (CRM) dengan pencarian
 contactsRoutes.get('/', async (c) => {
   try {
     const search = c.req.query('q') || '';
-    const jwtPayload = c.get('jwtPayload') as any;
-    const accountId = jwtPayload.account_id || 1;
-
+    const accountId = getAccountId(c);
     // Pagination params
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
     const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));

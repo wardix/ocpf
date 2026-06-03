@@ -203,7 +203,7 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
     const isGroup = cleanPhone.includes('-') || cleanPhone.length > 15;
     const sourceJid = cleanPhone + (isGroup ? '@g.us' : '@s.whatsapp.net');
 
-    const ACCOUNT_ID = jwtPayload.account_id || 1;
+    const ACCOUNT_ID = getAccountId(c);
     const INBOX_ID = parseInt(process.env.INBOX_ID || '1'); 
 
     let [contact] = await sql`SELECT id, name, email FROM contacts WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} LIMIT 1`;

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 
 export const analyticsRoutes = new Hono();
 
@@ -8,15 +8,17 @@ analyticsRoutes.use('/*', jwtMiddleware);
 
 analyticsRoutes.get('/', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload');
+    const jwtPayload = c.get('jwtPayload') as any;
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
+    const accountId = getAccountId(c);
 
     const [totalIncoming] = await sql`
       SELECT COUNT(DISTINCT ticket_id) as count 
       FROM messages 
       WHERE sender_type = 'Contact' 
+      AND account_id = ${accountId}
       AND created_at >= CURRENT_DATE
     `;
 
@@ -25,13 +27,14 @@ analyticsRoutes.get('/', async (c) => {
       FROM conversation_events 
       WHERE event_type = 'status_changed' 
       AND event_data->>'new_status' = 'resolved'
+      AND account_id = ${accountId}
       AND created_at >= CURRENT_DATE
     `;
 
     const statusCounts = await sql`
       SELECT status, COUNT(*) as count 
       FROM tickets 
-      WHERE account_id = 1
+      WHERE account_id = ${accountId}
       GROUP BY status
     `;
 
@@ -44,6 +47,7 @@ analyticsRoutes.get('/', async (c) => {
       WHERE ce.event_type = 'status_changed' 
         AND ce.event_data->>'new_status' = 'resolved'
         AND ce.actor_type = 'User'
+        AND ce.account_id = ${accountId}
         AND ce.created_at >= CURRENT_DATE
       GROUP BY u.id, u.name
       ORDER BY resolved_count DESC

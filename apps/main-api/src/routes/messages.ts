@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { rateLimiter } from '../middleware/rate-limiter';
 import path from 'path';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
@@ -39,11 +39,11 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
   }
 }), async (c) => {
   const tStart = Date.now();
-  console.log(`\\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
+  console.log(`\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
   try {
-    const jwtPayload = c.get('jwtPayload');
+    const jwtPayload = c.get('jwtPayload') as any;
     const agentId = jwtPayload.id;
-    const accountId = jwtPayload.account_id || 1; 
+    const accountId = getAccountId(c);
 
     const { target_id, content, conversation_id, media, is_private } = c.req.valid('json');
 

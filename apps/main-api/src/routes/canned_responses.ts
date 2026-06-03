@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 
 export const cannedResponsesRoutes = new Hono();
 
@@ -10,8 +10,7 @@ cannedResponsesRoutes.use('/*', jwtMiddleware);
 
 cannedResponsesRoutes.get('/', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
-    const accountId = jwtPayload.account_id || 1;
+    const accountId = getAccountId(c);
 
     // Pagination params
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
