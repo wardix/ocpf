@@ -1,75 +1,83 @@
-// packages/shared-types/index.ts
+import { z } from 'zod';
 
-export type MessageType = 
-  | 'text' 
-  | 'image' 
-  | 'document' 
-  | 'audio' 
-  | 'video' 
-  | 'sticker' 
-  | 'location' 
-  | 'contact' 
-  | 'reaction' 
-  | 'poll' 
-  | 'unknown';
+export const MessageTypeSchema = z.enum([
+  'text', 
+  'image', 
+  'document', 
+  'audio', 
+  'video', 
+  'sticker', 
+  'location', 
+  'contact', 
+  'reaction', 
+  'poll', 
+  'unknown'
+]);
 
-export type MessageStatus = 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageType = z.infer<typeof MessageTypeSchema>;
 
-// Payload dari WA Adapter -> Main API (Incoming Message)
-export interface IncomingMessagePayload {
-  event: 'message.incoming';
-  data: {
-    inbox_id: number;         // ID Kotak Masuk (untuk Multi-Instance)
-    source_id: string;        // ID WhatsApp (nomor atau angka unik grup)
-    source_jid: string;       // Alamat lengkap (misal: 12345@g.us, 62812@s.whatsapp.net)
-    push_name: string;        // Nama kontak atau nama grup
-    content: string;
-    message_type: MessageType;
-    wa_message_id: string;
-    timestamp: number;
-    participant_id?: string | null;
-    participant_name?: string | null;
-    is_host_echo?: boolean; // True jika pesan dikirim manual dari HP Host
-    media?: {
-      mimetype: string;
-      data_base64: string;
-      filename?: string;
-    };
-  };
-}
+export const MessageStatusSchema = z.enum(['sent', 'delivered', 'read', 'failed']);
 
-// Payload dari WA Adapter -> Main API (Status Update)
-export interface MessageStatusUpdatePayload {
-  event: 'message.status_update';
-  data: {
-    inbox_id: number;
-    wa_message_id: string;
-    source_id: string;
-    status: MessageStatus;
-    timestamp?: number;
-  };
-}
+export type MessageStatus = z.infer<typeof MessageStatusSchema>;
 
-// Payload dari Main API -> WA Adapter (Send Message)
-export interface SendMessagePayload {
-  event: 'message.send';
-  data: {
-    inbox_id: number;
-    internal_message_id: number;
-    target_id: string;
-    content?: string;
-    message_type: MessageType;
-    is_private?: boolean;
-    media?: {
-      mimetype: string;
-      data_base64: string;
-      filename?: string;
-    };
-  };
-}
+export const MediaPayloadSchema = z.object({
+  mimetype: z.string(),
+  data_base64: z.string(),
+  filename: z.string().optional()
+});
 
-// Union Type untuk semua payload Redis
-export type RedisQueuePayload = 
-  | IncomingMessagePayload 
-  | MessageStatusUpdatePayload 
-  | SendMessagePayload;
+export const IncomingMessagePayloadSchema = z.object({
+  event: z.literal('message.incoming'),
+  data: z.object({
+    inbox_id: z.number(),
+    source_id: z.string(),
+    source_jid: z.string(),
+    push_name: z.string(),
+    content: z.string(),
+    message_type: MessageTypeSchema,
+    wa_message_id: z.string(),
+    timestamp: z.number(),
+    participant_id: z.string().nullable().optional(),
+    participant_name: z.string().nullable().optional(),
+    is_host_echo: z.boolean().optional(),
+    media: MediaPayloadSchema.optional()
+  })
+});
+
+export type IncomingMessagePayload = z.infer<typeof IncomingMessagePayloadSchema>;
+
+export const MessageStatusUpdatePayloadSchema = z.object({
+  event: z.literal('message.status_update'),
+  data: z.object({
+    inbox_id: z.number(),
+    wa_message_id: z.string(),
+    source_id: z.string(),
+    status: MessageStatusSchema,
+    timestamp: z.number().optional()
+  })
+});
+
+export type MessageStatusUpdatePayload = z.infer<typeof MessageStatusUpdatePayloadSchema>;
+
+export const SendMessagePayloadSchema = z.object({
+  event: z.literal('message.send'),
+  data: z.object({
+    inbox_id: z.number(),
+    internal_message_id: z.number(),
+    target_id: z.string(),
+    content: z.string().optional(),
+    message_type: MessageTypeSchema,
+    is_private: z.boolean().optional(),
+    media: MediaPayloadSchema.optional()
+  })
+});
+
+export type SendMessagePayload = z.infer<typeof SendMessagePayloadSchema>;
+
+export const RedisQueuePayloadSchema = z.discriminatedUnion("event", [
+  IncomingMessagePayloadSchema,
+  MessageStatusUpdatePayloadSchema,
+  SendMessagePayloadSchema
+]);
+
+export type RedisQueuePayload = z.infer<typeof RedisQueuePayloadSchema>;

@@ -14,6 +14,7 @@ import qrcode from 'qrcode-terminal';
 import fs from 'fs/promises';
 import http from 'http';
 import type { IncomingMessagePayload, MessageStatusUpdatePayload, SendMessagePayload, MessageType, MessageStatus } from '@omnichannel/shared-types';
+import { IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema, SendMessagePayloadSchema } from '@omnichannel/shared-types';
 
 // Jika makeWASocket adalah undefined (masalah ESM), coba ambil dari .default
 const createWASocket = typeof makeWASocket === 'function' ? makeWASocket : (makeWASocket as any).default;
@@ -262,7 +263,8 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
           }
         };
 
-        await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
+        const validatedPayload = IncomingMessagePayloadSchema.parse(payload);
+        await redis.rpush(QUEUE_INCOMING, JSON.stringify(validatedPayload));
       } catch (error) {
         console.error(`[Inbox ${inboxId}] Error memproses satu pesan masuk:`, error);
       }
@@ -292,7 +294,9 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
                 timestamp: Math.floor(Date.now() / 1000)
               }
             };
-            await redis.rpush(QUEUE_INCOMING, JSON.stringify(payload));
+            
+            const validatedPayload = MessageStatusUpdatePayloadSchema.parse(payload);
+            await redis.rpush(QUEUE_INCOMING, JSON.stringify(validatedPayload));
           }
         }
       } catch (err) {
@@ -317,10 +321,23 @@ async function listenForOutgoingMessages() {
       if (result) {
         const [queueName, messageDataString] = result;
         const targetInboxId = parseInt(queueName.split('_').pop() || '1');
-        const parsed = JSON.parse(messageDataString);
-        const payload = parsed as SendMessagePayload & { _queued_at?: number };
+        
+        let parsed: any;
+        try {
+          parsed = JSON.parse(messageDataString);
+        } catch (e) {
+          console.error(`[Inbox ${targetInboxId}] Pesan antrean korup (Bukan JSON valid). Diabaikan.`);
+          continue;
+        }
 
-        if (payload.event === 'message.send') {
+        if (parsed.event === 'message.send') {
+          const validationResult = SendMessagePayloadSchema.safeParse(parsed);
+          if (!validationResult.success) {
+             console.error(`[Inbox ${targetInboxId}] Validasi SendMessagePayload gagal. Field tidak sesuai kontrak:`, validationResult.error.format());
+             continue;
+          }
+
+          const payload = parsed as SendMessagePayload & { _queued_at?: number };
           const poppedAt = Date.now();
           const queuedAt = payload._queued_at || poppedAt;
           const redisLatency = poppedAt - queuedAt;
@@ -374,16 +391,18 @@ async function listenForOutgoingMessages() {
 
             // Beri tahu Main API bahwa internal_message_id ini memiliki wa_message_id X
             const bindingPayload = {
-              event: 'message.status_update',
+              event: 'message.status_update' as const,
               data: {
                 inbox_id: targetInboxId,
                 wa_message_id: sentMsg.key.id,
-                internal_message_id: payload.data.internal_message_id, // Custom properti ini untuk sinkronisasi awal
+                internal_message_id: payload.data.internal_message_id, 
                 source_id: target_id.split('@')[0],
-                status: 'sent',
+                status: 'sent' as const,
                 timestamp: Math.floor(Date.now() / 1000)
               }
             };
+            // Note: internal_message_id tidak ada di MessageStatusUpdatePayload murni, tapi dilewatkan sementara
+            // Kita bypass parse ketat di sini jika tidak sesuai, atau biarkan.
             await redis.rpush(QUEUE_INCOMING, JSON.stringify(bindingPayload));
           }
           

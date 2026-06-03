@@ -2,6 +2,7 @@ import { redis, redisWorker, sql, PUB_SUB_CH, QUEUE_INCOMING } from '../config/r
 import { sql as db } from '../config/database';
 import path from 'path';
 import type { IncomingMessagePayload, SendMessagePayload } from '@omnichannel/shared-types';
+import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema } from '@omnichannel/shared-types';
 import { chatbotRules, evaluateChatbot } from '../chatbot/engine';
 
 export async function startWorker() {
@@ -16,7 +17,22 @@ export async function startWorker() {
           console.log(messageStr);
           console.log('-----------------------------------------');
 
-          const payload = JSON.parse(messageStr) as any;
+          let parsedObj: any;
+          try {
+            parsedObj = JSON.parse(messageStr);
+          } catch (e) {
+            console.error('Payload dari Redis bukan JSON valid, diabaikan.');
+            continue;
+          }
+
+          const validationResult = RedisQueuePayloadSchema.safeParse(parsedObj);
+          
+          if (!validationResult.success) {
+            console.error('Validasi payload Redis gagal. Schema mismatch:', validationResult.error.format());
+            continue;
+          }
+
+          const payload = validationResult.data as any; // Tipe sudah divalidasi
           
           if (payload.event === 'message.incoming') {
             const savedMessage = await processIncomingMessageToDB(payload.data);
