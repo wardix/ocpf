@@ -39,6 +39,7 @@ import { useToastStore } from '../store/toastStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageBubble } from './MessageBubble';
 import { ConfirmModal } from './ConfirmModal';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface Props {
   onResolve: () => void;
@@ -319,6 +320,50 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   };
 
   const canReply = !selectedConv.ticket_id || selectedConv.assignee_id === currentUser?.id;
+
+  useKeyboardShortcuts([
+    {
+      key: 'Enter',
+      ctrl: true,
+      description: 'Kirim Pesan',
+      category: 'Messaging',
+      action: () => {
+        if (!isSending && (inputText.trim() || selectedFile) && canReply) {
+          handleSendMessage();
+        }
+      }
+    },
+    {
+      key: 'n',
+      ctrl: true,
+      shift: true,
+      description: 'Toggle Private Note',
+      category: 'Messaging',
+      action: () => setIsPrivateNote(prev => !prev)
+    },
+    {
+      key: 'r',
+      alt: true,
+      description: 'Resolve Ticket',
+      category: 'Actions',
+      action: () => {
+        if (selectedConv.assignee_id === currentUser?.id || currentUser?.role === 'administrator') {
+          setConfirmAction({ type: 'resolve' });
+        }
+      }
+    },
+    {
+      key: 'a',
+      alt: true,
+      description: 'Assign Ticket',
+      category: 'Actions',
+      action: () => {
+        if (selectedConv.ticket_id && selectedConv.assignee_id === null) {
+          handleAssign();
+        }
+      }
+    }
+  ]);
 
   return (
     <div className="flex-1 flex flex-col bg-base-200/50 h-full relative">

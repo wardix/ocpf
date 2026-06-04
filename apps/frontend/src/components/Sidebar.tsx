@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 import { useAuthStore } from '../store/authStore';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 interface Conversation {
   id: number;
@@ -32,6 +33,30 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  // Navigasi keyboard (Arrow Up / Arrow Down)
+  useKeyboardShortcuts([
+    {
+      key: 'ArrowUp',
+      description: 'Percakapan sebelumnya',
+      category: 'Navigation',
+      action: () => {
+        if (!selectedId || conversations.length === 0) return;
+        const currentIdx = conversations.findIndex(c => c.id === selectedId);
+        if (currentIdx > 0) onSelect(conversations[currentIdx - 1]);
+      }
+    },
+    {
+      key: 'ArrowDown',
+      description: 'Percakapan selanjutnya',
+      category: 'Navigation',
+      action: () => {
+        if (!selectedId || conversations.length === 0) return;
+        const currentIdx = conversations.findIndex(c => c.id === selectedId);
+        if (currentIdx < conversations.length - 1) onSelect(conversations[currentIdx + 1]);
+      }
+    }
+  ]);
 
   const fetchConversations = async (pageNum = 1, append = false) => {
     if (!token) return;

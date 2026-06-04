@@ -15,6 +15,8 @@ import { useUiStore } from './store/uiStore'
 import { useChatStore } from './store/chatStore'
 import { useToastStore } from './store/toastStore'
 import { useThemeStore } from './store/themeStore'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { ShortcutsModal } from './components/ShortcutsModal'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -53,6 +55,31 @@ function App() {
     setWsInstance, setIsContactTyping
   } = useChatStore();
   const { addToast } = useToastStore();
+
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  useKeyboardShortcuts([
+    { 
+      key: '?', 
+      shift: true, // Kadang ? butuh shift, tapi e.key biasanya langsung '?' 
+      action: () => setShowShortcuts(true), 
+      description: 'Help', 
+      category: 'General' 
+    },
+    { 
+      key: 'k', 
+      ctrl: true, 
+      action: () => addToast('Pencarian akan segera hadir!', 'info'), 
+      description: 'Search', 
+      category: 'Navigation' 
+    },
+    { 
+      key: 'Escape', 
+      action: () => setShowShortcuts(false), 
+      description: 'Close', 
+      category: 'General' 
+    },
+  ]);
 
   const playNotificationSound = useCallback(() => {
     if (isMuted) return;
@@ -452,6 +479,8 @@ function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
+
+      <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   )
 }
