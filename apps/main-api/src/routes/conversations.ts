@@ -305,37 +305,72 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
   }
 });
 
-conversationsRoutes.patch('/:id/assign', async (c) => {
+const assignTicketSchema = z.object({
+  assignee_id: z.number().int().optional()
+});
+
+conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   const conversationId = parseInt(c.req.param('id'), 10);
   if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
 
   try {
-    const jwtPayload = c.get('jwtPayload');
-    const agentId = jwtPayload.id;
-    const agentName = jwtPayload.name;
+    const jwtPayload = c.get('jwtPayload') as any;
+    const actorId = jwtPayload.id;
+    const actorName = jwtPayload.name;
+    const { assignee_id: targetAgentId } = c.req.valid('json');
+
+    // Jika assignee_id diberikan, hanya admin yang boleh
+    if (targetAgentId && targetAgentId !== actorId) {
+      if (jwtPayload.role !== 'administrator') {
+        return c.json({ error: 'Hanya administrator yang boleh memindahkan tiket ke agen lain' }, 403);
+      }
+    }
+
+    const assigneeId = targetAgentId || actorId;
 
     const ticket = await sql.begin(async (tx) => {
-      const [updatedTicket] = await tx`
-        UPDATE tickets 
-        SET assignee_id = ${agentId}, updated_at = NOW() 
-        WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
-        RETURNING *;
-      `;
+      let updatedTicket;
+      
+      if (targetAgentId) {
+        // Admin reassign - override existing assignment
+        [updatedTicket] = await tx`
+          UPDATE tickets 
+          SET assignee_id = ${assigneeId}, updated_at = NOW() 
+          WHERE conversation_id = ${conversationId} AND status != 'resolved'
+          RETURNING *;
+        `;
+      } else {
+        // Self-assign - hanya jika belum diambil orang lain
+        [updatedTicket] = await tx`
+          UPDATE tickets 
+          SET assignee_id = ${assigneeId}, updated_at = NOW() 
+          WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
+          RETURNING *;
+        `;
+      }
 
       if (!updatedTicket) {
-        const [existing] = await tx`SELECT assignee_id FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved'`;
-        if (!existing) throw new Error('NOT_FOUND');
-        if (existing.assignee_id !== null) throw new Error('ALREADY_ASSIGNED');
+        throw new Error(targetAgentId ? 'NOT_FOUND' : 'ALREADY_ASSIGNED');
       }
+
+      // Cari nama target agent
+      const [targetAgent] = await tx`SELECT name FROM users WHERE id = ${assigneeId}`;
+      const targetName = targetAgent?.name || 'Unknown';
+
+      const systemText = targetAgentId
+        ? `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} di-assign ke ${targetName} oleh ${actorName}`
+        : `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} diambil alih oleh ${actorName}`;
 
       await tx`
         INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
-        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${agentId}, 'assigned', ${sql.json({ new_assignee_id: agentId })});
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${actorId}, 'assigned', ${sql.json({ new_assignee_id: assigneeId, reassigned_by: targetAgentId ? actorId : null })});
       `;
       
       const [sysMsg] = await tx`
         INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
-        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'System', NULL, ${`Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} diambil alih oleh ${agentName}`}, 'template', 'sent')
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'System', NULL, ${systemText}, 'template', 'sent')
         RETURNING *;
       `;
       await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
@@ -347,8 +382,11 @@ conversationsRoutes.patch('/:id/assign', async (c) => {
   } catch (error: any) {
     console.error('Error assign ticket:', error);
     if (error.message === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan' }, 404);
-    if (error.message === 'ALREADY_ASSIGNED') return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
-    return c.json({ success: false, error: 'Gagal mengambil tiket' }, 500);
+    if (error.message === 'ALREADY_ASSIGNED') {
+      // Return custom message untuk self-assign jika sudah diambil
+      return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
+    }
+    return c.json({ success: false, error: 'Gagal melakukan assignment tiket' }, 500);
   }
 });
 

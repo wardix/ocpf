@@ -96,6 +96,21 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [showCanned, setShowCanned] = useState(false);
   const [cannedSearch, setCannedSearch] = useState('');
 
+  // State untuk Agents (Admin Reassign)
+  const [agents, setAgents] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (currentUser?.role === 'administrator' && token) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      fetch(`${apiUrl}/api/users/agents`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setAgents(data);
+        })
+        .catch(err => console.error('Gagal mengambil daftar agen:', err));
+    }
+  }, [currentUser?.role, token]);
+
   // Auto scroll ke bawah saat pesan baru tiba (hanya jika scroll sudah di bawah)
   useEffect(() => {
     if (parentRef.current && messages.length > 0 && !isLoadingOlder) {
@@ -163,24 +178,26 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleAssign = async () => {
+  const handleAssign = async (assigneeId?: number) => {
     if (!token) return;
     setIsAssigning(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const bodyPayload = assigneeId ? JSON.stringify({ assignee_id: assigneeId }) : undefined;
       const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/assign`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}` 
-        }
+        },
+        body: bodyPayload
       });
       if (response.ok) {
-        addToast('Tiket berhasil diambil alih', 'success');
+        addToast(assigneeId ? 'Tiket berhasil dipindahkan' : 'Tiket berhasil diambil alih', 'success');
         onAssign(); 
       } else {
         const errData = await response.json();
-        addToast(errData.error || 'Gagal mengambil tiket', 'error');
+        addToast(errData.error || 'Gagal mengubah penugasan tiket', 'error');
       }
     } catch (err) {
       console.error('Gagal mengambil tiket:', err);
@@ -336,19 +353,57 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           
           {selectedConv.ticket_id ? (
             selectedConv.assignee_id === null ? (
-              <button 
-                className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
-                onClick={handleAssign}
-                disabled={isAssigning}
-              >
-                🙋‍♂️ Ambil Tiket
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
+                  onClick={() => handleAssign()}
+                  disabled={isAssigning}
+                >
+                  🙋‍♂️ Ambil Tiket
+                </button>
+                {currentUser?.role === 'administrator' && agents.length > 0 && (
+                  <div className="dropdown dropdown-end">
+                    <label tabIndex={0} className="btn btn-sm btn-outline gap-1">
+                      Assign ke...
+                    </label>
+                    <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-52 p-2 shadow-lg z-50">
+                      {agents.map(agent => (
+                        <li key={agent.id}>
+                          <a onClick={() => handleAssign(agent.id)}>
+                            <span className={`badge badge-xs ${agent.availability_status === 'online' ? 'badge-success' : agent.availability_status === 'busy' ? 'badge-error' : 'badge-ghost'}`} />
+                            {agent.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-2">
-                <span className="text-xs badge badge-ghost">
-                  👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
-                </span>
-                {(selectedConv.assignee_id === currentUser?.id || !selectedConv.assignee_id) && (
+                {currentUser?.role === 'administrator' && agents.length > 0 ? (
+                  <div className="dropdown dropdown-end">
+                    <label tabIndex={0} className="btn btn-sm btn-ghost gap-1 font-normal text-xs">
+                      👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name} ▾
+                    </label>
+                    <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-52 p-2 shadow-lg z-50">
+                      {agents.map(agent => (
+                        <li key={agent.id}>
+                          <a onClick={() => handleAssign(agent.id)} className={selectedConv.assignee_id === agent.id ? 'active' : ''}>
+                            <span className={`badge badge-xs ${agent.availability_status === 'online' ? 'badge-success' : agent.availability_status === 'busy' ? 'badge-error' : 'badge-ghost'}`} />
+                            {agent.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <span className="text-xs badge badge-ghost">
+                    👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
+                  </span>
+                )}
+
+                {(selectedConv.assignee_id === currentUser?.id || currentUser?.role === 'administrator') && (
                   <div className="flex gap-2">
                     <button 
                       className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}

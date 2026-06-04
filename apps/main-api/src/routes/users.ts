@@ -8,6 +8,25 @@ export const usersRoutes = new Hono();
 
 usersRoutes.use('/*', jwtMiddleware);
 
+usersRoutes.get('/agents', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    
+    // Semua user (admin/agen) bisa memanggil ini untuk keperluan dropdown UI
+    const agents = await sql`
+      SELECT u.id, u.name, au.availability_status
+      FROM users u
+      JOIN account_users au ON u.id = au.user_id
+      WHERE au.account_id = ${jwtPayload.account_id}
+      ORDER BY u.name ASC
+    `;
+    return c.json(agents);
+  } catch (error) {
+    console.error('Error fetch agents:', error);
+    return c.json({ error: 'Gagal mengambil daftar agen' }, 500);
+  }
+});
+
 usersRoutes.get('/', async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
