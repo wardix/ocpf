@@ -16,6 +16,7 @@ const ContactInfo = ({ onUpdate }: Props) => {
 
   const [availableLabels, setAvailableLabels] = useState<any[]>([]);
   const [conversationLabels, setConversationLabels] = useState<any[]>([]);
+  const [showLabelMenu, setShowLabelMenu] = useState(false);
 
   useEffect(() => {
     if (selectedConv) {
@@ -100,10 +101,10 @@ const ContactInfo = ({ onUpdate }: Props) => {
   };
 
   return (
-    <div className="w-72 bg-base-100 border-l border-base-300 flex flex-col h-full shrink-0 overflow-y-auto">
+    <div className="w-72 bg-base-100 border-l border-base-300 flex flex-col h-full shrink-0 overflow-visible relative z-20">
       
       {/* Header Info Dinamis */}
-      <div className="p-6 flex flex-col items-center border-b border-base-200 relative">
+      <div className="p-6 flex flex-col items-center border-b border-base-200 relative shrink-0">
         {!isEditing && (
           <button 
             className="btn btn-xs btn-ghost absolute top-2 right-2" 
@@ -155,7 +156,7 @@ const ContactInfo = ({ onUpdate }: Props) => {
       </div>
 
       {/* Detail Attributes */}
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 flex-1 overflow-y-auto overflow-x-visible">
         
         {!isEditing && formData.email && (
           <div>
@@ -198,30 +199,36 @@ const ContactInfo = ({ onUpdate }: Props) => {
                 <button onClick={() => removeLabel(label.id)} className="btn btn-ghost btn-xs px-1 hover:bg-black/20">×</button>
               </span>
             ))}
-            {/* Dropdown untuk menambah label */}
-            <div className="dropdown dropdown-end">
-              <label tabIndex={0} className="badge badge-sm badge-outline cursor-pointer border-dashed hover:bg-base-200">+ Tambah</label>
-              <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-48 p-2 shadow-lg z-50">
-                {availableLabels.length === 0 ? (
-                  <li className="text-xs p-2 opacity-50 italic text-center">Tidak ada label tersedia</li>
-                ) : (
-                  availableLabels
-                    .filter(l => !conversationLabels.some(cl => cl.id === l.id))
-                    .map(label => (
-                      <li key={label.id}>
-                        <a onClick={() => addLabel(label.id)} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: label.color }} />
-                          {label.title}
-                        </a>
-                      </li>
-                    ))
-                )}
-                {availableLabels.length > 0 && availableLabels.filter(l => !conversationLabels.some(cl => cl.id === l.id)).length === 0 && (
-                   <li className="text-xs p-2 opacity-50 italic text-center">Semua label sudah terpasang</li>
-                )}
-              </ul>
-            </div>
+            {/* Inline list untuk menambah label */}
+            <button 
+              className={`badge badge-sm cursor-pointer border-dashed hover:bg-base-200 ${showLabelMenu ? 'badge-primary' : 'badge-outline'}`}
+              onClick={() => setShowLabelMenu(!showLabelMenu)}
+            >
+              {showLabelMenu ? 'Tutup' : '+ Tambah'}
+            </button>
           </div>
+          
+          {showLabelMenu && (
+            <ul className="menu menu-xs bg-base-200 rounded-box w-full mt-2 shadow-sm border border-base-300">
+              {availableLabels.length === 0 ? (
+                <li className="text-xs p-2 opacity-50 italic text-center">Tidak ada label tersedia</li>
+              ) : (
+                availableLabels
+                  .filter(l => !conversationLabels.some(cl => cl.id === l.id))
+                  .map(label => (
+                    <li key={label.id}>
+                      <a onClick={() => { addLabel(label.id); setShowLabelMenu(false); }} className="flex items-center gap-2 py-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: label.color }} />
+                        {label.title}
+                      </a>
+                    </li>
+                  ))
+              )}
+              {availableLabels.length > 0 && availableLabels.filter(l => !conversationLabels.some(cl => cl.id === l.id)).length === 0 && (
+                 <li className="text-xs p-2 opacity-50 italic text-center">Semua label terpasang</li>
+              )}
+            </ul>
+          )}
         </div>
 
         <div className="divider opacity-10"></div>
