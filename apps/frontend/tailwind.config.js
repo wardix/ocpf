@@ -9,6 +9,7 @@ export default {
   },
   plugins: [require("daisyui")],
   daisyui: {
-    themes: ["light", "dark", "corporate"], // Bisa ganti tema sesuai selera
+    themes: ["light", "dark", "corporate"],
+    darkTheme: "dark",
   },
 }

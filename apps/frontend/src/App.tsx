@@ -14,6 +14,7 @@ import { useAuthStore } from './store/authStore'
 import { useUiStore } from './store/uiStore'
 import { useChatStore } from './store/chatStore'
 import { useToastStore } from './store/toastStore'
+import { useThemeStore } from './store/themeStore'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -45,6 +46,7 @@ function App() {
   const location = useLocation();
   const { token, user, login, logout } = useAuthStore();
   const { isMuted, toggleMute } = useUiStore();
+  const { theme, themes, setTheme } = useThemeStore();
   const { 
     selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading,
     setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat
@@ -154,6 +156,13 @@ function App() {
             }
             if (selectedConv && newMessage.conversation_id === selectedConv.id) {
               setMessages((prev: any) => [...prev, newMessage]);
+            }
+          } else if (payload.event === 'message.status_changed') {
+            const updatedMessage = payload.data;
+            if (selectedConv && updatedMessage.conversation_id === selectedConv.id) {
+              setMessages((prev: any) => prev.map((msg: any) => 
+                msg.id === updatedMessage.id ? { ...msg, status: updatedMessage.status } : msg
+              ));
             }
           }
         } catch (e) {
@@ -328,6 +337,22 @@ function App() {
             </>
           )}
           <div className="flex-1"></div>
+          
+          <div className="dropdown dropdown-top w-full dropdown-end sm:dropdown-right">
+            <label tabIndex={0} className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" title="Pilih Tema">
+              {theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🏢'}
+            </label>
+            <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-36 p-2 shadow-lg mb-2 z-50">
+              {themes.map(t => (
+                <li key={t}>
+                  <a onClick={() => setTheme(t)} className={theme === t ? 'active' : ''}>
+                    {t === 'light' ? '☀️' : t === 'dark' ? '🌙' : '🏢'} {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <button 
             className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" 
             onClick={toggleMute} 
