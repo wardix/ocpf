@@ -48,7 +48,7 @@ function App() {
   const { isMuted, toggleMute } = useUiStore();
   const { theme, themes, setTheme } = useThemeStore();
   const { 
-    selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading,
+    selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading, isContactTyping,
     setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat,
     setWsInstance, setIsContactTyping
   } = useChatStore();
