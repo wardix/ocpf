@@ -14,6 +14,7 @@ interface Conversation {
   assignee_id?: number | null;
   assignee_name?: string | null;
   ticket_id?: number | null;
+  labels?: { id: number, title: string, color: string }[];
 }
 
 interface Props {
@@ -166,8 +167,18 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
               </div>
               <div className="flex flex-col flex-1 overflow-hidden">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-sm truncate">{conv.contact_name}</span>
-                  <span className="text-[10px] text-base-content/60 font-mono">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="font-bold text-sm truncate">{conv.contact_name}</span>
+                    {conv.labels && conv.labels.length > 0 && (
+                      <div className="flex gap-0.5 mt-0.5">
+                        {conv.labels.slice(0, 3).map(label => (
+                          <span key={label.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: label.color }} title={label.title} />
+                        ))}
+                        {conv.labels.length > 3 && <span className="text-[8px] opacity-50 ml-0.5">+{conv.labels.length - 3}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-base-content/60 font-mono shrink-0">
                     {conv.ticket_id ? `#TKT-${String(conv.ticket_id).padStart(4, '0')}` : 'Outbound'} • {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>

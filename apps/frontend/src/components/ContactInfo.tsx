@@ -14,6 +14,9 @@ const ContactInfo = ({ onUpdate }: Props) => {
   const [formData, setFormData] = useState({ name: '', email: '' });
   const [isSaving, setIsSaving] = useState(false);
 
+  const [availableLabels, setAvailableLabels] = useState<any[]>([]);
+  const [conversationLabels, setConversationLabels] = useState<any[]>([]);
+
   useEffect(() => {
     if (selectedConv) {
       setFormData({ 
@@ -21,8 +24,51 @@ const ContactInfo = ({ onUpdate }: Props) => {
         email: selectedConv.email || '' 
       });
       setIsEditing(false);
+
+      if (token) {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        fetch(`${apiUrl}/api/labels`, { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(res => res.json())
+          .then(result => setAvailableLabels(result.data || []))
+          .catch(console.error);
+
+        fetch(`${apiUrl}/api/conversations/${selectedConv.id}/labels`, { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(res => res.json())
+          .then(result => setConversationLabels(result.data || []))
+          .catch(console.error);
+      }
     }
-  }, [selectedConv]);
+  }, [selectedConv, token]);
+
+  const addLabel = async (labelId: number) => {
+    if (!token || !selectedConv) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/labels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ label_id: labelId })
+      });
+      const label = availableLabels.find(l => l.id === labelId);
+      if (label) setConversationLabels(prev => [...prev, label]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const removeLabel = async (labelId: number) => {
+    if (!token || !selectedConv) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/labels/${labelId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setConversationLabels(prev => prev.filter(l => l.id !== labelId));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   if (!selectedConv) return null;
 
@@ -135,14 +181,46 @@ const ContactInfo = ({ onUpdate }: Props) => {
           </div>
         </div>
 
-        {/* Labels (Bisa dikembangkan nanti agar dinamis dari DB) */}
-        <div>
-          <label className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider">Label</label>
-          <div className="flex flex-wrap gap-2 mt-2">
-            <span className="badge badge-outline badge-sm opacity-50 italic text-[10px]">Belum ada label</span>
-            <button className="btn btn-xs btn-ghost btn-outline border-dashed text-[9px]">
-              + Tambah Label
-            </button>
+        {/* Labels Section */}
+        <div className="pt-2">
+          <label className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider mb-2 block">Labels</label>
+          <div className="flex flex-wrap gap-1">
+            {conversationLabels.length === 0 && (
+              <span className="text-xs italic opacity-50 block w-full mb-1">Belum ada label</span>
+            )}
+            {conversationLabels.map(label => (
+              <span
+                key={label.id}
+                className="badge badge-sm gap-1"
+                style={{ backgroundColor: label.color, color: '#fff', border: 'none' }}
+              >
+                {label.title}
+                <button onClick={() => removeLabel(label.id)} className="btn btn-ghost btn-xs px-1 hover:bg-black/20">×</button>
+              </span>
+            ))}
+            {/* Dropdown untuk menambah label */}
+            <div className="dropdown dropdown-end">
+              <label tabIndex={0} className="badge badge-sm badge-outline cursor-pointer border-dashed hover:bg-base-200">+ Tambah</label>
+              <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-48 p-2 shadow-lg z-50">
+                {availableLabels.length === 0 ? (
+                  <li className="text-xs p-2 opacity-50 italic text-center">Tidak ada label tersedia</li>
+                ) : (
+                  availableLabels
+                    .filter(l => !conversationLabels.some(cl => cl.id === l.id))
+                    .map(label => (
+                      <li key={label.id}>
+                        <a onClick={() => addLabel(label.id)} className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: label.color }} />
+                          {label.title}
+                        </a>
+                      </li>
+                    ))
+                )}
+                {availableLabels.length > 0 && availableLabels.filter(l => !conversationLabels.some(cl => cl.id === l.id)).length === 0 && (
+                   <li className="text-xs p-2 opacity-50 italic text-center">Semua label sudah terpasang</li>
+                )}
+              </ul>
+            </div>
           </div>
         </div>
 

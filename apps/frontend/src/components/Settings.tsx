@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import UserManagement from './UserManagement';
+import LabelManagement from './LabelManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -206,6 +207,7 @@ const Settings = () => {
           </div>
         </div>
 
+        <LabelManagement />
         <UserManagement />
 
       </div>

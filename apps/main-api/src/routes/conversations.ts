@@ -54,7 +54,14 @@ conversationsRoutes.get('/', async (c) => {
           con.email as contact_email,
           con.phone_number as contact_phone,
           (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
-          COALESCE((SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.updated_at) as updated_at
+          COALESCE((SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.updated_at) as updated_at,
+          COALESCE(
+            (SELECT json_agg(json_build_object('id', l.id, 'title', l.title, 'color', l.color)) 
+             FROM conversation_labels cl 
+             JOIN labels l ON cl.label_id = l.id 
+             WHERE cl.conversation_id = c.id), 
+            '[]'::json
+          ) as labels
         FROM conversations c
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
@@ -431,5 +438,68 @@ conversationsRoutes.patch('/:id/unassign', async (c) => {
     console.error('Error unassign ticket:', error);
     if (error.message === 'NOT_FOUND_OR_NOT_OWNED') return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
     return c.json({ success: false, error: 'Gagal melepas tiket' }, 500);
+  }
+});
+
+// GET /api/conversations/:id/labels
+conversationsRoutes.get('/:id/labels', async (c) => {
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
+  try {
+    const labels = await sql`
+      SELECT l.id, l.title, l.color
+      FROM conversation_labels cl
+      JOIN labels l ON l.id = cl.label_id
+      WHERE cl.conversation_id = ${conversationId}
+    `;
+    return c.json({ success: true, data: labels });
+  } catch (error) {
+    console.error('Error fetch conversation labels:', error);
+    return c.json({ error: 'Gagal mengambil label' }, 500);
+  }
+});
+
+const assignLabelSchema = z.object({
+  label_id: z.number().int()
+});
+
+// POST /api/conversations/:id/labels
+conversationsRoutes.post('/:id/labels', zValidator('json', assignLabelSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
+  try {
+    const { label_id } = c.req.valid('json');
+
+    await sql`
+      INSERT INTO conversation_labels (conversation_id, label_id)
+      VALUES (${conversationId}, ${label_id})
+      ON CONFLICT DO NOTHING
+    `;
+    return c.json({ success: true }, 201);
+  } catch (error) {
+    console.error('Error assign label:', error);
+    return c.json({ error: 'Gagal menambah label' }, 500);
+  }
+});
+
+// DELETE /api/conversations/:id/labels/:label_id
+conversationsRoutes.delete('/:id/labels/:label_id', async (c) => {
+  const conversationId = parseInt(c.req.param('id'), 10);
+  const labelId = parseInt(c.req.param('label_id'), 10);
+  if (isNaN(conversationId) || isNaN(labelId)) return c.json({ error: 'ID tidak valid' }, 400);
+
+  try {
+    await sql`
+      DELETE FROM conversation_labels 
+      WHERE conversation_id = ${conversationId} AND label_id = ${labelId}
+    `;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error delete conversation label:', error);
+    return c.json({ error: 'Gagal menghapus label' }, 500);
   }
 });

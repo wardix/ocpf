@@ -19,6 +19,7 @@ import { cannedResponsesRoutes } from './routes/canned_responses';
 import { analyticsRoutes } from './routes/analytics';
 import broadcastRoutes from './routes/broadcast'; 
 import docsRoutes from './routes/docs';
+import { labelsRoutes } from './routes/labels';
 
 const app = new Hono();
 
@@ -76,6 +77,8 @@ app.route('/api/users', usersRoutes);
 app.route('/api/canned-responses', cannedResponsesRoutes);
 app.route('/api/analytics', analyticsRoutes);
 app.route('/api/broadcast', broadcastRoutes);
+app.route('/api/labels', labelsRoutes);
+app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
