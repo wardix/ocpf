@@ -1,6 +1,8 @@
 import { verify } from 'hono/jwt';
 import { JWT_SECRET } from '../middleware/auth';
 import type { ServerWebSocket } from 'bun';
+import { redis } from '../config/redis';
+import { SendTypingPayloadSchema } from '@omnichannel/shared-types';
 
 export type WebSocketData = {
   accountId: number;
@@ -32,10 +34,35 @@ export const websocketHandlers = {
     console.log(`[WS] User ${ws.data.userId} (Role: ${ws.data.role}) Terhubung 🌐`);
     activeWebSockets.add(ws);
   },
-  message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
-    if (message === 'pong' || message === 'ping') {
-      if (message === 'ping') ws.send('pong');
-      ws.data.isAlive = true;
+  async message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
+    if (typeof message === 'string') {
+      if (message === 'pong' || message === 'ping') {
+        if (message === 'ping') ws.send('pong');
+        ws.data.isAlive = true;
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(message);
+        if (payload.event === 'typing.agent') {
+          const { inbox_id, phone } = payload.data;
+          
+          let cleanPhone = phone.replace(/[^\d-]/g, '');
+          if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.substring(1);
+          const isGroup = cleanPhone.includes('-') || cleanPhone.length > 15;
+          const jid = cleanPhone + (isGroup ? '@g.us' : '@s.whatsapp.net');
+
+          const typingPayload = {
+            event: 'typing.send',
+            data: { inbox_id, jid }
+          };
+
+          const targetQueue = `queue:outgoing_messages:inbox_${inbox_id}`;
+          await redis.rpush(targetQueue, JSON.stringify(SendTypingPayloadSchema.parse(typingPayload)));
+        }
+      } catch (e) {
+        // Abaikan parse error
+      }
     }
   },
   close(ws: ServerWebSocket<WebSocketData>) {

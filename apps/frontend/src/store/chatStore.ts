@@ -29,13 +29,19 @@ interface ChatState {
   refreshKey: number;
   hasMoreMessages: boolean;
   isLoadingOlder: boolean;
+  isInitialChatLoading: boolean;
+  isContactTyping: boolean;
+  wsInstance: WebSocket | null;
   
   setSelectedConv: (conv: SelectedConversation | null) => void;
   setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
   setWsStatus: (status: 'connecting' | 'open' | 'closed') => void;
+  setWsInstance: (ws: WebSocket | null) => void;
+  setIsContactTyping: (isTyping: boolean) => void;
   triggerRefresh: () => void;
   setHasMoreMessages: (hasMore: boolean) => void;
   setIsLoadingOlder: (isLoading: boolean) => void;
+  setIsInitialChatLoading: (isLoading: boolean) => void;
   clearChat: () => void;
 }
 
@@ -43,17 +49,23 @@ export const useChatStore = create<ChatState>((set) => ({
   selectedConv: null,
   messages: [],
   wsStatus: 'connecting',
+  wsInstance: null,
+  isContactTyping: false,
   refreshKey: 0,
   hasMoreMessages: false,
   isLoadingOlder: false,
+  isInitialChatLoading: false,
 
   setSelectedConv: (conv) => set({ selectedConv: conv }),
   setMessages: (updater) => set((state) => ({
     messages: typeof updater === 'function' ? updater(state.messages) : updater
   })),
   setWsStatus: (status) => set({ wsStatus: status }),
+  setWsInstance: (ws) => set({ wsInstance: ws }),
+  setIsContactTyping: (isTyping) => set({ isContactTyping: isTyping }),
   triggerRefresh: () => set((state) => ({ refreshKey: state.refreshKey + 1 })),
   setHasMoreMessages: (hasMore) => set({ hasMoreMessages: hasMore }),
   setIsLoadingOlder: (isLoading) => set({ isLoadingOlder: isLoading }),
+  setIsInitialChatLoading: (isLoading) => set({ isInitialChatLoading: isLoading }),
   clearChat: () => set({ selectedConv: null, messages: [] })
 }));

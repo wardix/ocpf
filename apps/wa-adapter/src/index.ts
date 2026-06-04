@@ -304,6 +304,42 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
       }
     }
   });
+  // 1c. DARI WA ADAPTER -> KE REDIS (Typing Indicator Pelanggan)
+  sock.ev.on('presences.update', async (json) => {
+    try {
+      const jid = Object.keys(json)[0];
+      if (!jid) return;
+      const presences = json[jid];
+      if (!presences) return;
+      const participant = Object.keys(presences)[0];
+      if (!participant) return;
+      const presence = presences[participant];
+
+      if (presence.lastKnownPresence === 'composing') {
+        const payload: TypingUpdatePayload = {
+          event: 'typing.update',
+          data: {
+            inbox_id: inboxId,
+            jid: jid,
+            is_typing: true
+          }
+        };
+        await redis.publish(PUB_SUB_CH, JSON.stringify(TypingUpdatePayloadSchema.parse(payload)));
+      } else if (presence.lastKnownPresence === 'paused' || presence.lastKnownPresence === 'available') {
+        const payload: TypingUpdatePayload = {
+          event: 'typing.update',
+          data: {
+            inbox_id: inboxId,
+            jid: jid,
+            is_typing: false
+          }
+        };
+        await redis.publish(PUB_SUB_CH, JSON.stringify(TypingUpdatePayloadSchema.parse(payload)));
+      }
+    } catch (e) {
+      console.error(`[Inbox ${inboxId}] Error memproses presences.update:`, e);
+    }
+  });
 }
 
 // =========================================================================
@@ -408,6 +444,17 @@ async function listenForOutgoingMessages() {
           
           const sendEnd = Date.now();
           console.log(`-> [Inbox ${targetInboxId}] Pesan berhasil dikirim! (Proses: ${sendEnd - sendStart}ms)`);
+        } else if (parsed.event === 'typing.send') {
+          const { target_id } = parsed.data;
+          const sock = activeSockets.get(targetInboxId);
+          if (sock) {
+            try {
+              await sock.presenceSubscribe(target_id);
+              await sock.sendPresenceUpdate('composing', target_id);
+            } catch (e) {
+              console.error(`[Inbox ${targetInboxId}] Gagal mengirim presence composing:`, e);
+            }
+          }
         }
       }
     } catch (err) {

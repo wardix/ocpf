@@ -48,7 +48,7 @@ interface Props {
 
 const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const { token, user: currentUser } = useAuthStore();
-  const { messages, selectedConv, hasMoreMessages, isLoadingOlder, isInitialChatLoading } = useChatStore();
+  const { messages, selectedConv, hasMoreMessages, isLoadingOlder, isInitialChatLoading, wsInstance, isContactTyping } = useChatStore();
   const { addToast } = useToastStore();
 
   const parentRef = useRef<HTMLDivElement>(null);
@@ -70,6 +70,26 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+
+  const lastTypingTime = useRef<number>(0);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputText(e.target.value);
+    
+    if (wsInstance && selectedConv) {
+      const now = Date.now();
+      if (now - lastTypingTime.current > 2000) {
+        lastTypingTime.current = now;
+        wsInstance.send(JSON.stringify({
+          event: 'typing.agent',
+          data: {
+            inbox_id: 1, // Assume default or derived
+            phone: selectedConv.phone
+          }
+        }));
+      }
+    }
+  };
 
   // State untuk Canned Responses
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -354,6 +374,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         </div>
       </div>
 
+      {/* Indikator Typing */}
+      {isContactTyping && (
+        <div className="absolute top-16 left-0 w-full z-10 bg-base-100/80 backdrop-blur-sm border-b border-base-200 py-1 px-6 shadow-sm flex items-center gap-2 text-xs text-base-content/60 italic transition-all">
+          <span className="loading loading-dots loading-xs text-primary"></span>
+          <span>{selectedConv.name} sedang mengetik...</span>
+        </div>
+      )}
+
       {/* Ruang Pesan Dinamis */}
       <div ref={parentRef} className="flex-1 overflow-y-auto p-6 bg-base-200/50 flex flex-col">
         
@@ -502,9 +530,9 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               }
               value={inputText}
               onChange={(e) => {
-                const val = e.target.value;
-                setInputText(val);
+                handleInputChange(e);
                 
+                const val = e.target.value;
                 // Deteksi jika karakter pertama adalah / atau ada kata yang berawalan /
                 if (val === '/') {
                   setShowCanned(true);

@@ -8,6 +8,7 @@ import { redisSub, PUB_SUB_CH } from './config/redis';
 import { activeWebSockets } from './websocket/handler';
 import { rateLimiter } from './middleware/rate-limiter';
 
+import { sql } from './config/database';
 // Import Routes
 import { authRoutes } from './routes/auth';
 import { contactsRoutes } from './routes/contacts';
@@ -78,10 +79,39 @@ app.route('/api/broadcast', broadcastRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
-redisSub.on('message', (channel, message) => {
+redisSub.on('message', async (channel, message) => {
   if (channel === PUB_SUB_CH) {
     try {
       const payload = JSON.parse(message);
+      
+      if (payload.event === 'typing.update') {
+        const { jid, is_typing } = payload.data;
+        // Lookup contact and conversation
+        const [contact] = await sql`
+          SELECT c.account_id, c.id as contact_id, c.name, conv.id as conversation_id 
+          FROM contacts c 
+          JOIN conversations conv ON conv.contact_id = c.id
+          WHERE c.phone_number = ${jid} LIMIT 1
+        `;
+        if (contact) {
+          const typingMsg = JSON.stringify({
+            event: 'typing.update',
+            data: {
+              conversation_id: contact.conversation_id,
+              contact_id: contact.contact_id,
+              contact_name: contact.name,
+              is_typing
+            }
+          });
+          activeWebSockets.forEach((ws) => {
+            if (ws.data.accountId === contact.account_id) {
+              ws.send(typingMsg);
+            }
+          });
+        }
+        return;
+      }
+
       const { data } = payload;
       const accountId = data?.account_id || 1;
       const isPrivate = data?.is_private || false;

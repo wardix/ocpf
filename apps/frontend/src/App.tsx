@@ -49,7 +49,8 @@ function App() {
   const { theme, themes, setTheme } = useThemeStore();
   const { 
     selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading,
-    setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat
+    setSelectedConv, setMessages, setWsStatus, triggerRefresh, setHasMoreMessages, setIsLoadingOlder, setIsInitialChatLoading, clearChat,
+    setWsInstance, setIsContactTyping
   } = useChatStore();
   const { addToast } = useToastStore();
 
@@ -135,6 +136,7 @@ function App() {
 
       ws.onopen = () => {
         setWsStatus('open');
+        setWsInstance(ws);
         if (reconnectAttempts > 0 && selectedConv) {
           fetchMessages(selectedConv.id);
         }
@@ -164,6 +166,11 @@ function App() {
                 msg.id === updatedMessage.id ? { ...msg, status: updatedMessage.status } : msg
               ));
             }
+          } else if (payload.event === 'typing.update') {
+            const typingData = payload.data;
+            if (selectedConv && typingData.conversation_id === selectedConv.id) {
+              setIsContactTyping(typingData.is_typing);
+            }
           }
         } catch (e) {
           console.error('Invalid WS message:', event.data);
@@ -172,6 +179,7 @@ function App() {
 
       ws.onclose = () => {
         setWsStatus('closed');
+        setWsInstance(null);
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), maxDelay);
         reconnectTimeout = setTimeout(() => {
           reconnectAttempts++;
@@ -194,6 +202,16 @@ function App() {
       }
     };
   }, [selectedConv?.id, token, playNotificationSound]); 
+
+  useEffect(() => {
+    let typingTimer: ReturnType<typeof setTimeout>;
+    if (isContactTyping) {
+      typingTimer = setTimeout(() => {
+        setIsContactTyping(false);
+      }, 5000);
+    }
+    return () => clearTimeout(typingTimer);
+  }, [isContactTyping, setIsContactTyping]);
 
   const startNewChat = async (phone: string, name?: string) => {
     if (!token) return;

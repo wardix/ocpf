@@ -74,10 +74,33 @@ export const SendMessagePayloadSchema = z.object({
 
 export type SendMessagePayload = z.infer<typeof SendMessagePayloadSchema>;
 
+export const TypingUpdatePayloadSchema = z.object({
+  event: z.literal('typing.update'),
+  data: z.object({
+    inbox_id: z.number(),
+    jid: z.string(),
+    is_typing: z.boolean()
+  })
+});
+
+export type TypingUpdatePayload = z.infer<typeof TypingUpdatePayloadSchema>;
+
+export const SendTypingPayloadSchema = z.object({
+  event: z.literal('typing.send'),
+  data: z.object({
+    inbox_id: z.number(),
+    jid: z.string()
+  })
+});
+
+export type SendTypingPayload = z.infer<typeof SendTypingPayloadSchema>;
+
 export const RedisQueuePayloadSchema = z.discriminatedUnion("event", [
   IncomingMessagePayloadSchema,
   MessageStatusUpdatePayloadSchema,
-  SendMessagePayloadSchema
+  SendMessagePayloadSchema,
+  TypingUpdatePayloadSchema,
+  SendTypingPayloadSchema
 ]);
 
 export type RedisQueuePayload = z.infer<typeof RedisQueuePayloadSchema>;
