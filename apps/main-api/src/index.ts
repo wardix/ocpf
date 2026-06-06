@@ -159,8 +159,8 @@ const server = Bun.serve({
         if (upgradeSuccess) return;
         return new Response('Upgrade failed', { status: 500 });
       } catch (e: any) {
-        console.error('WS Upgrade Token Error:', e);
-        return new Response('Unauthorized: Invalid token ' + e.message, { status: 401 });
+        console.error(`[WS] Upgrade Token Error: ${e.message}`);
+        return new Response('Unauthorized: Invalid token', { status: 401 });
       }
     }
     return app.fetch(req);

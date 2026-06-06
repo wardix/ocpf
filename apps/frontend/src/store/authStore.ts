@@ -16,14 +16,23 @@ const getInitialUser = () => {
     const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
-    return JSON.parse(jsonPayload);
+    const parsed = JSON.parse(jsonPayload);
+    
+    // Auto logout if expired
+    if (parsed.exp && parsed.exp * 1000 < Date.now()) {
+      localStorage.removeItem('omni_token');
+      return null;
+    }
+    
+    return parsed;
   } catch (e) {
+    localStorage.removeItem('omni_token');
     return null;
   }
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: localStorage.getItem('omni_token'),
+  token: getInitialUser() ? localStorage.getItem('omni_token') : null,
   user: getInitialUser(),
   login: (token, user) => {
     localStorage.setItem('omni_token', token);
