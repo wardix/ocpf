@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev:main-api": "bun run --cwd apps/main-api dev",
-    "dev:wa-adapter": "bun run --cwd apps/wa-adapter dev"
+    "dev:wa-adapter": "bun run --cwd apps/wa-adapter dev",
+    "dev:email-adapter": "bun run --cwd apps/email-adapter dev"
   }
 }

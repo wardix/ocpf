@@ -16,6 +16,13 @@ export interface MessageProps {
     is_private?: boolean;
     status?: 'sent' | 'delivered' | 'read' | 'failed';
     attachments?: Attachment[];
+    email_metadata?: {
+      subject?: string;
+      cc_addresses?: string[];
+      bcc_addresses?: string[];
+      html_content?: string;
+      has_attachments?: boolean;
+    };
   };
   selectedConvId: number;
   selectedConvName: string;
@@ -83,6 +90,27 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
             })}
           </div>
         )}
+        
+        {/* Render Email Metadata */}
+        {msg.email_metadata && (
+          <div className="mb-2 p-2 bg-base-100/50 rounded text-xs border border-base-300/30 text-base-content w-full max-w-full">
+            {msg.email_metadata.subject && <div className="font-bold mb-1">Subject: {msg.email_metadata.subject}</div>}
+            {msg.email_metadata.cc_addresses && msg.email_metadata.cc_addresses.length > 0 && (
+              <div className="opacity-70 mb-1">CC: {msg.email_metadata.cc_addresses.join(', ')}</div>
+            )}
+            {msg.email_metadata.html_content && (
+              <div className="mt-2 bg-white rounded p-1 w-full overflow-hidden">
+                <iframe 
+                  srcDoc={msg.email_metadata.html_content} 
+                  sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+                  className="w-full border-none min-h-[200px]"
+                  title="Email Content"
+                />
+              </div>
+            )}
+          </div>
+        )}
+        
         {msg.content}
       </div>
       <div className="chat-footer opacity-50 text-[10px] mt-1 flex items-center gap-1">

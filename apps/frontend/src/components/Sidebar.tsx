@@ -17,6 +17,7 @@ interface Conversation {
   ticket_id?: number | null;
   snoozed_until?: string | null;
   labels?: { id: number, title: string, color: string }[];
+  provider_type?: string;
 }
 
 interface Props {
@@ -332,7 +333,9 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
                   {conv.last_message || 'Tidak ada pesan...'}
                 </span>
                 <div className="flex gap-1 mt-2 flex-wrap">
-                   <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
+                   <div className={`badge badge-outline text-[9px] h-4 ${conv.provider_type === 'email' ? 'badge-info' : 'badge-primary'}`}>
+                     {conv.provider_type === 'email' ? 'Email' : 'WhatsApp'}
+                   </div>
                    {(conv as any).inbox_name && (
                      <div className="badge badge-accent badge-outline text-[9px] h-4 max-w-[100px] truncate" title={(conv as any).inbox_name}>
                        📥 {(conv as any).inbox_name}

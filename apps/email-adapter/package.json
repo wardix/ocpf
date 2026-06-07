@@ -1,0 +1,21 @@
+{
+  "name": "@omnichannel/email-adapter",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npx tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@omnichannel/shared-types": "workspace:*",
+    "imapflow": "^1.0.165",
+    "nodemailer": "^6.9.14",
+    "mailparser": "^3.7.1",
+    "ioredis": "^5.3.0",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^6.4.15",
+    "@types/mailparser": "^3.4.4",
+    "tsx": "^4.22.4"
+  }
+}

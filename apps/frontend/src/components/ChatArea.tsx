@@ -62,6 +62,8 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   });
 
   const [inputText, setInputText] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailCc, setEmailCc] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
@@ -424,12 +426,18 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           conversation_id: Number(selectedConv.id),
           account_id: 1,
           media: mediaPayload,
-          is_private: isPrivateNote
+          is_private: isPrivateNote,
+          email_metadata: selectedConv.provider_type === 'email' ? {
+            subject: emailSubject,
+            cc_addresses: emailCc.split(',').map(s => s.trim()).filter(s => s)
+          } : undefined
         })
       });
 
       if (response.ok) {
         setInputText(''); // Reset input setelah berhasil kirim
+        setEmailSubject('');
+        setEmailCc('');
         clearFile(); // Hapus file yang dipilih
         setIsPrivateNote(false); // Reset mode ke publik
       } else {
@@ -733,6 +741,26 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               <input type="radio" name="replyMode" className="radio radio-warning radio-xs" checked={isPrivateNote} onChange={() => setIsPrivateNote(true)} />
               <span className="text-xs font-semibold text-warning-content">Catatan Internal (Privat)</span>
             </label>
+          </div>
+        )}
+
+        {/* Form Email Khusus */}
+        {selectedConv.provider_type === 'email' && !isPrivateNote && canReply && (
+          <div className="flex flex-col gap-2 mb-3 px-2">
+            <input 
+              type="text" 
+              placeholder="Subject (Opsional)" 
+              className="input input-sm input-bordered w-full"
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+            />
+            <input 
+              type="text" 
+              placeholder="CC (Pisahkan dengan koma, opsional)" 
+              className="input input-sm input-bordered w-full"
+              value={emailCc}
+              onChange={(e) => setEmailCc(e.target.value)}
+            />
           </div>
         )}
 
