@@ -15,7 +15,7 @@ messagesRoutes.use('/*', jwtMiddleware);
 const sendMessageSchema = z.object({
   target_id: z.string().min(5),
   content: z.string().optional(),
-  conversation_id: z.number().int(),
+  conversation_id: z.coerce.number().int(),
   is_private: z.boolean().optional(),
   media: z.object({
     mimetype: z.string(),

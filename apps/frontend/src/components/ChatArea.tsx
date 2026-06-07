@@ -296,7 +296,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         body: JSON.stringify({
           target_id: selectedConv.phone,
           content: inputText,
-          conversation_id: selectedConv.id,
+          conversation_id: Number(selectedConv.id),
           account_id: 1,
           media: mediaPayload,
           is_private: isPrivateNote
