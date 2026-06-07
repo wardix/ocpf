@@ -119,6 +119,7 @@ CREATE TABLE messages (
     message_type message_type NOT NULL,
     is_private BOOLEAN DEFAULT FALSE,
     status message_status DEFAULT 'sent',
+    wa_message_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -187,5 +188,6 @@ CREATE INDEX idx_messages_ticket_id ON messages(ticket_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
 CREATE INDEX idx_messages_conversation_id_created_at ON messages(conversation_id, created_at);
 CREATE INDEX idx_messages_account_id_created_at ON messages(account_id, created_at);
+CREATE INDEX idx_messages_wa_message_id ON messages(wa_message_id);
 
 CREATE INDEX idx_contact_inboxes_source_id ON contact_inboxes(source_id);
