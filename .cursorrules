@@ -1,0 +1,43 @@
+# Panduan Agen AI (Antigravity / Cursor / Cline / Copilot)
+
+Anda adalah agen AI ahli (Expert Full-stack Software Engineer) yang sedang mengembangkan Omnichannel Customer Support Platform. Repositori ini adalah monorepo yang menggunakan Bun Workspaces.
+
+## 🚨 ATURAN KRITIS (CRITICAL CONSTRAINTS) - BACA INI SEBELUM MENULIS KODE!
+
+1. **Batasan Runtime (JANGAN DICAMPUR):**
+   - `apps/main-api`: WAJIB berjalan di atas **Bun** (Hono).
+   - `apps/wa-adapter`: WAJIB berjalan di atas **Node.js** (via `tsx`). JANGAN paksakan `bun` di sini karena pustaka Baileys memiliki masalah kompatibilitas *crypto/net* dengan Bun.
+   - `apps/frontend`: React (Vite) + Zustand + TailwindCSS + DaisyUI.
+
+2. **Aturan Database (STRICTLY NO ORM):**
+   - **TIDAK BOLEH** menginstal Prisma, TypeORM, Drizzle, atau ORM apa pun.
+   - Proyek ini menggunakan `postgres.js` murni. Semua kueri harus menggunakan Raw SQL dengan Tagged Template Literals (contoh: `await sql\`SELECT * FROM users\``).
+   - Semua *insert/update* krusial harus dibungkus dalam *Transaction* (`await sql.begin(async (tx) => { ... })`).
+   - Setiap tabel (kecuali master) WAJIB difilter menggunakan `account_id` untuk menjaga Isolasi Multi-Tenancy. Jangan pernah melakukan `SELECT` tanpa menyertakan `WHERE account_id = ...`.
+
+3. **Komunikasi Antar-Layanan (IPC):**
+   - Main API dan WA Adapter **TIDAK** berkomunikasi lewat HTTP REST.
+   - Komunikasi harus melalui **Redis Queue** (`lpush`/`brpop`) dan **Redis Pub/Sub** (`publish`/`subscribe`).
+   - Semua *payload* JSON yang lewat di Redis WAJIB divalidasi saat *runtime* (Runtime Validation) menggunakan `Zod` yang terpusat di `packages/shared-types`.
+
+4. **Kebenaran Skema (Single Source of Truth):**
+   - Jangan menebak-nebak kolom database. Rujuk ke `init.sql` (atau `database_schema.md`) untuk skema DB terbaru.
+   - Jangan menebak-nebak tipe data Redis. Rujuk ke `packages/shared-types/index.ts` dan `redis_payload_contracts.md`.
+
+5. **Antarmuka Pengguna (Frontend):**
+   - Gunakan kelas CSS bawaan **DaisyUI** dan **TailwindCSS**.
+   - Hindari membuat elemen UI dari nol jika komponen DaisyUI (seperti `modal`, `btn`, `badge`, `dropdown`) sudah menyediakannya.
+   - Semua modifikasi antarmuka yang menyebabkan luapan (*overflow*) harus berhati-hati terhadap isu *CSS Clipping*.
+
+## 🏗️ Struktur Direktori Monorepo
+* `/apps/frontend`: Aplikasi UI React (Port 5173).
+* `/apps/main-api`: Backend API & WebSocket (Port 8000). Rute ada di `src/routes/`.
+* `/apps/wa-adapter`: Layanan Bot WhatsApp Baileys (Berjalan di background).
+* `/packages/shared-types`: Skema Zod & TS Interface (Sumber kebenaran tipe data).
+
+## 🚀 Perintah Menjalankan Proyek
+Jalankan semua layanan secara serentak menggunakan perintah:
+`bun run dev` (didefinisikan di `package.json` root yang akan mengeksekusi `concurrently`).
+
+---
+Pesan untuk Agen AI: *Pahami pedoman ini sepenuhnya sebelum menyarankan atau menulis sebaris kode pun. Mengabaikan aturan "NO ORM" atau "Multi-tenancy account_id" akan berakibat fatal.*
