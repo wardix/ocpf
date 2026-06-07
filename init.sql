@@ -192,6 +192,9 @@ CREATE INDEX idx_conversations_account_id ON conversations(account_id);
 CREATE INDEX idx_conversations_inbox_id ON conversations(inbox_id);
 CREATE INDEX idx_conversations_contact_id ON conversations(contact_id);
 
+CREATE INDEX idx_inbox_settings_inbox_id ON inbox_settings(inbox_id);
+CREATE INDEX idx_inbox_settings_account_id ON inbox_settings(account_id);
+
 CREATE INDEX idx_tickets_conversation_id ON tickets(conversation_id);
 CREATE INDEX idx_tickets_status ON tickets(status);
 CREATE INDEX idx_tickets_assignee_id ON tickets(assignee_id);
