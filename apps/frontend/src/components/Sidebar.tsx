@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 import { useAuthStore } from '../store/authStore';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import NotificationBell from './NotificationBell';
 
 interface Conversation {
   id: number;
@@ -202,7 +203,9 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
               />
             )}
           </h2>
-          <button 
+          <div className="flex gap-1 items-center">
+            <NotificationBell />
+            <button 
             className="btn btn-xs btn-primary btn-outline"
             onClick={() => {
               const phone = window.prompt("Masukkan nomor WhatsApp tujuan (Misal: 62812345678):");
@@ -213,7 +216,8 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             }}
           >
             ➕ Baru
-          </button>
+            </button>
+          </div>
         </div>
 
         {/* Dropdown Filter Inbox */}

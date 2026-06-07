@@ -523,6 +523,23 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
           inbox_id: result.inboxId,
           contact_id: result.contactId
         }).catch(e => console.error(e));
+
+        try {
+          const { createNotification } = await import('../utils/notifications');
+          const eligibleUsers = await sql`SELECT user_id FROM account_users WHERE account_id = ${result.accountId}`;
+          for (const row of eligibleUsers) {
+            await createNotification({
+              userId: row.user_id,
+              accountId: result.accountId,
+              type: 'new_conversation',
+              title: 'Percakapan Baru',
+              body: `Percakapan baru dimulai oleh ${result.msg.contact_name || 'Pelanggan'}`,
+              data: { conversation_id: result.conversationId }
+            });
+          }
+        } catch (err) {
+          console.error('Failed to create new conversation notification', err);
+        }
       }
       if (!data.is_host_echo) {
         dispatchWebhook(result.accountId, 'message.incoming', result.msg).catch(e => console.error(e));

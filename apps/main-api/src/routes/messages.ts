@@ -203,6 +203,27 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       data: finalMsgData
     }));
 
+    if (is_private && content) {
+      const users = await sql`SELECT id, name FROM users WHERE account_id = ${accountId}`;
+      const mentionedUsers = users.filter(u => content.includes(`@${u.name}`));
+      if (mentionedUsers.length > 0) {
+        const { createNotification } = await import('../utils/notifications');
+        const senderName = jwtPayload.name || 'Seseorang';
+        for (const u of mentionedUsers) {
+          if (u.id !== agentId) {
+            await createNotification({
+              userId: u.id,
+              accountId,
+              type: 'mentioned_in_note',
+              title: 'Anda di-mention dalam Private Note',
+              body: `${senderName} menyebut Anda: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`,
+              data: { conversation_id }
+            });
+          }
+        }
+      }
+    }
+
     if (!is_private) {
       dispatchWebhook(accountId, 'message.outgoing', finalMsgData).catch(e => console.error('Webhook dispatch error:', e));
     }

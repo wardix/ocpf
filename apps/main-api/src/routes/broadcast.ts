@@ -106,6 +106,20 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
         }
       }
       console.log('[BROADCAST] Selesai!');
+      
+      try {
+        const { createNotification } = await import('../utils/notifications');
+        await createNotification({
+          userId: agentId,
+          accountId: ACCOUNT_ID,
+          type: 'broadcast_completed',
+          title: 'Broadcast Selesai',
+          body: `Broadcast ke ${contacts.length} kontak telah selesai dikirim.`,
+          data: { total_contacts: contacts.length }
+        });
+      } catch (err) {
+        console.error('Failed to create broadcast notification', err);
+      }
     })();
 
     return c.json({ success: true, message: `Broadcast sedang dikirim ke ${contacts.length} kontak secara background.` });
