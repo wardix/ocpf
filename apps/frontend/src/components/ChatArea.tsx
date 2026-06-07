@@ -90,6 +90,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   });
   const [isScheduling, setIsScheduling] = useState(false);
 
+  // Message Template States
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [searchTemplateQuery, setSearchTemplateQuery] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
+  const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
+  const [resolvedTemplateBody, setResolvedTemplateBody] = useState('');
+  const [isResolvingTemplate, setIsResolvingTemplate] = useState(false);
+
   // AI Assistant States
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -159,6 +168,12 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
       setLoadingSummary(false);
     }
   };
+
+  useEffect(() => {
+    if (showTemplateModal) {
+      handleFetchTemplates();
+    }
+  }, [showTemplateModal, searchTemplateQuery]);
 
   useEffect(() => {
     setSuggestions([]);
@@ -457,6 +472,62 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     } catch (err) {
       addToast('Terjadi kesalahan jaringan', 'error');
     }
+  };
+
+  const handleFetchTemplates = async () => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const q = searchTemplateQuery ? `?q=${encodeURIComponent(searchTemplateQuery)}` : '';
+      const response = await fetch(`${apiUrl}/api/message-templates${q}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setTemplates(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching templates', err);
+    }
+  };
+
+  const handleSelectTemplate = async (template: any) => {
+    setSelectedTemplate(template);
+    setTemplateVariables({});
+    await resolveTemplate(template, {});
+  };
+
+  const resolveTemplate = async (template: any, manualVars: Record<string, string>) => {
+    if (!token || !selectedConv) return;
+    setIsResolvingTemplate(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/message-templates/${template.id}/resolve`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          conversation_id: Number(selectedConv.id),
+          manual_variables: manualVars
+        })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setResolvedTemplateBody(result.data.resolved_body);
+      }
+    } catch (err) {
+      console.error('Error resolving template', err);
+    } finally {
+      setIsResolvingTemplate(false);
+    }
+  };
+
+  const handleApplyTemplate = () => {
+    setInputText((prev) => prev + (prev ? '\n' : '') + resolvedTemplateBody);
+    setShowTemplateModal(false);
+    setSelectedTemplate(null);
   };
 
   const handleSendMessage = async () => {
@@ -1020,6 +1091,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           <div className="flex gap-2">
             <button 
               className="btn btn-square btn-outline btn-primary h-12 w-12 border-base-300"
+              onClick={() => setShowTemplateModal(true)}
+              disabled={isSending || !canReply}
+              title="Gunakan Template"
+            >
+              📄
+            </button>
+            <button 
+              className="btn btn-square btn-outline btn-primary h-12 w-12 border-base-300"
               onClick={() => setShowScheduleModal(true)}
               disabled={isSending || isScheduling || !inputText.trim() || !canReply}
               title="Jadwalkan Pesan"
@@ -1176,6 +1255,88 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
             </div>
           </div>
           <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => setShowScheduleModal(false)}>
+            <button>close</button>
+          </form>
+        </div>
+      )}
+
+      {/* Modal Template Pesan */}
+      {showTemplateModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <span className="text-xl">📄</span> {selectedTemplate ? 'Isi Variabel Template' : 'Pilih Template Pesan'}
+            </h3>
+            
+            {!selectedTemplate ? (
+              <>
+                <div className="form-control mb-4">
+                  <input 
+                    type="text" 
+                    placeholder="Cari template..." 
+                    className="input input-bordered w-full"
+                    value={searchTemplateQuery}
+                    onChange={e => setSearchTemplateQuery(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-60 overflow-y-auto flex flex-col gap-2">
+                  {templates.map(tmpl => (
+                    <div key={tmpl.id} className="border border-base-300 p-3 rounded-lg cursor-pointer hover:bg-base-200 transition-colors" onClick={() => handleSelectTemplate(tmpl)}>
+                      <div className="font-bold text-sm">{tmpl.name}</div>
+                      <div className="text-xs opacity-70 truncate">{tmpl.body}</div>
+                    </div>
+                  ))}
+                  {templates.length === 0 && <div className="text-center py-4 text-sm opacity-50">Tidak ada template ditemukan.</div>}
+                </div>
+                <div className="modal-action">
+                  <button className="btn btn-ghost" onClick={() => setShowTemplateModal(false)}>Tutup</button>
+                </div>
+              </>
+            ) : (
+              <>
+                {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
+                  <div className="mb-4 flex flex-col gap-2">
+                    <div className="text-sm font-semibold mb-1">Variabel Manual:</div>
+                    {selectedTemplate.variables.map((v: string) => {
+                      const lower = v.toLowerCase();
+                      if (lower.startsWith('contact.') || lower.startsWith('customer.')) return null; // Auto-resolved
+                      return (
+                        <div key={v} className="form-control w-full">
+                          <label className="label py-1"><span className="label-text text-xs font-mono">{v}</span></label>
+                          <input 
+                            type="text" 
+                            className="input input-sm input-bordered w-full"
+                            value={templateVariables[v] || ''}
+                            onChange={e => {
+                              const newVars = { ...templateVariables, [v]: e.target.value };
+                              setTemplateVariables(newVars);
+                              resolveTemplate(selectedTemplate, newVars);
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                <div className="text-sm font-semibold mb-1">Pratinjau:</div>
+                <div className="bg-base-200 p-3 rounded-lg text-sm whitespace-pre-wrap min-h-20 mb-4 border border-base-300">
+                  {isResolvingTemplate ? <span className="loading loading-dots loading-sm"></span> : resolvedTemplateBody}
+                </div>
+
+                <div className="modal-action">
+                  <button className="btn btn-ghost" onClick={() => setSelectedTemplate(null)}>Kembali</button>
+                  <button className="btn btn-primary" onClick={handleApplyTemplate} disabled={isResolvingTemplate}>
+                    Gunakan
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => {
+            setShowTemplateModal(false);
+            setSelectedTemplate(null);
+          }}>
             <button>close</button>
           </form>
         </div>

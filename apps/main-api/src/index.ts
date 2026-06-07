@@ -33,6 +33,7 @@ import { webhooksRoutes } from './routes/webhooks';
 import { aiRoutes } from './routes/ai';
 import { automationRoutes } from './routes/automation';
 import { scheduledMessagesRoutes } from './routes/scheduled_messages';
+import { messageTemplatesRoutes } from './routes/message_templates';
 
 const app = new Hono();
 
@@ -115,6 +116,7 @@ app.route('/api/ai', aiRoutes);
 app.route('/api/automation-rules', automationRoutes);
 app.route('/api/docs', docsRoutes);
 app.route('/api/scheduled-messages', scheduledMessagesRoutes);
+app.route('/api/message-templates', messageTemplatesRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
