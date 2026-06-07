@@ -340,3 +340,299 @@ function formatTime(t: string) {
   return t;
 }
 
+const createInboxSchema = z.object({
+  name: z.string().min(1, 'Nama wajib diisi').max(255),
+  description: z.string().max(1000).optional().nullable(),
+  greeting_message: z.string().max(2000).optional().nullable(),
+  channel_id: z.number().int().positive().optional().nullable()
+});
+
+const updateInboxSchema = z.object({
+  name: z.string().min(1, 'Nama wajib diisi').max(255),
+  description: z.string().max(1000).optional().nullable(),
+  greeting_message: z.string().max(2000).optional().nullable(),
+  is_active: z.boolean().optional()
+});
+
+// GET /api/inboxes (Daftar inbox, filtered by user access for agents)
+inboxesRoutes.get('/', async (c) => {
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+    const userId = jwtPayload?.id;
+
+    let inboxes;
+    if (jwtPayload?.role === 'administrator') {
+      inboxes = await sql`
+        SELECT i.*, 
+          COALESCE((SELECT COUNT(*)::int FROM inbox_members im WHERE im.inbox_id = i.id), 0) as members_count, 
+          COALESCE((SELECT COUNT(*)::int FROM tickets t JOIN conversations conv ON t.conversation_id = conv.id WHERE conv.inbox_id = i.id AND t.status IN ('open', 'pending')), 0) as open_tickets_count 
+        FROM inboxes i 
+        WHERE i.account_id = ${accountId} 
+        ORDER BY i.name ASC
+      `;
+    } else {
+      inboxes = await sql`
+        SELECT i.*, 
+          COALESCE((SELECT COUNT(*)::int FROM inbox_members im WHERE im.inbox_id = i.id), 0) as members_count, 
+          COALESCE((SELECT COUNT(*)::int FROM tickets t JOIN conversations conv ON t.conversation_id = conv.id WHERE conv.inbox_id = i.id AND t.status IN ('open', 'pending')), 0) as open_tickets_count 
+        FROM inboxes i 
+        JOIN inbox_members im ON i.id = im.inbox_id 
+        WHERE i.account_id = ${accountId} 
+          AND im.user_id = ${userId} 
+          AND i.is_active = true 
+        ORDER BY i.name ASC
+      `;
+    }
+
+    return c.json({ success: true, data: inboxes });
+  } catch (error) {
+    console.error('Error GET inboxes:', error);
+    return c.json({ error: 'Gagal mengambil daftar inbox' }, 500);
+  }
+});
+
+// POST /api/inboxes (Admin only)
+inboxesRoutes.post('/', zValidator('json', createInboxSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+    const userId = jwtPayload?.id;
+
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    const { name, description, greeting_message, channel_id } = c.req.valid('json');
+
+    // Resolve channel_id
+    let channelId = channel_id;
+    if (!channelId) {
+      const [firstChannel] = await sql`SELECT id FROM channels WHERE account_id = ${accountId} LIMIT 1`;
+      if (firstChannel) {
+        channelId = Number(firstChannel.id);
+      } else {
+        const [newChannel] = await sql`
+          INSERT INTO channels (account_id, name, provider_type, provider_config)
+          VALUES (${accountId}, ${name + ' Channel'}, 'whatsapp', '{}'::jsonb)
+          RETURNING id
+        `;
+        channelId = Number(newChannel.id);
+      }
+    }
+
+    const result = await sql.begin(async (tx) => {
+      // Create inbox
+      const [newInbox] = await tx`
+        INSERT INTO inboxes (account_id, channel_id, name, description, greeting_message, is_active)
+        VALUES (${accountId}, ${channelId}, ${name}, ${description || null}, ${greeting_message || null}, true)
+        RETURNING *
+      `;
+
+      // Create settings
+      const defaultCsatMessage = 'Terima kasih telah menghubungi kami! Bagaimana penilaian Anda terhadap layanan kami? Reply 1-5 (1=Sangat Buruk, 5=Sangat Baik)';
+      await tx`
+        INSERT INTO inbox_settings (
+          inbox_id, account_id, auto_assignment_enabled, auto_assignment_algorithm, auto_assignment_max_tickets,
+          csat_enabled, csat_delay_minutes, csat_message, business_hours_enabled, timezone, out_of_office_message
+        )
+        VALUES (
+          ${newInbox.id}, ${accountId}, false, 'round_robin', 10, false, 5, ${defaultCsatMessage}, false, 'Asia/Jakarta', 
+          'Terima kasih telah menghubungi kami. Saat ini di luar jam operasional, kami akan merespons pada jam kerja berikutnya.'
+        )
+      `;
+
+      // Add creating admin as first member
+      await tx`
+        INSERT INTO inbox_members (inbox_id, user_id, account_id)
+        VALUES (${newInbox.id}, ${userId}, ${accountId})
+        ON CONFLICT DO NOTHING
+      `;
+
+      return newInbox;
+    });
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error POST inbox:', error);
+    return c.json({ error: 'Gagal membuat inbox' }, 500);
+  }
+});
+
+// PUT /api/inboxes/:id (Admin only)
+inboxesRoutes.put('/:id', zValidator('json', updateInboxSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const inboxId = parseInt(c.req.param('id'), 10);
+  if (isNaN(inboxId)) return c.json({ error: 'ID inbox tidak valid' }, 400);
+
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+
+    const { name, description, greeting_message, is_active } = c.req.valid('json');
+
+    const [updatedInbox] = await sql`
+      UPDATE inboxes 
+      SET name = ${name}, 
+          description = ${description || null}, 
+          greeting_message = ${greeting_message || null}, 
+          is_active = ${is_active !== undefined ? is_active : true},
+          updated_at = NOW()
+      WHERE id = ${inboxId} AND account_id = ${accountId}
+      RETURNING *
+    `;
+
+    if (!updatedInbox) {
+      return c.json({ error: 'Inbox tidak ditemukan' }, 404);
+    }
+
+    return c.json({ success: true, data: updatedInbox });
+  } catch (error) {
+    console.error('Error PUT inbox:', error);
+    return c.json({ error: 'Gagal memperbarui inbox' }, 500);
+  }
+});
+
+// DELETE /api/inboxes/:id (Deactivate instead of hard deleting to preserve historical data)
+inboxesRoutes.delete('/:id', async (c) => {
+  const inboxId = parseInt(c.req.param('id'), 10);
+  if (isNaN(inboxId)) return c.json({ error: 'ID inbox tidak valid' }, 400);
+
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak' }, 403);
+    }
+
+    const [updatedInbox] = await sql`
+      UPDATE inboxes 
+      SET is_active = false, updated_at = NOW()
+      WHERE id = ${inboxId} AND account_id = ${accountId}
+      RETURNING *
+    `;
+
+    if (!updatedInbox) {
+      return c.json({ error: 'Inbox tidak ditemukan' }, 404);
+    }
+
+    return c.json({ success: true, message: 'Inbox berhasil dinonaktifkan', data: updatedInbox });
+  } catch (error) {
+    console.error('Error DELETE inbox:', error);
+    return c.json({ error: 'Gagal menonaktifkan inbox' }, 500);
+  }
+});
+
+// GET /api/inboxes/:id/members
+inboxesRoutes.get('/:id/members', async (c) => {
+  const inboxId = parseInt(c.req.param('id'), 10);
+  if (isNaN(inboxId)) return c.json({ error: 'ID inbox tidak valid' }, 400);
+
+  try {
+    const accountId = getAccountId(c);
+    
+    const [inbox] = await sql`
+      SELECT id FROM inboxes WHERE id = ${inboxId} AND account_id = ${accountId} LIMIT 1
+    `;
+    if (!inbox) return c.json({ error: 'Inbox tidak ditemukan' }, 404);
+
+    const members = await sql`
+      SELECT u.id, u.name, u.email, au.role
+      FROM inbox_members im
+      JOIN users u ON im.user_id = u.id
+      JOIN account_users au ON u.id = au.user_id AND au.account_id = im.account_id
+      WHERE im.inbox_id = ${inboxId} AND im.account_id = ${accountId}
+      ORDER BY u.name ASC
+    `;
+
+    return c.json({ success: true, data: members });
+  } catch (error) {
+    console.error('Error GET inbox members:', error);
+    return c.json({ error: 'Gagal mengambil anggota inbox' }, 500);
+  }
+});
+
+const addMemberSchema = z.object({
+  user_id: z.number().int().positive()
+});
+
+// POST /api/inboxes/:id/members (Admin only)
+inboxesRoutes.post('/:id/members', zValidator('json', addMemberSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const inboxId = parseInt(c.req.param('id'), 10);
+  if (isNaN(inboxId)) return c.json({ error: 'ID inbox tidak valid' }, 400);
+
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak' }, 403);
+    }
+
+    const [inbox] = await sql`
+      SELECT id FROM inboxes WHERE id = ${inboxId} AND account_id = ${accountId} LIMIT 1
+    `;
+    if (!inbox) return c.json({ error: 'Inbox tidak ditemukan' }, 404);
+
+    const { user_id } = c.req.valid('json');
+
+    const [userExists] = await sql`
+      SELECT user_id FROM account_users WHERE user_id = ${user_id} AND account_id = ${accountId} LIMIT 1
+    `;
+    if (!userExists) return c.json({ error: 'User tidak ditemukan dalam akun ini' }, 400);
+
+    const [newMember] = await sql`
+      INSERT INTO inbox_members (inbox_id, user_id, account_id)
+      VALUES (${inboxId}, ${user_id}, ${accountId})
+      ON CONFLICT (inbox_id, user_id) DO UPDATE SET created_at = NOW()
+      RETURNING *
+    `;
+
+    return c.json({ success: true, data: newMember });
+  } catch (error) {
+    console.error('Error POST inbox members:', error);
+    return c.json({ error: 'Gagal menambahkan anggota inbox' }, 500);
+  }
+});
+
+// DELETE /api/inboxes/:id/members/:user_id (Admin only)
+inboxesRoutes.delete('/:id/members/:user_id', async (c) => {
+  const inboxId = parseInt(c.req.param('id'), 10);
+  const userId = parseInt(c.req.param('user_id'), 10);
+  if (isNaN(inboxId) || isNaN(userId)) return c.json({ error: 'ID tidak valid' }, 400);
+
+  try {
+    const accountId = getAccountId(c);
+    const jwtPayload = c.get('jwtPayload') as any;
+
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak' }, 403);
+    }
+
+    const [inbox] = await sql`
+      SELECT id FROM inboxes WHERE id = ${inboxId} AND account_id = ${accountId} LIMIT 1
+    `;
+    if (!inbox) return c.json({ error: 'Inbox tidak ditemukan' }, 404);
+
+    await sql`
+      DELETE FROM inbox_members 
+      WHERE inbox_id = ${inboxId} AND user_id = ${userId} AND account_id = ${accountId}
+    `;
+
+    return c.json({ success: true, message: 'Anggota berhasil dihapus dari inbox' });
+  } catch (error) {
+    console.error('Error DELETE inbox members:', error);
+    return c.json({ error: 'Gagal menghapus anggota inbox' }, 500);
+  }
+});
+

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import UserManagement from './UserManagement';
 import LabelManagement from './LabelManagement';
+import InboxManagement from './InboxManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -21,6 +22,10 @@ const Settings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // Inboxes State
+  const [inboxes, setInboxes] = useState<any[]>([]);
+  const [activeInboxId, setActiveInboxId] = useState<number | null>(null);
 
   // Inbox Settings State
   const [inboxSettings, setInboxSettings] = useState({
@@ -66,12 +71,34 @@ const Settings = () => {
     }
   };
 
-  const fetchInboxSettings = async () => {
+  const fetchInboxes = async () => {
     if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setInboxes(result.data);
+          // Default to first inbox if none selected and inboxes exist
+          if (result.data.length > 0 && activeInboxId === null) {
+            setActiveInboxId(result.data[0].id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Gagal mengambil daftar inbox:', err);
+    }
+  };
+
+  const fetchInboxSettings = async () => {
+    if (!token || activeInboxId === null) return;
     setLoadingSettings(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/inboxes/1/settings`, {
+      const response = await fetch(`${apiUrl}/api/inboxes/${activeInboxId}/settings`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -89,11 +116,11 @@ const Settings = () => {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!token || activeInboxId === null) return;
     setSavingSettings(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/inboxes/1/settings`, {
+      const response = await fetch(`${apiUrl}/api/inboxes/${activeInboxId}/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -123,11 +150,11 @@ const Settings = () => {
   };
 
   const fetchBusinessHours = async () => {
-    if (!token) return;
+    if (!token || activeInboxId === null) return;
     setLoadingBh(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours`, {
+      const response = await fetch(`${apiUrl}/api/inboxes/${activeInboxId}/business-hours`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -156,11 +183,11 @@ const Settings = () => {
 
   const handleSaveBusinessHours = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!token || activeInboxId === null) return;
     setSavingBh(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours`, {
+      const response = await fetch(`${apiUrl}/api/inboxes/${activeInboxId}/business-hours`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -198,9 +225,15 @@ const Settings = () => {
   }, [token, page]);
 
   useEffect(() => {
-    fetchInboxSettings();
-    fetchBusinessHours();
+    fetchInboxes();
   }, [token]);
+
+  useEffect(() => {
+    if (activeInboxId !== null) {
+      fetchInboxSettings();
+      fetchBusinessHours();
+    }
+  }, [token, activeInboxId]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,9 +306,25 @@ const Settings = () => {
           <p className="text-base-content/60 mt-1">Kelola preferensi dan alat produktivitas agen di sini.</p>
         </div>
 
+        {user?.role === 'administrator' && (
+          <InboxManagement 
+            inboxes={inboxes} 
+            activeInboxId={activeInboxId} 
+            setActiveInboxId={setActiveInboxId} 
+            onRefreshInboxes={fetchInboxes} 
+          />
+        )}
+
         <div className="card bg-base-100 shadow-sm border border-base-300">
           <div className="card-body">
-            <h2 className="card-title text-xl mb-1">📬 Pengaturan Inbox & Auto-Assignment</h2>
+            <h2 className="card-title text-xl mb-1">
+              📬 Pengaturan Auto-Assignment & CSAT
+              {activeInboxId && (
+                <span className="badge badge-primary badge-sm ml-2">
+                  {inboxes.find(i => i.id === activeInboxId)?.name || 'Loading...'}
+                </span>
+              )}
+            </h2>
             <p className="text-sm text-base-content/60 mb-4">
               Konfigurasi pembagian antrean pesan masuk otomatis ke agen secara adil dan merata.
             </p>
@@ -427,7 +476,14 @@ const Settings = () => {
 
         <div className="card bg-base-100 shadow-sm border border-base-300">
           <div className="card-body">
-            <h2 className="card-title text-xl mb-1">⏰ Jam Operasional & Auto-Responder</h2>
+            <h2 className="card-title text-xl mb-1">
+              ⏰ Jam Operasional & Auto-Responder
+              {activeInboxId && (
+                <span className="badge badge-primary badge-sm ml-2">
+                  {inboxes.find(i => i.id === activeInboxId)?.name || 'Loading...'}
+                </span>
+              )}
+            </h2>
             <p className="text-sm text-base-content/60 mb-4">
               Konfigurasi zona waktu, jam kerja mingguan, dan pesan otomatis saat kantor tutup.
             </p>

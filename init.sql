@@ -57,7 +57,11 @@ CREATE TABLE inboxes (
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     channel_id BIGINT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
-    greeting_message TEXT
+    greeting_message TEXT,
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    avatar_url VARCHAR(1024),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE inbox_settings (
@@ -76,6 +80,15 @@ CREATE TABLE inbox_settings (
     out_of_office_message TEXT DEFAULT 'Terima kasih telah menghubungi kami. Saat ini di luar jam operasional, kami akan merespons pada jam kerja berikutnya.',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (inbox_id)
+);
+
+CREATE TABLE inbox_members (
+    id BIGSERIAL PRIMARY KEY,
+    inbox_id BIGINT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (inbox_id, user_id)
 );
 
 CREATE TABLE business_hours (
