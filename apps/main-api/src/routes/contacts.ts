@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const contactsRoutes = new Hono();
 
-contactsRoutes.use('/*', jwtMiddleware);
+contactsRoutes.use('/*', authMiddleware);
 
 // Endpoint daftar semua kontak (CRM) dengan pencarian
 contactsRoutes.get('/', async (c) => {

@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis } from '../config/redis';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import crypto from 'crypto';
 
 export const webhooksRoutes = new Hono();
 
-webhooksRoutes.use('/*', jwtMiddleware);
+webhooksRoutes.use('/*', authMiddleware);
 
 const allowedEvents = [
   'conversation.created',

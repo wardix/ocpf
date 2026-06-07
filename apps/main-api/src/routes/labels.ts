@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const labelsRoutes = new Hono();
 
-labelsRoutes.use('/*', jwtMiddleware);
+labelsRoutes.use('/*', authMiddleware);
 
 const labelSchema = z.object({
   title: z.string().min(1, 'Nama label tidak boleh kosong').max(50, 'Maksimal 50 karakter'),

@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { dispatchWebhook } from '../utils/webhooks';
 import { evaluateAutomationRules } from '../utils/automation';
 
 export const conversationsRoutes = new Hono();
 
-conversationsRoutes.use('/*', jwtMiddleware);
+conversationsRoutes.use('/*', authMiddleware);
 
 conversationsRoutes.get('/', async (c) => {
   try {

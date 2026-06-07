@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { clearChatbotCache } from '../chatbot/engine';
 
 export const chatbotRoutes = new Hono();
 
-chatbotRoutes.use('/*', jwtMiddleware);
+chatbotRoutes.use('/*', authMiddleware);
 
 const chatbotConfigSchema = z.object({
   name: z.string().min(1, 'Nama chatbot tidak boleh kosong').max(255),

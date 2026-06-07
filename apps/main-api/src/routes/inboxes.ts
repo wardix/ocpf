@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const inboxesRoutes = new Hono();
 
-inboxesRoutes.use('/*', jwtMiddleware);
+inboxesRoutes.use('/*', authMiddleware);
 
 const updateSettingsSchema = z.object({
   auto_assignment_enabled: z.boolean(),

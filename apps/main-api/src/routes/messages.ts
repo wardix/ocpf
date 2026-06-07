@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { dispatchWebhook } from '../utils/webhooks';
 import { rateLimiter } from '../middleware/rate-limiter';
 import path from 'path';
@@ -11,7 +11,7 @@ import type { SendMessagePayload } from '@omnichannel/shared-types';
 
 export const messagesRoutes = new Hono();
 
-messagesRoutes.use('/*', jwtMiddleware);
+messagesRoutes.use('/*', authMiddleware);
 
 const sendMessageSchema = z.object({
   target_id: z.string().min(5),

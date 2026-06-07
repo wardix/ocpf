@@ -511,3 +511,17 @@ CREATE TABLE export_jobs (
     created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE api_keys (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    key_hash VARCHAR(64) NOT NULL,
+    key_prefix VARCHAR(20) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    permissions TEXT[] NOT NULL DEFAULT '{}',
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TIMESTAMP WITH TIME ZONE
+);
+CREATE UNIQUE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
