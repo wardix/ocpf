@@ -26,7 +26,10 @@ const Settings = () => {
   const [inboxSettings, setInboxSettings] = useState({
     auto_assignment_enabled: false,
     auto_assignment_algorithm: 'round_robin',
-    auto_assignment_max_tickets: 10
+    auto_assignment_max_tickets: 10,
+    csat_enabled: false,
+    csat_delay_minutes: 5,
+    csat_message: 'Terima kasih telah menghubungi kami! Bagaimana penilaian Anda terhadap layanan kami? Reply 1-5 (1=Sangat Buruk, 5=Sangat Baik)'
   });
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -84,7 +87,10 @@ const Settings = () => {
         body: JSON.stringify({
           auto_assignment_enabled: inboxSettings.auto_assignment_enabled,
           auto_assignment_algorithm: inboxSettings.auto_assignment_algorithm,
-          auto_assignment_max_tickets: Number(inboxSettings.auto_assignment_max_tickets)
+          auto_assignment_max_tickets: Number(inboxSettings.auto_assignment_max_tickets),
+          csat_enabled: inboxSettings.csat_enabled,
+          csat_delay_minutes: Number(inboxSettings.csat_delay_minutes),
+          csat_message: inboxSettings.csat_message
         })
       });
       if (response.ok) {
@@ -249,6 +255,67 @@ const Settings = () => {
                       <label className="label">
                         <span className="label-text-alt text-[10px] text-base-content/60">
                           Mencegah agen kewalahan jika jumlah tiket aktif (open + pending) melampaui batas ini.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                <div className="divider"></div>
+
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-4 p-0">
+                    <input 
+                      type="checkbox" 
+                      className="toggle toggle-secondary toggle-sm"
+                      checked={inboxSettings.csat_enabled || false}
+                      onChange={e => setInboxSettings({ ...inboxSettings, csat_enabled: e.target.checked })}
+                      disabled={user?.role !== 'administrator'}
+                    />
+                    <div>
+                      <span className="label-text font-semibold">Aktifkan Survei CSAT Otomatis</span>
+                      <p className="text-xs text-base-content/50">Kirim survei kepuasan (rating 1-5) ke pelanggan setelah tiket di-resolve.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {(inboxSettings.csat_enabled || false) && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-base-200/50 p-4 rounded-xl border border-base-300 mt-2">
+                    <div className="form-control w-full md:col-span-1">
+                      <label className="label">
+                        <span className="label-text font-semibold text-xs">Jeda Kirim (Menit)</span>
+                      </label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={1440}
+                        className="input input-sm input-bordered w-full"
+                        value={inboxSettings.csat_delay_minutes || 5}
+                        onChange={e => setInboxSettings({ ...inboxSettings, csat_delay_minutes: parseInt(e.target.value, 10) || 5 })}
+                        disabled={user?.role !== 'administrator'}
+                      />
+                      <label className="label">
+                        <span className="label-text-alt text-[10px] text-base-content/60">
+                          Jeda waktu tunggu setelah tiket ditutup sebelum survei dikirim.
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="form-control w-full md:col-span-2">
+                      <label className="label">
+                        <span className="label-text font-semibold text-xs">Pesan Survei CSAT</span>
+                      </label>
+                      <textarea 
+                        className="textarea textarea-sm textarea-bordered w-full h-20 resize-none"
+                        value={inboxSettings.csat_message || ''}
+                        onChange={e => setInboxSettings({ ...inboxSettings, csat_message: e.target.value })}
+                        placeholder="Masukan pesan instruksi survei..."
+                        disabled={user?.role !== 'administrator'}
+                        required
+                      ></textarea>
+                      <label className="label">
+                        <span className="label-text-alt text-[10px] text-base-content/60">
+                          Gunakan bahasa yang sopan. Pelanggan cukup membalas dengan angka 1 sampai 5.
                         </span>
                       </label>
                     </div>

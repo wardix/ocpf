@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import { startWorker } from './workers/incoming-message';
 import { startSnoozeChecker } from './workers/snooze-checker';
+import { startCSATWorker } from './workers/csat-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
 import { redisSub, PUB_SUB_CH } from './config/redis';
@@ -138,6 +139,7 @@ redisSub.on('message', async (channel, message) => {
 // Start Background Worker
 startWorker();
 startSnoozeChecker();
+startCSATWorker();
 
 // Bun HTTP + WebSocket Server
 const server = Bun.serve({

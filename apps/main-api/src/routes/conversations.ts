@@ -282,10 +282,45 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
 
     const [ticket] = await sql`
       UPDATE tickets 
-      SET status = ${status}, updated_at = NOW() 
+      SET 
+        status = ${status}, 
+        updated_at = NOW(),
+        resolved_at = CASE WHEN ${status} = 'resolved'::conversation_status THEN NOW() ELSE resolved_at END
       WHERE conversation_id = ${conversationId} AND status != 'resolved'
       RETURNING *;
     `;
+
+    if (ticket && status === 'resolved') {
+      try {
+        const [inboxInfo] = await sql`
+          SELECT inbox_id, account_id FROM conversations WHERE id = ${ticket.conversation_id} LIMIT 1
+        `;
+        if (inboxInfo) {
+          const [settings] = await sql`
+            SELECT csat_enabled, csat_delay_minutes 
+            FROM inbox_settings 
+            WHERE inbox_id = ${inboxInfo.inbox_id} AND account_id = ${inboxInfo.account_id} 
+            LIMIT 1
+          `;
+          if (settings && settings.csat_enabled) {
+            const delayMinutes = Number(settings.csat_delay_minutes) || 5;
+            const executionTime = Math.floor(Date.now() / 1000) + (delayMinutes * 60);
+            
+            const payload = {
+              ticket_id: Number(ticket.id),
+              inbox_id: Number(inboxInfo.inbox_id),
+              account_id: Number(inboxInfo.account_id),
+              conversation_id: Number(ticket.conversation_id)
+            };
+            
+            await redis.zadd('queue:csat_surveys', executionTime, JSON.stringify(payload));
+            console.log(`[CSAT] Menjadwalkan survei untuk tiket #${ticket.id} pada timestamp ${executionTime}`);
+          }
+        }
+      } catch (csatErr) {
+        console.error('Gagal menjadwalkan CSAT survey:', csatErr);
+      }
+    }
 
     if (!ticket) {
       return c.json({ error: 'Tiket tidak ditemukan' }, 404);

@@ -141,11 +141,34 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     let [ticket] = await tx`
-      SELECT id, status, is_bot_active, bot_state FROM tickets
+      SELECT id, status, is_bot_active, bot_state, csat_survey_sent, assignee_id FROM tickets
       WHERE account_id = ${ACCOUNT_ID} AND conversation_id = ${conversation.id}
       ORDER BY updated_at DESC
       LIMIT 1
     `;
+
+    let isCSATReply = false;
+    if (!data.is_host_echo && ticket && ticket.status === 'resolved' && ticket.csat_survey_sent) {
+      const [existingRating] = await tx`
+        SELECT id FROM csat_ratings WHERE ticket_id = ${ticket.id} LIMIT 1
+      `;
+      if (!existingRating && /^[1-5]$/.test(content.trim())) {
+        const ratingVal = parseInt(content.trim(), 10);
+        await tx`
+          INSERT INTO csat_ratings (account_id, ticket_id, conversation_id, contact_id, assigned_agent_id, rating)
+          VALUES (${ACCOUNT_ID}, ${ticket.id}, ${conversation.id}, ${contact.id}, ${ticket.assignee_id}, ${ratingVal})
+          ON CONFLICT (ticket_id) DO NOTHING
+        `;
+        const systemText = `Pelanggan memberikan rating kepuasan: ${ratingVal}/5`;
+        const [sysMsg] = await tx`
+          INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+          VALUES (${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'System', NULL, ${systemText}, 'template', 'sent')
+          RETURNING *;
+        `;
+        await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+        isCSATReply = true;
+      }
+    }
 
     let triggeredGlobalCommand = false;
     if (chatbotRules && chatbotRules.global_commands) {
@@ -165,7 +188,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
-    if (!data.is_host_echo && (!ticket || ticket.status === 'resolved')) {
+    if (!data.is_host_echo && !isCSATReply && (!ticket || ticket.status === 'resolved')) {
       [ticket] = await tx`
         INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
         VALUES (${ACCOUNT_ID}, ${conversation.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
@@ -277,7 +300,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
         content, message_type, status, created_at, wa_message_id
       ) VALUES (
-        ${ACCOUNT_ID}, ${conversation.id}, ${ticket && ticket.status !== 'resolved' ? ticket.id : null}, 
+        ${ACCOUNT_ID}, ${conversation.id}, ${ticket && (ticket.status !== 'resolved' || isCSATReply) ? ticket.id : null}, 
         ${data.is_host_echo ? 'User' : 'Contact'}, 
         ${data.is_host_echo ? null : contact.id}, 
         ${finalContent}, 
@@ -327,7 +350,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
-    if (!data.is_host_echo && ticket.is_bot_active) {
+    if (!data.is_host_echo && !isCSATReply && ticket && ticket.is_bot_active) {
       await evaluateChatbot(tx, ticket, content, sourceJid, displayName, triggeredGlobalCommand, ACCOUNT_ID, conversation.id, INBOX_ID);
     }
 
