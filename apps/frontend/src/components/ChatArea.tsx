@@ -206,18 +206,29 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [showCanned, setShowCanned] = useState(false);
   const [cannedSearch, setCannedSearch] = useState('');
 
-  // State untuk Agents (Admin Reassign)
+  // State untuk Agents & Teams (Admin Reassign)
   const [agents, setAgents] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
 
   useEffect(() => {
     if (currentUser?.role === 'administrator' && token) {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      
+      // Fetch agents
       fetch(`${apiUrl}/api/users/agents`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) setAgents(data);
         })
         .catch(err => console.error('Gagal mengambil daftar agen:', err));
+        
+      // Fetch teams
+      fetch(`${apiUrl}/api/teams`, { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(result => {
+          if (result.success) setTeams(result.data || []);
+        })
+        .catch(err => console.error('Gagal mengambil daftar tim:', err));
     }
   }, [currentUser?.role, token]);
 
@@ -288,29 +299,32 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleAssign = async (assigneeId?: number) => {
+  const handleAssign = async (assigneeId?: number | null, teamId?: number | null) => {
     if (!token) return;
     setIsAssigning(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const bodyPayload = JSON.stringify(assigneeId ? { assignee_id: assigneeId } : {});
+      const bodyPayload = JSON.stringify({ 
+        ...(assigneeId !== undefined && { assignee_id: assigneeId }),
+        ...(teamId !== undefined && { team_id: teamId })
+      });
       const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/assign`, {
         method: 'PATCH',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
+          'Authorization': `Bearer ${token}`
         },
         body: bodyPayload
       });
+
       if (response.ok) {
-        addToast(assigneeId ? 'Tiket berhasil dipindahkan' : 'Tiket berhasil diambil alih', 'success');
-        onAssign(); 
+        addToast('Tiket berhasil di-assign', 'success');
+        onAssign();
       } else {
-        const errData = await response.json();
-        addToast(errData.error || 'Gagal mengubah penugasan tiket', 'error');
+        const err = await response.json();
+        addToast(err.error || 'Gagal update assignment', 'error');
       }
-    } catch (err) {
-      console.error('Gagal mengambil tiket:', err);
+    } catch (e) {
       addToast('Terjadi kesalahan jaringan', 'error');
     } finally {
       setIsAssigning(false);
@@ -683,7 +697,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           </button>
           
           {selectedConv.ticket_id ? (
-            selectedConv.assignee_id === null ? (
+            selectedConv.assignee_id === null && selectedConv.team_id === null ? (
               <div className="flex items-center gap-2">
                 <button 
                   className={`btn btn-sm btn-primary text-white ${isAssigning ? 'loading' : ''}`}
@@ -692,17 +706,26 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                 >
                   🙋‍♂️ Ambil Tiket
                 </button>
-                {currentUser?.role === 'administrator' && agents.length > 0 && (
+                {currentUser?.role === 'administrator' && (agents.length > 0 || teams.length > 0) && (
                   <div className="dropdown dropdown-end">
                     <label tabIndex={0} className="btn btn-sm btn-outline gap-1">
                       Assign ke...
                     </label>
                     <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-52 p-2 shadow-lg z-50">
+                      {agents.length > 0 && <li className="menu-title"><span>Agen</span></li>}
                       {agents.map(agent => (
                         <li key={agent.id}>
-                          <a onClick={() => handleAssign(agent.id)}>
+                          <a onClick={() => handleAssign(agent.id, null)}>
                             <span className={`badge badge-xs ${agent.availability_status === 'online' ? 'badge-success' : agent.availability_status === 'busy' ? 'badge-error' : 'badge-ghost'}`} />
                             {agent.name}
+                          </a>
+                        </li>
+                      ))}
+                      {teams.length > 0 && <li className="menu-title"><span>Tim</span></li>}
+                      {teams.map(team => (
+                        <li key={`team-${team.id}`}>
+                          <a onClick={() => handleAssign(null, team.id)}>
+                            👥 {team.name}
                           </a>
                         </li>
                       ))}
@@ -712,17 +735,26 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {currentUser?.role === 'administrator' && agents.length > 0 ? (
+                {currentUser?.role === 'administrator' && (agents.length > 0 || teams.length > 0) ? (
                   <div className="dropdown dropdown-end">
                     <label tabIndex={0} className="btn btn-sm btn-ghost gap-1 font-normal text-xs">
-                      👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name} ▾
+                      {selectedConv.team_id && !selectedConv.assignee_id ? `👥 ${selectedConv.team_name} ▾` : `👤 ${selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name} ▾`}
                     </label>
                     <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-52 p-2 shadow-lg z-50">
+                      {agents.length > 0 && <li className="menu-title"><span>Agen</span></li>}
                       {agents.map(agent => (
                         <li key={agent.id}>
-                          <a onClick={() => handleAssign(agent.id)} className={selectedConv.assignee_id === agent.id ? 'active' : ''}>
+                          <a onClick={() => handleAssign(agent.id, null)} className={selectedConv.assignee_id === agent.id ? 'active' : ''}>
                             <span className={`badge badge-xs ${agent.availability_status === 'online' ? 'badge-success' : agent.availability_status === 'busy' ? 'badge-error' : 'badge-ghost'}`} />
                             {agent.name}
+                          </a>
+                        </li>
+                      ))}
+                      {teams.length > 0 && <li className="menu-title"><span>Tim</span></li>}
+                      {teams.map(team => (
+                        <li key={`team-${team.id}`}>
+                          <a onClick={() => handleAssign(null, team.id)} className={selectedConv.team_id === team.id && !selectedConv.assignee_id ? 'active' : ''}>
+                            👥 {team.name}
                           </a>
                         </li>
                       ))}
@@ -730,7 +762,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                   </div>
                 ) : (
                   <span className="text-xs badge badge-ghost">
-                    👤 {selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}
+                    {selectedConv.team_id && !selectedConv.assignee_id ? `👥 ${selectedConv.team_name}` : `👤 ${selectedConv.assignee_id === currentUser?.id ? 'Anda' : selectedConv.assignee_name}`}
                   </span>
                 )}
 

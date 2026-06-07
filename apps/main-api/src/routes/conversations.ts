@@ -33,7 +33,7 @@ conversationsRoutes.get('/', async (c) => {
     const [totalRow] = await sql`
       WITH FilteredConvs AS (
         SELECT 
-          c.id, t.status, t.assignee_id
+          c.id, t.status, t.assignee_id, t.team_id
         FROM conversations c
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         WHERE c.account_id = ${accountId}
@@ -44,6 +44,7 @@ conversationsRoutes.get('/', async (c) => {
           (${activeTab === 'unassigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NULL) OR
           (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
+          (${activeTab === 'my_teams'}::boolean = true AND status IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ${currentAgentId})) OR
           (${activeTab === 'all'}::boolean = true)
     `;
 
@@ -59,8 +60,10 @@ conversationsRoutes.get('/', async (c) => {
           t.id as ticket_id, 
           t.status, 
           t.assignee_id,
+          t.team_id,
           t.snoozed_until,
           u.name as assignee_name,
+          tm.name as team_name,
           con.id as contact_id,
           con.name as contact_name, 
           con.email as contact_email,
@@ -81,6 +84,7 @@ conversationsRoutes.get('/', async (c) => {
         JOIN channels ch ON i.channel_id = ch.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
+        LEFT JOIN teams tm ON t.team_id = tm.id
         WHERE c.account_id = ${accountId} AND con.deleted_at IS NULL
           ${isInboxFilter ? sql`AND c.inbox_id = ${inboxId}` : (isAgent ? sql`AND c.inbox_id IN (SELECT inbox_id FROM inbox_members WHERE user_id = ${currentAgentId})` : sql``)}
       )
@@ -89,6 +93,7 @@ conversationsRoutes.get('/', async (c) => {
           (${activeTab === 'unassigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NULL) OR
           (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
+          (${activeTab === 'my_teams'}::boolean = true AND status IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ${currentAgentId})) OR
           (${activeTab === 'all'}::boolean = true)
       ORDER BY updated_at DESC
       LIMIT ${perPage} OFFSET ${offset}
@@ -448,7 +453,8 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
 });
 
 const assignTicketSchema = z.object({
-  assignee_id: z.number().int().optional()
+  assignee_id: z.number().int().optional().nullable(),
+  team_id: z.number().int().optional().nullable()
 });
 
 conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, (result, c) => {
@@ -461,21 +467,32 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
     const jwtPayload = c.get('jwtPayload') as any;
     const actorId = jwtPayload.id;
     const actorName = jwtPayload.name;
-    const { assignee_id: targetAgentId } = c.req.valid('json');
+    const { assignee_id: targetAgentId, team_id: targetTeamId } = c.req.valid('json');
 
     // Jika assignee_id diberikan, hanya admin yang boleh
-    if (targetAgentId && targetAgentId !== actorId) {
+    if (targetAgentId !== undefined && targetAgentId !== actorId && targetAgentId !== null) {
       if (jwtPayload.role !== 'administrator') {
         return c.json({ error: 'Hanya administrator yang boleh memindahkan tiket ke agen lain' }, 403);
       }
     }
 
-    const assigneeId = targetAgentId || actorId;
+    const assigneeId = targetAgentId !== undefined ? targetAgentId : actorId;
 
     const ticket = await sql.begin(async (tx) => {
       let updatedTicket;
       
-      if (targetAgentId) {
+      if (targetTeamId !== undefined) {
+         // Team assignment overrides self-assign logic
+         [updatedTicket] = await tx`
+           UPDATE tickets 
+           SET 
+             team_id = ${targetTeamId},
+             assignee_id = ${targetAgentId !== undefined ? targetAgentId : null},
+             updated_at = NOW() 
+           WHERE conversation_id = ${conversationId} AND status != 'resolved'
+           RETURNING *;
+         `;
+      } else if (targetAgentId) {
         // Admin reassign - override existing assignment
         [updatedTicket] = await tx`
           UPDATE tickets 
@@ -501,13 +518,21 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
       const [targetAgent] = await tx`SELECT name FROM users WHERE id = ${assigneeId}`;
       const targetName = targetAgent?.name || 'Unknown';
 
-      const systemText = targetAgentId
-        ? `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} di-assign ke ${targetName} oleh ${actorName}`
-        : `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} diambil alih oleh ${actorName}`;
+      let systemText = '';
+      if (targetTeamId !== undefined && targetTeamId !== null) {
+        const [targetTeam] = await tx`SELECT name FROM teams WHERE id = ${targetTeamId}`;
+        const teamName = targetTeam?.name || 'Unknown Team';
+        systemText = `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} di-assign ke tim ${teamName} oleh ${actorName}`;
+        if (targetAgentId) systemText += ` (Agen: ${targetName})`;
+      } else {
+        systemText = targetAgentId
+          ? `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} di-assign ke ${targetName} oleh ${actorName}`
+          : `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} diambil alih oleh ${actorName}`;
+      }
 
       await tx`
         INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
-        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${actorId}, 'assigned', ${sql.json({ new_assignee_id: assigneeId, reassigned_by: targetAgentId ? actorId : null })});
+        VALUES (${updatedTicket.account_id}, ${updatedTicket.conversation_id}, ${updatedTicket.id}, 'User', ${actorId}, 'assigned', ${sql.json({ new_assignee_id: assigneeId, new_team_id: targetTeamId, reassigned_by: targetAgentId ? actorId : null })});
       `;
       
       const [sysMsg] = await tx`
@@ -686,11 +711,53 @@ conversationsRoutes.post('/:id/labels', zValidator('json', assignLabelSchema, (r
   try {
     const { label_id } = c.req.valid('json');
 
-    await sql`
-      INSERT INTO conversation_labels (conversation_id, label_id)
-      VALUES (${conversationId}, ${label_id})
-      ON CONFLICT DO NOTHING
-    `;
+    await sql.begin(async (tx) => {
+      await tx`
+        INSERT INTO conversation_labels (conversation_id, label_id)
+        VALUES (${conversationId}, ${label_id})
+        ON CONFLICT DO NOTHING
+      `;
+      
+      // Auto-routing check
+      const [routing] = await tx`
+        SELECT team_id FROM label_team_routing
+        WHERE label_id = ${label_id} AND account_id = (
+          SELECT account_id FROM conversations WHERE id = ${conversationId} LIMIT 1
+        )
+        LIMIT 1
+      `;
+
+      if (routing) {
+        const teamId = routing.team_id;
+        
+        // Update ticket's team_id
+        const [updatedTicket] = await tx`
+          UPDATE tickets SET team_id = ${teamId}
+          WHERE conversation_id = ${conversationId} AND status != 'resolved'
+          RETURNING id
+        `;
+
+        if (updatedTicket) {
+          const jwtPayload = c.get('jwtPayload') as any;
+          const agentId = jwtPayload?.id;
+          
+          const [team] = await tx`SELECT name FROM teams WHERE id = ${teamId}`;
+          const [label] = await tx`SELECT title FROM labels WHERE id = ${label_id}`;
+          
+          const content = `Tiket dialihkan ke tim ${team?.name} secara otomatis (Label: ${label?.title})`;
+
+          await tx`
+            INSERT INTO messages (
+              account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status
+            ) VALUES (
+              (SELECT account_id FROM conversations WHERE id = ${conversationId} LIMIT 1),
+              ${conversationId}, ${updatedTicket.id}, 'System', ${agentId || null}, ${content}, 'outgoing', 'sent'
+            )
+          `;
+        }
+      }
+    });
+
     return c.json({ success: true }, 201);
   } catch (error) {
     console.error('Error assign label:', error);

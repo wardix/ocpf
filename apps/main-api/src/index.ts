@@ -38,6 +38,7 @@ import { messageTemplatesRoutes } from './routes/message_templates';
 import { exportsRoutes } from './routes/exports';
 import { apiKeysRoutes } from './routes/api_keys';
 import { channelsRoutes } from './routes/channels';
+import { teamsRoutes } from './routes/teams';
 
 const app = new Hono();
 
@@ -125,6 +126,7 @@ app.route('/api/message-templates', messageTemplatesRoutes);
 app.route('/api/exports', exportsRoutes);
 app.route('/api/api-keys', apiKeysRoutes);
 app.route('/api/channels', channelsRoutes);
+app.route('/api/teams', teamsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
