@@ -8,6 +8,7 @@ import Settings from './components/Settings'
 import Analytics from './components/Analytics'
 import Contacts from './components/Contacts'
 import Broadcast from './components/Broadcast'
+import ChatbotBuilder from './components/ChatbotBuilder'
 import { ToastContainer } from './components/ToastContainer'
 
 import { useAuthStore } from './store/authStore'
@@ -421,6 +422,13 @@ function App() {
                 📊
               </button>
               <button 
+                className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/chatbot') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => navigate('/chatbot')}
+                title="Chatbot Flow Builder"
+              >
+                🤖
+              </button>
+              <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/settings') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/settings')}
                 title="Pengaturan"
@@ -526,6 +534,9 @@ function App() {
         <Route path="/broadcast" element={<Broadcast />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings" element={<Settings />} />
+        {user?.role === 'administrator' && (
+          <Route path="/chatbot" element={<ChatbotBuilder />} />
+        )}
       </Routes>
 
       <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
