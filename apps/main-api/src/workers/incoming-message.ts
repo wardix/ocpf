@@ -4,6 +4,7 @@ import path from 'path';
 import type { IncomingMessagePayload, SendMessagePayload } from '@omnichannel/shared-types';
 import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema } from '@omnichannel/shared-types';
 import { chatbotRules, evaluateChatbot } from '../chatbot/engine';
+import { isWithinBusinessHours } from '../config/business-hours';
 
 export async function startWorker() {
   console.log('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
@@ -140,6 +141,14 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       `;
     }
 
+    let isOffHours = false;
+    let oooMessage = '';
+    if (!data.is_host_echo) {
+      const bhStatus = await isWithinBusinessHours(INBOX_ID, tx);
+      isOffHours = !bhStatus.isOpen;
+      oooMessage = bhStatus.oooMessage;
+    }
+
     let [ticket] = await tx`
       SELECT id, status, is_bot_active, bot_state, csat_survey_sent, assignee_id FROM tickets
       WHERE account_id = ${ACCOUNT_ID} AND conversation_id = ${conversation.id}
@@ -188,97 +197,104 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
+    let isNewTicket = false;
     if (!data.is_host_echo && !isCSATReply && (!ticket || ticket.status === 'resolved')) {
+      isNewTicket = true;
+      const initialStatus = isOffHours ? 'pending' : 'open';
+      const initialBotActive = isOffHours ? false : true;
+
       [ticket] = await tx`
         INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
-        VALUES (${ACCOUNT_ID}, ${conversation.id}, 'open', true, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
+        VALUES (${ACCOUNT_ID}, ${conversation.id}, ${initialStatus}, ${initialBotActive}, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
         RETURNING id, status, is_bot_active, bot_state;
       `;
 
-      // Auto-Assignment Logic
-      try {
-        const [settings] = await tx`
-          SELECT auto_assignment_enabled, auto_assignment_algorithm, auto_assignment_max_tickets, last_assigned_user_id
-          FROM inbox_settings
-          WHERE inbox_id = ${INBOX_ID} AND account_id = ${ACCOUNT_ID}
-          LIMIT 1
-        `;
-
-        if (settings && settings.auto_assignment_enabled) {
-          const eligibleAgents = await tx`
-            SELECT au.user_id, u.name, COALESCE(t_count.active_count, 0) AS active_count
-            FROM account_users au
-            JOIN users u ON au.user_id = u.id
-            LEFT JOIN (
-              SELECT assignee_id, COUNT(*) AS active_count
-              FROM tickets
-              WHERE account_id = ${ACCOUNT_ID} AND status IN ('open', 'pending')
-              GROUP BY assignee_id
-            ) t_count ON au.user_id = t_count.assignee_id
-            WHERE au.account_id = ${ACCOUNT_ID}
-              AND au.availability_status = 'online'
-              AND COALESCE(t_count.active_count, 0) < ${settings.auto_assignment_max_tickets}
-            ORDER BY au.user_id ASC
+      // Auto-Assignment Logic (bypassed if off-hours)
+      if (!isOffHours) {
+        try {
+          const [settings] = await tx`
+            SELECT auto_assignment_enabled, auto_assignment_algorithm, auto_assignment_max_tickets, last_assigned_user_id
+            FROM inbox_settings
+            WHERE inbox_id = ${INBOX_ID} AND account_id = ${ACCOUNT_ID}
+            LIMIT 1
           `;
 
-          if (eligibleAgents.length > 0) {
-            let selectedAgent = null;
-            if (settings.auto_assignment_algorithm === 'least_busy') {
-              eligibleAgents.sort((a: any, b: any) => {
-                const countA = Number(a.active_count);
-                const countB = Number(b.active_count);
-                if (countA !== countB) {
-                  return countA - countB;
+          if (settings && settings.auto_assignment_enabled) {
+            const eligibleAgents = await tx`
+              SELECT au.user_id, u.name, COALESCE(t_count.active_count, 0) AS active_count
+              FROM account_users au
+              JOIN users u ON au.user_id = u.id
+              LEFT JOIN (
+                SELECT assignee_id, COUNT(*) AS active_count
+                FROM tickets
+                WHERE account_id = ${ACCOUNT_ID} AND status IN ('open', 'pending')
+                GROUP BY assignee_id
+              ) t_count ON au.user_id = t_count.assignee_id
+              WHERE au.account_id = ${ACCOUNT_ID}
+                AND au.availability_status = 'online'
+                AND COALESCE(t_count.active_count, 0) < ${settings.auto_assignment_max_tickets}
+              ORDER BY au.user_id ASC
+            `;
+
+            if (eligibleAgents.length > 0) {
+              let selectedAgent = null;
+              if (settings.auto_assignment_algorithm === 'least_busy') {
+                eligibleAgents.sort((a: any, b: any) => {
+                  const countA = Number(a.active_count);
+                  const countB = Number(b.active_count);
+                  if (countA !== countB) {
+                    return countA - countB;
+                  }
+                  return Number(a.user_id) - Number(b.user_id);
+                });
+                selectedAgent = eligibleAgents[0];
+              } else { // round_robin
+                eligibleAgents.sort((a: any, b: any) => Number(a.user_id) - Number(b.user_id));
+                const lastId = settings.last_assigned_user_id ? Number(settings.last_assigned_user_id) : null;
+                let nextAgent = null;
+                if (lastId !== null) {
+                  nextAgent = eligibleAgents.find((agent: any) => Number(agent.user_id) > lastId);
                 }
-                return Number(a.user_id) - Number(b.user_id);
-              });
-              selectedAgent = eligibleAgents[0];
-            } else { // round_robin
-              eligibleAgents.sort((a: any, b: any) => Number(a.user_id) - Number(b.user_id));
-              const lastId = settings.last_assigned_user_id ? Number(settings.last_assigned_user_id) : null;
-              let nextAgent = null;
-              if (lastId !== null) {
-                nextAgent = eligibleAgents.find((agent: any) => Number(agent.user_id) > lastId);
-              }
-              selectedAgent = nextAgent || eligibleAgents[0];
-            }
-
-            if (selectedAgent) {
-              const agentId = Number(selectedAgent.user_id);
-              const [updatedTicket] = await tx`
-                UPDATE tickets
-                SET assignee_id = ${agentId}, updated_at = NOW()
-                WHERE id = ${ticket.id}
-                RETURNING id, status, is_bot_active, bot_state;
-              `;
-              if (updatedTicket) {
-                ticket = updatedTicket;
+                selectedAgent = nextAgent || eligibleAgents[0];
               }
 
-              await tx`
-                UPDATE inbox_settings
-                SET last_assigned_user_id = ${agentId}, updated_at = NOW()
-                WHERE inbox_id = ${INBOX_ID}
-              `;
+              if (selectedAgent) {
+                const agentId = Number(selectedAgent.user_id);
+                const [updatedTicket] = await tx`
+                  UPDATE tickets
+                  SET assignee_id = ${agentId}, updated_at = NOW()
+                  WHERE id = ${ticket.id}
+                  RETURNING id, status, is_bot_active, bot_state;
+                `;
+                if (updatedTicket) {
+                  ticket = updatedTicket;
+                }
 
-              await tx`
-                INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
-                VALUES (${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'System', NULL, 'assigned', ${tx.json({ new_assignee_id: agentId, method: 'auto_assignment' })})
-              `;
+                await tx`
+                  UPDATE inbox_settings
+                  SET last_assigned_user_id = ${agentId}, updated_at = NOW()
+                  WHERE inbox_id = ${INBOX_ID}
+                `;
 
-              const systemText = `Tiket #TKT-${String(ticket.id).padStart(4, '0')} di-assign otomatis ke ${selectedAgent.name}`;
-              const [sysMsg] = await tx`
-                INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
-                VALUES (${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'System', NULL, ${systemText}, 'template', 'sent')
-                RETURNING *;
-              `;
+                await tx`
+                  INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+                  VALUES (${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'System', NULL, 'assigned', ${tx.json({ new_assignee_id: agentId, method: 'auto_assignment' })})
+                `;
 
-              await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+                const systemText = `Tiket #TKT-${String(ticket.id).padStart(4, '0')} di-assign otomatis ke ${selectedAgent.name}`;
+                const [sysMsg] = await tx`
+                  INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+                  VALUES (${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 'System', NULL, ${systemText}, 'template', 'sent')
+                  RETURNING *;
+                `;
+
+                await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+              }
             }
           }
+        } catch (assignError) {
+          console.error('Gagal menjalankan auto-assignment:', assignError);
         }
-      } catch (assignError) {
-        console.error('Gagal menjalankan auto-assignment:', assignError);
       }
     } else if (ticket && ticket.status !== 'resolved') {
       if (!triggeredGlobalCommand) {
@@ -350,7 +366,50 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
-    if (!data.is_host_echo && !isCSATReply && ticket && ticket.is_bot_active) {
+    if (isNewTicket && isOffHours) {
+      try {
+        const [oooMsg] = await tx`
+          INSERT INTO messages (
+            account_id, conversation_id, ticket_id, sender_type, sender_id, 
+            content, message_type, status
+          ) VALUES (
+            ${ACCOUNT_ID}, ${conversation.id}, ${ticket.id}, 
+            'System', NULL, 
+            ${oooMessage}, 
+            'outgoing', 
+            'sent'
+          )
+          RETURNING *;
+        `;
+
+        const oooPayload: SendMessagePayload = {
+          event: 'message.send',
+          data: {
+            inbox_id: INBOX_ID,
+            internal_message_id: Number(oooMsg.id),
+            target_id: sourceJid,
+            content: oooMessage,
+            message_type: 'text'
+          }
+        };
+        const oooPayloadStr = JSON.stringify({ ...oooPayload, _queued_at: Date.now() });
+        const targetQueue = `queue:outgoing_messages:inbox_${INBOX_ID}`;
+        await redis.rpush(targetQueue, oooPayloadStr);
+
+        await redis.publish(PUB_SUB_CH, JSON.stringify({
+          event: 'message.new',
+          data: {
+            ...oooMsg,
+            contact_name: displayName,
+            attachments: []
+          }
+        }));
+      } catch (oooErr) {
+        console.error('Gagal mengirim/menyimpan pesan OOO:', oooErr);
+      }
+    }
+
+    if (!data.is_host_echo && !isCSATReply && ticket && ticket.is_bot_active && !isOffHours) {
       await evaluateChatbot(tx, ticket, content, sourceJid, displayName, triggeredGlobalCommand, ACCOUNT_ID, conversation.id, INBOX_ID);
     }
 

@@ -71,10 +71,23 @@ CREATE TABLE inbox_settings (
     csat_enabled BOOLEAN DEFAULT FALSE,
     csat_delay_minutes INTEGER DEFAULT 5,
     csat_message TEXT DEFAULT 'Terima kasih telah menghubungi kami! Bagaimana penilaian Anda terhadap layanan kami? Reply 1-5 (1=Sangat Buruk, 5=Sangat Baik)',
+    business_hours_enabled BOOLEAN DEFAULT FALSE,
+    timezone VARCHAR(50) DEFAULT 'Asia/Jakarta',
+    out_of_office_message TEXT DEFAULT 'Terima kasih telah menghubungi kami. Saat ini di luar jam operasional, kami akan merespons pada jam kerja berikutnya.',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (inbox_id)
 );
 
+CREATE TABLE business_hours (
+    id BIGSERIAL PRIMARY KEY,
+    inbox_id BIGINT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    day_of_week SMALLINT NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+    open_time TIME WITHOUT TIME ZONE NOT NULL DEFAULT '08:00:00',
+    close_time TIME WITHOUT TIME ZONE NOT NULL DEFAULT '17:00:00',
+    is_closed BOOLEAN DEFAULT FALSE,
+    UNIQUE (inbox_id, day_of_week)
+);
 
 CREATE TABLE contacts (
     id BIGSERIAL PRIMARY KEY,
