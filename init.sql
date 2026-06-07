@@ -304,4 +304,24 @@ CREATE INDEX idx_widget_sessions_fingerprint ON widget_sessions(fingerprint, inb
 CREATE INDEX idx_widget_sessions_contact_id ON widget_sessions(contact_id);
 CREATE INDEX idx_widget_sessions_account_id ON widget_sessions(account_id);
 
+CREATE TABLE chatbot_configs (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    inbox_id BIGINT REFERENCES inboxes(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL DEFAULT 'Default Bot',
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    editor_metadata JSONB DEFAULT '{}'::jsonb,
+    is_active BOOLEAN DEFAULT FALSE,
+    version INTEGER DEFAULT 1,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
+CREATE TABLE chatbot_config_versions (
+    id BIGSERIAL PRIMARY KEY,
+    chatbot_config_id BIGINT NOT NULL REFERENCES chatbot_configs(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    config JSONB NOT NULL,
+    editor_metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (chatbot_config_id, version)
+);

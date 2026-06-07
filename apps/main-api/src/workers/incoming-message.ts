@@ -3,7 +3,7 @@ import { sql as db } from '../config/database';
 import path from 'path';
 import type { IncomingMessagePayload, SendMessagePayload } from '@omnichannel/shared-types';
 import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema } from '@omnichannel/shared-types';
-import { chatbotRules, evaluateChatbot } from '../chatbot/engine';
+import { getActiveChatbotRules, evaluateChatbot } from '../chatbot/engine';
 import { isWithinBusinessHours } from '../config/business-hours';
 
 export async function startWorker() {
@@ -198,12 +198,13 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       }
     }
 
+    const rules = await getActiveChatbotRules(INBOX_ID);
     let triggeredGlobalCommand = false;
-    if (chatbotRules && chatbotRules.global_commands) {
+    if (rules && rules.global_commands) {
       const commandKey = content.trim().toLowerCase();
-      if (chatbotRules.global_commands[commandKey]) {
+      if (rules.global_commands[commandKey]) {
         triggeredGlobalCommand = true;
-        const targetState = chatbotRules.global_commands[commandKey];
+        const targetState = rules.global_commands[commandKey];
         
         if (ticket && ticket.status !== 'resolved') {
           [ticket] = await tx`
@@ -224,7 +225,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 
       [ticket] = await tx`
         INSERT INTO tickets (account_id, conversation_id, status, is_bot_active, bot_state)
-        VALUES (${ACCOUNT_ID}, ${conversation.id}, ${initialStatus}, ${initialBotActive}, ${triggeredGlobalCommand ? chatbotRules.global_commands[content.trim().toLowerCase()] : 'start'})
+        VALUES (${ACCOUNT_ID}, ${conversation.id}, ${initialStatus}, ${initialBotActive}, ${triggeredGlobalCommand ? rules.global_commands[content.trim().toLowerCase()] : 'start'})
         RETURNING id, status, is_bot_active, bot_state;
       `;
 

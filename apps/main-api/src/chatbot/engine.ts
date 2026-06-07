@@ -1,18 +1,37 @@
-import fs from 'fs';
-import path from 'path';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
 
-export let chatbotRules: any = null;
+// In-memory cache for chatbot rules per inbox
+const chatbotCache = new Map<number, { rules: any; expiresAt: number }>();
 
-export function loadChatbotRules() {
+export function clearChatbotCache(inboxId: number) {
+  chatbotCache.delete(inboxId);
+}
+
+export async function getActiveChatbotRules(inboxId: number): Promise<any | null> {
+  const now = Date.now();
+  const cached = chatbotCache.get(inboxId);
+  if (cached && cached.expiresAt > now) {
+    return cached.rules;
+  }
+
   try {
-    const chatbotFile = fs.readFileSync(path.join(process.cwd(), 'chatbot.json'), 'utf-8');
-    chatbotRules = JSON.parse(chatbotFile);
-    console.log('Chatbot rules loaded successfully.');
-  } catch (e) {
-    console.log('No chatbot.json found or invalid format. Chatbot is disabled.');
+    const [activeConfig] = await sql`
+      SELECT config FROM chatbot_configs
+      WHERE inbox_id = ${inboxId} AND is_active = true LIMIT 1
+    `;
+
+    const rules = activeConfig ? activeConfig.config : null;
+    chatbotCache.set(inboxId, {
+      rules,
+      expiresAt: now + 60 * 1000 // 60-second TTL
+    });
+
+    return rules;
+  } catch (err) {
+    console.error(`Failed to get chatbot config for inbox ${inboxId}:`, err);
+    return null;
   }
 }
 
@@ -27,17 +46,22 @@ export async function evaluateChatbot(
   conversationId: number,
   INBOX_ID: number
 ) {
-  if (!chatbotRules || !chatbotRules.states) return;
+  const rules = await getActiveChatbotRules(INBOX_ID);
+  if (!rules || !rules.states) return;
 
   const userText = content.trim();
   let targetNode = null;
   let targetNodeKey = null;
 
   if (triggeredGlobalCommand) {
-    targetNodeKey = chatbotRules.global_commands[userText.toLowerCase()];
-    targetNode = chatbotRules.states[targetNodeKey];
+    if (rules.global_commands) {
+      targetNodeKey = rules.global_commands[userText.toLowerCase()];
+    }
+    if (targetNodeKey) {
+      targetNode = rules.states[targetNodeKey];
+    }
   } else {
-    const currentState = chatbotRules.states[ticket.bot_state];
+    const currentState = rules.states[ticket.bot_state];
     if (currentState) {
       if (currentState.options) {
         if (currentState.options[userText]) {
@@ -50,7 +74,7 @@ export async function evaluateChatbot(
       } else if (currentState.fallback) {
         targetNodeKey = currentState.fallback;
       }
-      if (targetNodeKey) targetNode = chatbotRules.states[targetNodeKey];
+      if (targetNodeKey) targetNode = rules.states[targetNodeKey];
     }
   }
 
@@ -126,57 +150,57 @@ export async function evaluateChatbot(
 
             let isSuccess = false;
             if (step.on_success && step.on_success.condition) {
-               try {
-                 const condition = step.on_success.condition;
-                 const match = condition.match(/response\\.([\\w\\.]+)\\s*(===|==|!==|!=|>|<|>=|<=)\\s*(.+)/);
+                try {
+                  const condition = step.on_success.condition;
+                  const match = condition.match(/response\\.([\\w\\.]+)\\s*(===|==|!==|!=|>|<|>=|<=)\\s*(.+)/);
 
-                 if (match) {
-                   const [_, path, operator, rawValue] = match;
-                   const value = path.split('.').reduce((acc: any, part: string) => acc && acc[part], responseData);
+                  if (match) {
+                    const [_, path, operator, rawValue] = match;
+                    const value = path.split('.').reduce((acc: any, part: string) => acc && acc[part], responseData);
 
-                   let expectedValue: any = rawValue.trim();
-                   if ((expectedValue.startsWith("'") && expectedValue.endsWith("'")) || 
-                       (expectedValue.startsWith('"') && expectedValue.endsWith('"'))) {
-                     expectedValue = expectedValue.slice(1, -1);
-                   } else if (!isNaN(Number(expectedValue))) {
-                     expectedValue = Number(expectedValue);
-                   } else if (expectedValue === 'true') expectedValue = true;
-                   else if (expectedValue === 'false') expectedValue = false;
-                   else if (expectedValue === 'null') expectedValue = null;
+                    let expectedValue: any = rawValue.trim();
+                    if ((expectedValue.startsWith("'") && expectedValue.endsWith("'")) || 
+                        (expectedValue.startsWith('"') && expectedValue.endsWith('"'))) {
+                      expectedValue = expectedValue.slice(1, -1);
+                    } else if (!isNaN(Number(expectedValue))) {
+                      expectedValue = Number(expectedValue);
+                    } else if (expectedValue === 'true') expectedValue = true;
+                    else if (expectedValue === 'false') expectedValue = false;
+                    else if (expectedValue === 'null') expectedValue = null;
 
-                   switch(operator) {
-                     case '==': isSuccess = value == expectedValue; break;
-                     case '===': isSuccess = value === expectedValue; break;
-                     case '!=': isSuccess = value != expectedValue; break;
-                     case '!==': isSuccess = value !== expectedValue; break;
-                     case '>': isSuccess = value > expectedValue; break;
-                     case '<': isSuccess = value < expectedValue; break;
-                     case '>=': isSuccess = value >= expectedValue; break;
-                     case '<=': isSuccess = value <= expectedValue; break;
-                   }
-                 } else {
-                   console.warn('Format condition tidak didukung oleh safe evaluator:', condition);
-                 }
-               } catch (e) {
-                 console.error('Condition eval error:', e);
-               }
+                    switch(operator) {
+                      case '==': isSuccess = value == expectedValue; break;
+                      case '===': isSuccess = value === expectedValue; break;
+                      case '!=': isSuccess = value != expectedValue; break;
+                      case '!==': isSuccess = value !== expectedValue; break;
+                      case '>': isSuccess = value > expectedValue; break;
+                      case '<': isSuccess = value < expectedValue; break;
+                      case '>=': isSuccess = value >= expectedValue; break;
+                      case '<=': isSuccess = value <= expectedValue; break;
+                    }
+                  } else {
+                    console.warn('Format condition tidak didukung oleh safe evaluator:', condition);
+                  }
+                } catch (e) {
+                  console.error('Condition eval error:', e);
+                }
             } else if (apiResponse.ok) {
-               isSuccess = true;
+                isSuccess = true;
             }
             if (isSuccess && step.on_success && step.on_success.target_state) {
-               targetNodeKey = step.on_success.target_state;
-               return false;
+                targetNodeKey = step.on_success.target_state;
+                return false;
             } else if (!isSuccess && step.on_failure) {
-               targetNodeKey = step.on_failure.target_state;
-               return false;
+                targetNodeKey = step.on_failure.target_state;
+                return false;
             }
             return true;
 
           } catch (apiErr) {
             console.error('Chatbot API call failed:', apiErr);
             if (step.on_failure) {
-               targetNodeKey = step.on_failure.target_state;
-               return false;
+                targetNodeKey = step.on_failure.target_state;
+                return false;
             }
             return true;
           }
@@ -200,7 +224,7 @@ export async function evaluateChatbot(
 
     if (targetNode.action === 'assign_agent') {
       newBotActive = false;
-    } else if (targetNodeKey !== ticket.bot_state && chatbotRules.states[targetNodeKey]?.action === 'assign_agent') {
+    } else if (targetNodeKey !== ticket.bot_state && rules.states[targetNodeKey]?.action === 'assign_agent') {
       newBotActive = false;
     }
 
