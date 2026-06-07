@@ -55,6 +55,27 @@ const Settings = () => {
   const [loadingBh, setLoadingBh] = useState(false);
   const [savingBh, setSavingBh] = useState(false);
 
+  // AI Settings State
+  const [aiSettings, setAiSettings] = useState({
+    provider: 'openai',
+    api_key: '',
+    model: 'gpt-4o',
+    max_tokens: 500,
+    temperature: 0.7,
+    is_active: false,
+    features_enabled: ['smart_reply', 'summarize', 'auto_categorize'] as string[]
+  });
+  const [aiStats, setAiStats] = useState({
+    total_calls: 0,
+    total_tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    hourly_calls: 0,
+    hourly_limit: 50
+  });
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [savingAi, setSavingAi] = useState(false);
+
   const fetchCanned = async () => {
     if (!token) return;
     try {
@@ -235,6 +256,93 @@ const Settings = () => {
       fetchBusinessHours();
     }
   }, [token, activeInboxId]);
+
+  const fetchAiSettings = async () => {
+    if (!token || user?.role !== 'administrator') return;
+    setLoadingAi(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/ai/settings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          const { config, stats } = result.data;
+          if (config) {
+            setAiSettings({
+              provider: config.provider || 'openai',
+              api_key: '••••••••••••••••',
+              model: config.model || '',
+              max_tokens: config.max_tokens || 500,
+              temperature: Number(config.temperature) || 0.7,
+              is_active: !!config.is_active,
+              features_enabled: config.features_enabled || []
+            });
+          }
+          if (stats) {
+            setAiStats(stats);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Gagal mengambil pengaturan AI:', err);
+    } finally {
+      setLoadingAi(false);
+    }
+  };
+
+  const handleSaveAiSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || user?.role !== 'administrator') return;
+    setSavingAi(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/ai/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          provider: aiSettings.provider,
+          api_key: aiSettings.api_key,
+          model: aiSettings.model,
+          max_tokens: Number(aiSettings.max_tokens),
+          temperature: Number(aiSettings.temperature),
+          is_active: aiSettings.is_active,
+          features_enabled: aiSettings.features_enabled
+        })
+      });
+
+      if (response.ok) {
+        addToast('Konfigurasi AI berhasil diperbarui', 'success');
+        fetchAiSettings();
+      } else {
+        const errorResult = await response.json();
+        addToast(`Gagal menyimpan konfigurasi AI: ${errorResult.error || 'Terjadi kesalahan'}`, 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setSavingAi(false);
+    }
+  };
+
+  const handleFeatureToggle = (feature: string) => {
+    setAiSettings(prev => {
+      const isEnabled = prev.features_enabled.includes(feature);
+      const newFeatures = isEnabled
+        ? prev.features_enabled.filter(f => f !== feature)
+        : [...prev.features_enabled, feature];
+      return { ...prev, features_enabled: newFeatures };
+    });
+  };
+
+  useEffect(() => {
+    fetchAiSettings();
+  }, [token, user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -735,6 +843,228 @@ const Settings = () => {
         <UserManagement />
         <WebhookManagement />
 
+        {user?.role === 'administrator' && (
+          <div className="card bg-base-100 shadow-sm border border-base-300">
+            <div className="card-body">
+              <div className="flex justify-between items-center mb-1">
+                <h2 className="card-title text-xl flex items-center gap-2">
+                  ✨ Integrasi Asisten AI
+                </h2>
+                <span className={`badge ${aiSettings.is_active ? 'badge-success' : 'badge-ghost'} badge-sm`}>
+                  {aiSettings.is_active ? 'Aktif' : 'Nonaktif'}
+                </span>
+              </div>
+              <p className="text-sm text-base-content/60 mb-6">
+                Hubungkan dengan Google Gemini atau OpenAI untuk mendukung Smart Reply Suggestions, Ringkasan Obrolan, dan Kategorisasi Tiket otomatis.
+              </p>
+
+              {loadingAi ? (
+                <div className="flex justify-center py-6">
+                  <span className="loading loading-spinner loading-md text-primary"></span>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-base-200/50 p-4 rounded-xl border border-base-300">
+                    <div className="stat p-2">
+                      <div className="stat-title text-[10px] uppercase font-bold tracking-wider">Total Panggilan (30 Hari)</div>
+                      <div className="stat-value text-xl text-primary mt-1">{aiStats.total_calls}</div>
+                    </div>
+                    <div className="stat p-2">
+                      <div className="stat-title text-[10px] uppercase font-bold tracking-wider">Token Dikonsumsi</div>
+                      <div className="stat-value text-xl text-secondary mt-1">{aiStats.total_tokens.toLocaleString()}</div>
+                      <div className="stat-desc text-[10px] opacity-75 mt-0.5">
+                        In: {aiStats.input_tokens.toLocaleString()} | Out: {aiStats.output_tokens.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="stat p-2">
+                      <div className="stat-title text-[10px] uppercase font-bold tracking-wider">Batas Kuota Jam Ini</div>
+                      <div className="stat-value text-xl text-accent mt-1">{aiStats.hourly_calls} / {aiStats.hourly_limit}</div>
+                      <div className="mt-2 w-full bg-base-300 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full ${aiStats.hourly_calls > 40 ? 'bg-error' : aiStats.hourly_calls > 25 ? 'bg-warning' : 'bg-success'}`}
+                          style={{ width: `${Math.min(100, (aiStats.hourly_calls / aiStats.hourly_limit) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveAiSettings} className="space-y-4">
+                    <div className="form-control">
+                      <label className="label cursor-pointer justify-start gap-4 p-0">
+                        <input 
+                          type="checkbox" 
+                          className="toggle toggle-primary toggle-sm"
+                          checked={aiSettings.is_active}
+                          onChange={e => setAiSettings({ ...aiSettings, is_active: e.target.checked })}
+                        />
+                        <div>
+                          <span className="label-text font-semibold">Aktifkan Layanan Asisten AI</span>
+                          <p className="text-xs text-base-content/50">Saat dinonaktifkan, semua fitur bertenaga AI di dalam aplikasi akan disembunyikan.</p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {aiSettings.is_active && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                        {/* Kolom Kiri: API Configuration */}
+                        <div className="space-y-4 p-4 bg-base-200/30 rounded-xl border border-base-300">
+                          <h3 className="font-bold text-xs uppercase tracking-wider text-base-content/70">Konfigurasi API</h3>
+                          
+                          <div className="form-control w-full">
+                            <label className="label py-1">
+                              <span className="label-text text-xs font-semibold">Penyedia AI (AI Provider)</span>
+                            </label>
+                            <select 
+                              className="select select-sm select-bordered w-full"
+                              value={aiSettings.provider}
+                              onChange={e => {
+                                const prov = e.target.value;
+                                setAiSettings({ 
+                                  ...aiSettings, 
+                                  provider: prov, 
+                                  model: prov === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o' 
+                                });
+                              }}
+                            >
+                              <option value="openai">OpenAI (ChatGPT)</option>
+                              <option value="gemini">Google Gemini</option>
+                            </select>
+                          </div>
+
+                          <div className="form-control w-full">
+                            <label className="label py-1">
+                              <span className="label-text text-xs font-semibold">Model</span>
+                            </label>
+                            <input 
+                              type="text" 
+                              className="input input-sm input-bordered w-full font-mono"
+                              value={aiSettings.model}
+                              onChange={e => setAiSettings({ ...aiSettings, model: e.target.value })}
+                              placeholder={aiSettings.provider === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o'}
+                              required
+                            />
+                            <label className="label py-0.5">
+                              <span className="label-text-alt text-[10px] text-base-content/50">
+                                {aiSettings.provider === 'gemini' 
+                                  ? 'Rekomendasi: gemini-1.5-flash, gemini-1.5-pro' 
+                                  : 'Rekomendasi: gpt-4o, gpt-4o-mini'}
+                              </span>
+                            </label>
+                          </div>
+
+                          <div className="form-control w-full">
+                            <label className="label py-1">
+                              <span className="label-text text-xs font-semibold">API Key</span>
+                            </label>
+                            <input 
+                              type="password" 
+                              className="input input-sm input-bordered w-full font-mono"
+                              value={aiSettings.api_key}
+                              onChange={e => setAiSettings({ ...aiSettings, api_key: e.target.value })}
+                              placeholder="Masukkan API Key baru..."
+                              required
+                            />
+                            <label className="label py-0.5">
+                              <span className="label-text-alt text-[10px] text-base-content/50">
+                                Keamanan Terjamin. API Key dienkripsi menggunakan AES-256 sebelum disimpan.
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Kolom Kanan: Parameters & Features */}
+                        <div className="space-y-4 p-4 bg-base-200/30 rounded-xl border border-base-300">
+                          <h3 className="font-bold text-xs uppercase tracking-wider text-base-content/70">Parameter & Fitur</h3>
+
+                          <div className="form-control w-full">
+                            <div className="flex justify-between items-center py-1">
+                              <span className="label-text text-xs font-semibold">Temperatur (Kreativitas)</span>
+                              <span className="badge badge-neutral badge-sm font-mono">{aiSettings.temperature}</span>
+                            </div>
+                            <input 
+                              type="range" 
+                              min="0" 
+                              max="1.5" 
+                              step="0.1" 
+                              className="range range-primary range-xs w-full"
+                              value={aiSettings.temperature}
+                              onChange={e => setAiSettings({ ...aiSettings, temperature: parseFloat(e.target.value) })}
+                            />
+                            <div className="flex justify-between text-[9px] px-1 text-base-content/40 mt-1">
+                              <span>Faktual & Konsisten (0.0)</span>
+                              <span>Kreatif (1.5)</span>
+                            </div>
+                          </div>
+
+                          <div className="form-control w-full">
+                            <label className="label py-1">
+                              <span className="label-text text-xs font-semibold">Maksimal Token (Max Tokens)</span>
+                            </label>
+                            <input 
+                              type="number" 
+                              min="50" 
+                              max="2000"
+                              className="input input-sm input-bordered w-full"
+                              value={aiSettings.max_tokens}
+                              onChange={e => setAiSettings({ ...aiSettings, max_tokens: parseInt(e.target.value, 10) || 500 })}
+                              required
+                            />
+                          </div>
+
+                          <div className="form-control">
+                            <label className="label py-1">
+                              <span className="label-text text-xs font-semibold">Fitur yang Diaktifkan</span>
+                            </label>
+                            <div className="space-y-2 mt-1">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="checkbox checkbox-xs checkbox-primary"
+                                  checked={aiSettings.features_enabled.includes('smart_reply')}
+                                  onChange={() => handleFeatureToggle('smart_reply')}
+                                />
+                                <span className="text-xs">Smart Reply (Saran balasan cepat)</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="checkbox checkbox-xs checkbox-primary"
+                                  checked={aiSettings.features_enabled.includes('summarize')}
+                                  onChange={() => handleFeatureToggle('summarize')}
+                                />
+                                <span className="text-xs">Summarization (Ringkasan obrolan panjang)</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="checkbox" 
+                                  className="checkbox checkbox-xs checkbox-primary"
+                                  checked={aiSettings.features_enabled.includes('auto_categorize')}
+                                  onChange={() => handleFeatureToggle('auto_categorize')}
+                                />
+                                <span className="text-xs">Auto-categorization (Saran label tiket otomatis)</span>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end mt-4">
+                      <button 
+                        type="submit" 
+                        className={`btn btn-sm btn-primary ${savingAi ? 'loading' : ''}`}
+                        disabled={savingAi}
+                      >
+                        Simpan Pengaturan AI
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <ConfirmModal

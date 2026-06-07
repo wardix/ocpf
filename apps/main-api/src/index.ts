@@ -28,6 +28,7 @@ import { inboxesRoutes } from './routes/inboxes';
 import { widgetRoutes } from './routes/widget';
 import { chatbotRoutes } from './routes/chatbot';
 import { webhooksRoutes } from './routes/webhooks';
+import { aiRoutes } from './routes/ai';
 
 const app = new Hono();
 
@@ -106,6 +107,7 @@ app.route('/api/inboxes', inboxesRoutes);
 app.route('/api/widget', widgetRoutes);
 app.route('/api/chatbot', chatbotRoutes);
 app.route('/api/webhooks', webhooksRoutes);
+app.route('/api/ai', aiRoutes);
 app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets

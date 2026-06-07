@@ -45,18 +45,40 @@ describe('Outbound Webhooks System', () => {
     const contactPayload = { id: 999, name: 'Triggered Contact' };
     await dispatchWebhook(testAccountId, 'contact.created', contactPayload);
 
-    // Verify task is pushed
-    const queueLen = await redis.llen('queue:webhook_deliveries');
-    expect(queueLen).toBe(1);
+    // Verify task is pushed or processed
+    // Because the background worker might consume it instantly, we check both the database logs and the queue.
+    let logFound = null;
+    for (let i = 0; i < 20; i++) {
+      const logs = await sql`
+        SELECT * FROM webhook_delivery_logs WHERE webhook_id = ${testWebhookId}
+      `;
+      if (logs.length > 0) {
+        logFound = logs[0];
+        break;
+      }
+      const queueLen = await redis.llen('queue:webhook_deliveries');
+      if (queueLen > 0) {
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
-    const taskStr = await redis.rpop('queue:webhook_deliveries');
-    expect(taskStr).not.toBeNull();
-    
-    const task = JSON.parse(taskStr!);
-    expect(task.webhookId).toBe(testWebhookId);
-    expect(task.url).toBe('https://mock.httpbin.org/post');
-    expect(task.eventType).toBe('contact.created');
-    expect(task.payload.name).toBe('Triggered Contact');
-    expect(task.secret).toBe('test_secret_key_123');
+    if (logFound) {
+      expect(logFound.event_type).toBe('contact.created');
+      expect(logFound.payload.name).toBe('Triggered Contact');
+    } else {
+      const queueLen = await redis.llen('queue:webhook_deliveries');
+      expect(queueLen).toBe(1);
+
+      const taskStr = await redis.rpop('queue:webhook_deliveries');
+      expect(taskStr).not.toBeNull();
+      
+      const task = JSON.parse(taskStr!);
+      expect(task.webhookId).toBe(testWebhookId);
+      expect(task.url).toBe('https://mock.httpbin.org/post');
+      expect(task.eventType).toBe('contact.created');
+      expect(task.payload.name).toBe('Triggered Contact');
+      expect(task.secret).toBe('test_secret_key_123');
+    }
   });
 });
