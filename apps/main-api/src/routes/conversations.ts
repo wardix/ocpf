@@ -214,6 +214,28 @@ conversationsRoutes.get('/:id/messages', async (c) => {
   }
 });
 
+conversationsRoutes.get('/:id/viewers', async (c) => {
+  const conversationId = c.req.param('id');
+  try {
+    const { redis } = await import('../config/redis');
+    const setKey = `viewers:${conversationId}`;
+    const userIds = await redis.smembers(setKey);
+    const activeViewers = [];
+
+    for (const uid of userIds) {
+      const uName = await redis.get(`viewing:${conversationId}:${uid}`);
+      if (uName) {
+        activeViewers.push({ id: Number(uid), name: uName });
+      } else {
+        await redis.srem(setKey, uid);
+      }
+    }
+    return c.json({ success: true, data: activeViewers });
+  } catch (error) {
+    return c.json({ success: false, error: 'Gagal memuat viewers' }, 500);
+  }
+});
+
 const startConversationSchema = z.object({
   phone_number: z.string().min(5, 'Nomor telepon tidak valid'),
   name: z.string().optional()

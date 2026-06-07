@@ -24,6 +24,11 @@ export interface SelectedConversation {
   provider_type?: string;
 }
 
+export interface Viewer {
+  id: number;
+  name: string;
+}
+
 interface ChatState {
   selectedConv: SelectedConversation | null;
   messages: Message[];
@@ -34,6 +39,7 @@ interface ChatState {
   isInitialChatLoading: boolean;
   isContactTyping: boolean;
   wsInstance: WebSocket | null;
+  activeViewers: Record<number, Viewer[]>;
   
   setSelectedConv: (conv: SelectedConversation | null) => void;
   setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
@@ -44,6 +50,7 @@ interface ChatState {
   setHasMoreMessages: (hasMore: boolean) => void;
   setIsLoadingOlder: (isLoading: boolean) => void;
   setIsInitialChatLoading: (isLoading: boolean) => void;
+  setActiveViewers: (conversationId: number, viewers: Viewer[]) => void;
   clearChat: () => void;
 }
 
@@ -57,6 +64,7 @@ export const useChatStore = create<ChatState>((set) => ({
   hasMoreMessages: false,
   isLoadingOlder: false,
   isInitialChatLoading: false,
+  activeViewers: {},
 
   setSelectedConv: (conv) => set({ selectedConv: conv }),
   setMessages: (updater) => set((state) => ({
@@ -69,5 +77,11 @@ export const useChatStore = create<ChatState>((set) => ({
   setHasMoreMessages: (hasMore) => set({ hasMoreMessages: hasMore }),
   setIsLoadingOlder: (isLoading) => set({ isLoadingOlder: isLoading }),
   setIsInitialChatLoading: (isLoading) => set({ isInitialChatLoading: isLoading }),
-  clearChat: () => set({ selectedConv: null, messages: [] })
+  setActiveViewers: (conversationId, viewers) => set((state) => ({
+    activeViewers: {
+      ...state.activeViewers,
+      [conversationId]: viewers
+    }
+  })),
+  clearChat: () => set({ selectedConv: null, messages: [], activeViewers: {} })
 }));

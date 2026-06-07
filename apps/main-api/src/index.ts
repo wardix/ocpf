@@ -197,6 +197,7 @@ const server = Bun.serve({
           data: {
             accountId: payload.account_id, 
             userId: payload.id,
+            name: payload.name,
             role: payload.role,
             isAlive: true
           }
