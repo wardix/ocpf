@@ -80,6 +80,7 @@ app.route('/api/canned-responses', cannedResponsesRoutes);
 app.route('/api/analytics', analyticsRoutes);
 app.route('/api/broadcast', broadcastRoutes);
 app.route('/api/labels', labelsRoutes);
+app.route('/api/search', searchRoutes);
 app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
