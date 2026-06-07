@@ -17,6 +17,7 @@ import { useToastStore } from './store/toastStore'
 import { useThemeStore } from './store/themeStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { ShortcutsModal } from './components/ShortcutsModal'
+import { SearchPalette } from './components/SearchPalette'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -57,6 +58,7 @@ function App() {
   const { addToast } = useToastStore();
 
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [myStatus, setMyStatus] = useState<'online' | 'busy' | 'offline'>('online');
 
   const updateAvailability = async (status: 'online' | 'busy' | 'offline') => {
@@ -101,13 +103,13 @@ function App() {
     { 
       key: 'k', 
       ctrl: true, 
-      action: () => addToast('Pencarian akan segera hadir!', 'info'), 
+      action: () => setShowSearch(true), 
       description: 'Search', 
       category: 'Navigation' 
     },
     { 
       key: 'Escape', 
-      action: () => setShowShortcuts(false), 
+      action: () => { setShowShortcuts(false); setShowSearch(false); }, 
       description: 'Close', 
       category: 'General' 
     },
@@ -527,6 +529,14 @@ function App() {
       </Routes>
 
       <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      <SearchPalette 
+        isOpen={showSearch} 
+        onClose={() => setShowSearch(false)} 
+        onSelectConversation={(convId) => {
+          navigate(`/inbox/${convId}`);
+          triggerRefresh();
+        }}
+      />
     </div>
   )
 }

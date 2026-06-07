@@ -16,3 +16,12 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Styling untuk highlight hasil pencarian dari PostgreSQL ts_headline */
+mark {
+  background-color: oklch(var(--wa)); /* Menggunakan warning color dari DaisyUI */
+  padding: 0 3px;
+  border-radius: 4px;
+  color: oklch(var(--wac));
+  font-weight: 600;
+}

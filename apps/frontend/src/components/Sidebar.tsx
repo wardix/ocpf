@@ -159,6 +159,13 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             ➕ Baru
           </button>
         </div>
+        <div className="flex gap-2 w-full mb-1">
+          <button className="btn btn-sm btn-ghost w-full bg-base-100 flex justify-between items-center text-base-content/50"
+                  onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}>
+            <span>🔍 Cari pesan...</span>
+            <kbd className="kbd kbd-xs">Ctrl K</kbd>
+          </button>
+        </div>
         <div className="flex gap-2 mt-1 overflow-x-auto whitespace-nowrap pb-2 custom-scrollbar">
           <button 
             className={`btn btn-xs shrink-0 ${activeTab === 'unassigned' ? 'btn-active' : 'btn-ghost'}`}

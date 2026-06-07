@@ -21,6 +21,7 @@ import { analyticsRoutes } from './routes/analytics';
 import broadcastRoutes from './routes/broadcast'; 
 import docsRoutes from './routes/docs';
 import { labelsRoutes } from './routes/labels';
+import { searchRoutes } from './routes/search';
 
 const app = new Hono();
 
