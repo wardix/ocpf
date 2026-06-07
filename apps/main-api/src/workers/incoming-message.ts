@@ -6,6 +6,7 @@ import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpd
 import { getActiveChatbotRules, evaluateChatbot } from '../chatbot/engine';
 import { isWithinBusinessHours } from '../config/business-hours';
 import { dispatchWebhook } from '../utils/webhooks';
+import { evaluateAutomationRules } from '../utils/automation';
 
 export async function startWorker() {
   console.log('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
@@ -43,6 +44,9 @@ export async function startWorker() {
                 event: 'message.new',
                 data: savedMessage
               }));
+              // Trigger automation rules for incoming message
+              evaluateAutomationRules(savedMessage.account_id, 'message.incoming', savedMessage)
+                .catch(err => console.error('[Automation Worker] Error executing rules:', err));
             }
           } else if (payload.event === 'message.status_update') {
             const { wa_message_id, status, internal_message_id } = payload.data as any;
@@ -464,6 +468,9 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     if (result) {
       if (result.isNewContact && result.contactData) {
         dispatchWebhook(result.accountId, 'contact.created', result.contactData).catch(e => console.error(e));
+        // Trigger automation rules for contact created
+        evaluateAutomationRules(result.accountId, 'contact.created', result.contactData)
+          .catch(err => console.error('[Automation Worker] Error executing rules:', err));
       }
       if (result.isNewConversation) {
         dispatchWebhook(result.accountId, 'conversation.created', {
