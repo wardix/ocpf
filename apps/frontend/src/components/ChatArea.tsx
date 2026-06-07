@@ -184,7 +184,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     setIsAssigning(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const bodyPayload = assigneeId ? JSON.stringify({ assignee_id: assigneeId }) : undefined;
+      const bodyPayload = JSON.stringify(assigneeId ? { assignee_id: assigneeId } : {});
       const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/assign`, {
         method: 'PATCH',
         headers: { 
