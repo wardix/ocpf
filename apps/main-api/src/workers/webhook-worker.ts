@@ -1,4 +1,4 @@
-import { redis } from '../config/redis';
+import { redis, redisWebhookWorker } from '../config/redis';
 import { sql } from '../config/database';
 import crypto from 'crypto';
 
@@ -10,7 +10,8 @@ export async function startWebhookWorker() {
 
   while (true) {
     try {
-      const result = await redis.brpop('queue:webhook_deliveries', 0);
+      // FIX: Use dedicated redisWebhookWorker connection for blocking BRPOP
+      const result = await redisWebhookWorker.brpop('queue:webhook_deliveries', 0);
       if (result) {
         const [_, taskStr] = result;
         const task = JSON.parse(taskStr);
