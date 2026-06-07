@@ -30,6 +30,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const { token } = useAuthStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'assigned' | 'all'>('unassigned');
+  const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -127,11 +128,33 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
     }
   };
 
+  const fetchInboxStatus = async () => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setIsOpen(result.data.open);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch inbox business-hours status', e);
+    }
+  };
+
   useEffect(() => {
     setPage(1);
     fetchConversations(1, false);
+    fetchInboxStatus();
     // Refresh sidebar setiap 10 detik agar tetap up to date (hanya page 1)
-    const interval = setInterval(() => fetchConversations(1, false), 10000);
+    const interval = setInterval(() => {
+      fetchConversations(1, false);
+      fetchInboxStatus();
+    }, 10000);
     return () => clearInterval(interval);
   }, [refreshKey, activeTab]);
 
@@ -145,7 +168,15 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
     <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col h-full shrink-0">
       <div className="p-4 border-b border-base-300 bg-base-200 flex flex-col gap-2">
         <div className="flex justify-between items-center">
-          <h2 className="font-bold text-lg italic">💬 Inbox</h2>
+          <h2 className="font-bold text-lg italic flex items-center gap-1.5">
+            <span>💬 Inbox</span>
+            {isOpen !== null && (
+              <span 
+                className={`w-2.5 h-2.5 rounded-full inline-block ${isOpen ? 'bg-success' : 'bg-error'}`} 
+                title={isOpen ? 'Inbox Buka (Jam Operasional)' : 'Inbox Tutup (Di Luar Jam Operasional)'}
+              />
+            )}
+          </h2>
           <button 
             className="btn btn-xs btn-primary btn-outline"
             onClick={() => {

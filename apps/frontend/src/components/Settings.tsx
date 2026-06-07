@@ -34,6 +34,21 @@ const Settings = () => {
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Business Hours State
+  const [bhSettings, setBhSettings] = useState({
+    business_hours_enabled: false,
+    timezone: 'Asia/Jakarta',
+    out_of_office_message: 'Terima kasih telah menghubungi kami. Saat ini di luar jam operasional, kami akan merespons pada jam kerja berikutnya.',
+    schedules: Array.from({ length: 7 }, (_, i) => ({
+      day_of_week: i,
+      open_time: '08:00',
+      close_time: '17:00',
+      is_closed: false
+    }))
+  });
+  const [loadingBh, setLoadingBh] = useState(false);
+  const [savingBh, setSavingBh] = useState(false);
+
   const fetchCanned = async () => {
     if (!token) return;
     try {
@@ -107,12 +122,84 @@ const Settings = () => {
     }
   };
 
+  const fetchBusinessHours = async () => {
+    if (!token) return;
+    setLoadingBh(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          const normSchedules = result.data.schedules.map((s: any) => ({
+            day_of_week: s.day_of_week,
+            open_time: (s.open_time || '08:00:00').substring(0, 5),
+            close_time: (s.close_time || '17:00:00').substring(0, 5),
+            is_closed: !!s.is_closed
+          }));
+          setBhSettings({
+            business_hours_enabled: !!result.data.business_hours_enabled,
+            timezone: result.data.timezone || 'Asia/Jakarta',
+            out_of_office_message: result.data.out_of_office_message || '',
+            schedules: normSchedules
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Gagal mengambil jam operasional:', err);
+    } finally {
+      setLoadingBh(false);
+    }
+  };
+
+  const handleSaveBusinessHours = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setSavingBh(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          business_hours_enabled: bhSettings.business_hours_enabled,
+          timezone: bhSettings.timezone,
+          out_of_office_message: bhSettings.out_of_office_message,
+          schedules: bhSettings.schedules.map(s => ({
+            day_of_week: s.day_of_week,
+            open_time: s.open_time,
+            close_time: s.close_time,
+            is_closed: s.is_closed
+          }))
+        })
+      });
+      if (response.ok) {
+        addToast('Jam operasional berhasil diperbarui', 'success');
+        fetchBusinessHours();
+      } else {
+        const errorResult = await response.json();
+        addToast(`Gagal menyimpan: ${errorResult.error || 'Terjadi kesalahan'}`, 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setSavingBh(false);
+    }
+  };
+
   useEffect(() => {
     fetchCanned();
   }, [token, page]);
 
   useEffect(() => {
     fetchInboxSettings();
+    fetchBusinessHours();
   }, [token]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -330,6 +417,160 @@ const Settings = () => {
                       disabled={savingSettings}
                     >
                       Simpan Pengaturan Inbox
+                    </button>
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
+        </div>
+
+        <div className="card bg-base-100 shadow-sm border border-base-300">
+          <div className="card-body">
+            <h2 className="card-title text-xl mb-1">⏰ Jam Operasional & Auto-Responder</h2>
+            <p className="text-sm text-base-content/60 mb-4">
+              Konfigurasi zona waktu, jam kerja mingguan, dan pesan otomatis saat kantor tutup.
+            </p>
+
+            {loadingBh ? (
+              <div className="flex justify-center py-4">
+                <span className="loading loading-spinner loading-md text-primary"></span>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveBusinessHours} className="space-y-4">
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-4 p-0">
+                    <input 
+                      type="checkbox" 
+                      className="toggle toggle-primary toggle-sm"
+                      checked={bhSettings.business_hours_enabled}
+                      onChange={e => setBhSettings({ ...bhSettings, business_hours_enabled: e.target.checked })}
+                      disabled={user?.role !== 'administrator'}
+                    />
+                    <div>
+                      <span className="label-text font-semibold">Aktifkan Jam Operasional</span>
+                      <p className="text-xs text-base-content/50">Kirim pesan otomatis saat di luar jam operasional dan set tiket ke status pending.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {bhSettings.business_hours_enabled && (
+                  <div className="space-y-4 bg-base-200/50 p-4 rounded-xl border border-base-300 mt-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="form-control w-full">
+                        <label className="label">
+                          <span className="label-text font-semibold text-xs">Zona Waktu</span>
+                        </label>
+                        <select 
+                          className="select select-sm select-bordered w-full"
+                          value={bhSettings.timezone}
+                          onChange={e => setBhSettings({ ...bhSettings, timezone: e.target.value })}
+                          disabled={user?.role !== 'administrator'}
+                        >
+                          <option value="Asia/Jakarta">WIB - Asia/Jakarta (UTC+7)</option>
+                          <option value="Asia/Makassar">WITA - Asia/Makassar (UTC+8)</option>
+                          <option value="Asia/Jayapura">WIT - Asia/Jayapura (UTC+9)</option>
+                          <option value="Asia/Singapore">SGT - Asia/Singapore (UTC+8)</option>
+                          <option value="UTC">UTC (Greenwich Mean Time)</option>
+                        </select>
+                      </div>
+
+                      <div className="form-control w-full">
+                        <label className="label">
+                          <span className="label-text font-semibold text-xs">Pesan Auto-Responder (Di Luar Jam Kerja)</span>
+                        </label>
+                        <textarea 
+                          className="textarea textarea-sm textarea-bordered w-full h-20 resize-none"
+                          value={bhSettings.out_of_office_message}
+                          onChange={e => setBhSettings({ ...bhSettings, out_of_office_message: e.target.value })}
+                          placeholder="Pesan di luar jam operasional..."
+                          disabled={user?.role !== 'administrator'}
+                          required
+                        ></textarea>
+                      </div>
+                    </div>
+
+                    <div className="divider text-xs opacity-50">Jadwal Mingguan (Senin - Minggu)</div>
+
+                    <div className="overflow-x-auto">
+                      <table className="table table-xs w-full">
+                        <thead>
+                          <tr>
+                            <th>Hari</th>
+                            <th>Status Operasional</th>
+                            <th>Jam Buka</th>
+                            <th>Jam Tutup</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[1, 2, 3, 4, 5, 6, 0].map(dayIdx => {
+                            const dayNameIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][dayIdx];
+                            const schedIndex = bhSettings.schedules.findIndex(s => s.day_of_week === dayIdx);
+                            if (schedIndex === -1) return null;
+                            const sched = bhSettings.schedules[schedIndex];
+
+                            return (
+                              <tr key={dayIdx} className={sched.is_closed ? 'opacity-50' : ''}>
+                                <td className="font-semibold">{dayNameIndo}</td>
+                                <td>
+                                  <label className="flex items-center gap-2 cursor-pointer">
+                                    <input 
+                                      type="checkbox"
+                                      className="checkbox checkbox-sm checkbox-secondary"
+                                      checked={!sched.is_closed}
+                                      onChange={e => {
+                                        const newScheds = [...bhSettings.schedules];
+                                        newScheds[schedIndex].is_closed = !e.target.checked;
+                                        setBhSettings({ ...bhSettings, schedules: newScheds });
+                                      }}
+                                      disabled={user?.role !== 'administrator'}
+                                    />
+                                    <span className="text-xs">{sched.is_closed ? 'Tutup' : 'Buka'}</span>
+                                  </label>
+                                </td>
+                                <td>
+                                  <input 
+                                    type="time" 
+                                    className="input input-xs input-bordered w-28"
+                                    value={sched.open_time}
+                                    onChange={e => {
+                                      const newScheds = [...bhSettings.schedules];
+                                      newScheds[schedIndex].open_time = e.target.value;
+                                      setBhSettings({ ...bhSettings, schedules: newScheds });
+                                    }}
+                                    disabled={sched.is_closed || user?.role !== 'administrator'}
+                                  />
+                                </td>
+                                <td>
+                                  <input 
+                                    type="time" 
+                                    className="input input-xs input-bordered w-28"
+                                    value={sched.close_time}
+                                    onChange={e => {
+                                      const newScheds = [...bhSettings.schedules];
+                                      newScheds[schedIndex].close_time = e.target.value;
+                                      setBhSettings({ ...bhSettings, schedules: newScheds });
+                                    }}
+                                    disabled={sched.is_closed || user?.role !== 'administrator'}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {user?.role === 'administrator' && (
+                  <div className="flex justify-end mt-4">
+                    <button 
+                      type="submit" 
+                      className={`btn btn-sm btn-primary ${savingBh ? 'loading' : ''}`}
+                      disabled={savingBh}
+                    >
+                      Simpan Jam Operasional
                     </button>
                   </div>
                 )}
