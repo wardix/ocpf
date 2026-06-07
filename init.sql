@@ -330,3 +330,34 @@ CREATE INDEX idx_chatbot_configs_account ON chatbot_configs(account_id);
 CREATE INDEX idx_chatbot_configs_inbox ON chatbot_configs(inbox_id);
 CREATE INDEX idx_chatbot_configs_active ON chatbot_configs(is_active) WHERE is_active = true;
 CREATE INDEX idx_chatbot_versions_config ON chatbot_config_versions(chatbot_config_id);
+
+CREATE TABLE webhooks (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    url VARCHAR(2048) NOT NULL,
+    events TEXT[] NOT NULL DEFAULT '{}', 
+    secret VARCHAR(255) NOT NULL,
+    active BOOLEAN DEFAULT TRUE,
+    description VARCHAR(500),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE webhook_delivery_logs (
+    id BIGSERIAL PRIMARY KEY,
+    webhook_id BIGINT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL,
+    response_status INTEGER,
+    response_body TEXT,
+    attempt INTEGER DEFAULT 1,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_webhooks_account_id ON webhooks(account_id);
+CREATE INDEX idx_webhooks_active ON webhooks(active) WHERE active = true;
+CREATE INDEX idx_webhook_delivery_logs_webhook_id ON webhook_delivery_logs(webhook_id);
+CREATE INDEX idx_webhook_delivery_logs_created_at ON webhook_delivery_logs(created_at DESC);
+

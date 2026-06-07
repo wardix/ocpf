@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
 import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { dispatchWebhook } from '../utils/webhooks';
 import { rateLimiter } from '../middleware/rate-limiter';
 import path from 'path';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
@@ -147,6 +148,10 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       event: 'message.new',
       data: finalMsgData
     }));
+
+    if (!is_private) {
+      dispatchWebhook(accountId, 'message.outgoing', finalMsgData).catch(e => console.error('Webhook dispatch error:', e));
+    }
 
     console.log(`[DEBUG-LATENCY] Total proses di Main API selesai dalam ${Date.now() - tStart}ms`);
     return c.json({ success: true, data: finalMsgData });

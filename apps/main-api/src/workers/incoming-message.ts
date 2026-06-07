@@ -5,6 +5,7 @@ import type { IncomingMessagePayload, SendMessagePayload } from '@omnichannel/sh
 import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema } from '@omnichannel/shared-types';
 import { getActiveChatbotRules, evaluateChatbot } from '../chatbot/engine';
 import { isWithinBusinessHours } from '../config/business-hours';
+import { dispatchWebhook } from '../utils/webhooks';
 
 export async function startWorker() {
   console.log('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
@@ -90,7 +91,12 @@ export async function startWorker() {
 
 async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) {
   try {
-    return await db.begin(async (tx) => {
+    let isNewContact = false;
+    let contactData: any = null;
+    let isNewConversation = false;
+    let oooMsgData: any = null;
+
+    const result = await db.begin(async (tx) => {
       console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
       console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
@@ -132,11 +138,14 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     if (!contact) {
+      isNewContact = true;
+      const cleanPhone = data.jid.split('@')[0];
       [contact] = await tx`
         INSERT INTO contacts (account_id, name, phone_number)
-        VALUES (${ACCOUNT_ID}, ${displayName}, ${sourceJid})
-        RETURNING id;
+        VALUES (${ACCOUNT_ID}, ${displayName || cleanPhone}, ${cleanPhone})
+        RETURNING id, name, phone_number, email;
       `;
+      contactData = contact;
     } else {
       await tx`
         UPDATE contacts SET name = ${displayName}, updated_at = NOW() 
@@ -153,6 +162,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     `;
 
     if (!conversation) {
+      isNewConversation = true;
       [conversation] = await tx`
         INSERT INTO conversations (account_id, inbox_id, contact_id)
         VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
@@ -401,6 +411,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
           )
           RETURNING *;
         `;
+        oooMsgData = oooMsg;
 
         const oooPayload: SendMessagePayload = {
           event: 'message.send',
@@ -434,11 +445,46 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     }
 
     return { 
-      ...msg, 
-      contact_name: displayName,
-      attachments: attachmentData ? [attachmentData] : [] 
+      msg: {
+        ...msg, 
+        contact_name: displayName,
+        attachments: attachmentData ? [attachmentData] : [] 
+      },
+      isNewContact,
+      contactData,
+      isNewConversation,
+      conversationId: Number(conversation.id),
+      contactId: Number(contact.id),
+      accountId: Number(ACCOUNT_ID),
+      inboxId: Number(INBOX_ID),
+      oooMsgData
     };
     });
+
+    if (result) {
+      if (result.isNewContact && result.contactData) {
+        dispatchWebhook(result.accountId, 'contact.created', result.contactData).catch(e => console.error(e));
+      }
+      if (result.isNewConversation) {
+        dispatchWebhook(result.accountId, 'conversation.created', {
+          id: result.conversationId,
+          account_id: result.accountId,
+          inbox_id: result.inboxId,
+          contact_id: result.contactId
+        }).catch(e => console.error(e));
+      }
+      if (!data.is_host_echo) {
+        dispatchWebhook(result.accountId, 'message.incoming', result.msg).catch(e => console.error(e));
+      } else {
+        dispatchWebhook(result.accountId, 'message.outgoing', result.msg).catch(e => console.error(e));
+      }
+      if (result.oooMsgData) {
+        dispatchWebhook(result.accountId, 'message.outgoing', result.oooMsgData).catch(e => console.error(e));
+      }
+
+      return result.msg;
+    }
+    return null;
   } catch (error) {
     console.error("Gagal menyimpan ke database:", error);
     return null;

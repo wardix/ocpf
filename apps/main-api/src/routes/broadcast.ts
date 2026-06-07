@@ -6,6 +6,7 @@ import { redis } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
 import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { rateLimiter } from '../middleware/rate-limiter';
+import { dispatchWebhook } from '../utils/webhooks';
 
 const app = new Hono();
 app.use('/*', jwtMiddleware);
@@ -53,7 +54,9 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
             WHERE account_id = ${ACCOUNT_ID} AND inbox_id = ${INBOX_ID} AND contact_id = ${contact.id}
             LIMIT 1
           `;
+          let isNewConversation = false;
           if (!conversation) {
+            isNewConversation = true;
             [conversation] = await sql`
               INSERT INTO conversations (account_id, inbox_id, contact_id)
               VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
@@ -82,6 +85,16 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
               message_type: 'text'
             }
           };
+
+          if (isNewConversation) {
+            dispatchWebhook(ACCOUNT_ID, 'conversation.created', {
+              id: Number(conversation.id),
+              account_id: ACCOUNT_ID,
+              inbox_id: INBOX_ID,
+              contact_id: Number(contact.id)
+            }).catch(e => console.error(e));
+          }
+          dispatchWebhook(ACCOUNT_ID, 'message.outgoing', msg).catch(e => console.error(e));
           
           const targetQueue = `queue:outgoing_messages:inbox_${INBOX_ID}`;
           await redis.rpush(targetQueue, JSON.stringify(payload));
