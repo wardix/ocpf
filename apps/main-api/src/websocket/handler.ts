@@ -30,11 +30,11 @@ export function setupWebSocket(server: any) {
 }
 
 export const websocketHandlers = {
-  open(ws: ServerWebSocket<WebSocketData>) {
-    console.log(`[WS] User ${ws.data.userId} (Role: ${ws.data.role}) Terhubung 🌐`);
+  open(ws: ServerWebSocket<any>) {
+    console.log(`[WS] ${ws.data.isWidget ? 'Widget Session ' + ws.data.sessionToken : 'User ' + ws.data.userId} Terhubung 🌐`);
     activeWebSockets.add(ws);
   },
-  async message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
+  async message(ws: ServerWebSocket<any>, message: string | Buffer) {
     if (typeof message === 'string') {
       if (message === 'pong' || message === 'ping') {
         if (message === 'ping') ws.send('pong');
@@ -44,6 +44,22 @@ export const websocketHandlers = {
 
       try {
         const payload = JSON.parse(message);
+        if (ws.data.isWidget) {
+          // Tangani event typing dari widget visitor
+          if (payload.event === 'typing.widget') {
+            const { is_typing } = payload.data;
+            await redis.publish('chat:events', JSON.stringify({
+              event: 'typing.update',
+              data: {
+                conversation_id: ws.data.conversationId,
+                contact_id: ws.data.contactId,
+                is_typing
+              }
+            }));
+          }
+          return;
+        }
+
         if (payload.event === 'typing.agent') {
           const { inbox_id, phone } = payload.data;
           
@@ -59,31 +75,57 @@ export const websocketHandlers = {
 
           const targetQueue = `queue:outgoing_messages:inbox_${inbox_id}`;
           await redis.rpush(targetQueue, JSON.stringify(SendTypingPayloadSchema.parse(typingPayload)));
+
+          // Juga publish typing status ke Redis Pub/Sub agar widget visitor menerima typing status
+          import('../config/database').then(async ({ sql }) => {
+            try {
+              const [conv] = await sql`
+                SELECT c.id as conversation_id, c.contact_id 
+                FROM conversations c 
+                JOIN contacts con ON c.contact_id = con.id 
+                WHERE con.phone_number = ${phone} AND c.inbox_id = ${inbox_id} LIMIT 1
+              `;
+              if (conv) {
+                await redis.publish('chat:events', JSON.stringify({
+                  event: 'typing.update',
+                  data: {
+                    conversation_id: Number(conv.conversation_id),
+                    contact_id: Number(conv.contact_id),
+                    is_typing: true
+                  }
+                }));
+              }
+            } catch (e) {
+              console.error('Error publishing agent typing status:', e);
+            }
+          });
         }
       } catch (e) {
         // Abaikan parse error
       }
     }
   },
-  close(ws: ServerWebSocket<WebSocketData>) {
-    console.log(`[WS] User ${ws.data.userId} Terputus ❌`);
+  close(ws: ServerWebSocket<any>) {
+    console.log(`[WS] ${ws.data.isWidget ? 'Widget Session ' + ws.data.sessionToken : 'User ' + ws.data.userId} Terputus ❌`);
     activeWebSockets.delete(ws);
 
-    // Auto-offline
-    import('../config/database').then(({ sql }) => {
-      sql`
-        UPDATE account_users SET availability_status = 'offline'
-        WHERE user_id = ${ws.data.userId} AND account_id = ${ws.data.accountId}
-      `.catch(err => console.error('Error auto-offline:', err));
-    });
+    if (!ws.data.isWidget) {
+      // Auto-offline
+      import('../config/database').then(({ sql }) => {
+        sql`
+          UPDATE account_users SET availability_status = 'offline'
+          WHERE user_id = ${ws.data.userId} AND account_id = ${ws.data.accountId}
+        `.catch(err => console.error('Error auto-offline:', err));
+      });
 
-    redis.publish('chat:events', JSON.stringify({
-      event: 'agent.availability_changed',
-      data: { 
-        account_id: ws.data.accountId,
-        user_id: ws.data.userId, 
-        availability_status: 'offline' 
-      }
-    })).catch(err => console.error('Error publish offline:', err));
+      redis.publish('chat:events', JSON.stringify({
+        event: 'agent.availability_changed',
+        data: { 
+          account_id: ws.data.accountId,
+          user_id: ws.data.userId, 
+          availability_status: 'offline' 
+        }
+      })).catch(err => console.error('Error publish offline:', err));
+    }
   },
 };

@@ -473,7 +473,8 @@ function App() {
                   ticket_id: conv.ticket_id,
                   status: conv.status,
                   assignee_id: conv.assignee_id,
-                  assignee_name: conv.assignee_name
+                  assignee_name: conv.assignee_name,
+                  inbox_id: conv.inbox_id
                 });
                 navigate(`/inbox/${conv.id}`);
               }} 

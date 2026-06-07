@@ -61,6 +61,7 @@ CREATE TABLE inboxes (
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     avatar_url VARCHAR(1024),
+    widget_config JSONB DEFAULT '{}'::jsonb,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -283,4 +284,21 @@ CREATE TABLE csat_ratings (
 CREATE INDEX idx_csat_ratings_ticket_id ON csat_ratings(ticket_id);
 CREATE INDEX idx_csat_ratings_account_id ON csat_ratings(account_id);
 CREATE INDEX idx_csat_ratings_assigned_agent_id ON csat_ratings(assigned_agent_id);
+
+CREATE TABLE widget_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    inbox_id BIGINT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+    contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    fingerprint VARCHAR(64) NOT NULL,
+    session_token VARCHAR(128) NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    page_url TEXT,
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX idx_widget_sessions_token ON widget_sessions(session_token);
+
 

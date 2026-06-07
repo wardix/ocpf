@@ -24,6 +24,7 @@ import docsRoutes from './routes/docs';
 import { labelsRoutes } from './routes/labels';
 import { searchRoutes } from './routes/search';
 import { inboxesRoutes } from './routes/inboxes';
+import { widgetRoutes } from './routes/widget';
 
 const app = new Hono();
 
@@ -52,6 +53,20 @@ const corsOptions = {
 };
 
 // Global Middleware
+app.use('/api/widget/*', async (c, next) => {
+  const origin = c.req.header('origin');
+  if (origin) {
+    c.header('Access-Control-Allow-Origin', origin);
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+    c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    c.header('Access-Control-Allow-Credentials', 'true');
+  }
+  if (c.req.method === 'OPTIONS') {
+    return c.text('OK');
+  }
+  await next();
+});
+
 app.use('/api/*', cors(corsOptions));
 app.use('/ws', cors(corsOptions));
 
@@ -68,6 +83,7 @@ app.use('/api/*', rateLimiter({
 
 // Static Files
 app.use('/uploads/*', serveStatic({ root: './public' }));
+app.use('/widget.js', serveStatic({ path: './public/widget.js' }));
 
 // Health Check
 app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'));
@@ -84,6 +100,7 @@ app.route('/api/broadcast', broadcastRoutes);
 app.route('/api/labels', labelsRoutes);
 app.route('/api/search', searchRoutes);
 app.route('/api/inboxes', inboxesRoutes);
+app.route('/api/widget', widgetRoutes);
 app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
@@ -125,7 +142,16 @@ redisSub.on('message', async (channel, message) => {
       const accountId = data?.account_id || 1;
       const isPrivate = data?.is_private || false;
 
-      activeWebSockets.forEach((ws) => {
+      activeWebSockets.forEach((ws: any) => {
+        if (ws.data.isWidget) {
+          if (payload.event === 'message.new' && ws.data.conversationId === data?.conversation_id) {
+            ws.send(message);
+          } else if (payload.event === 'typing.update' && ws.data.conversationId === data?.conversation_id) {
+            ws.send(message);
+          }
+          return;
+        }
+
         if (ws.data.accountId !== accountId) return;
         if (isPrivate && ws.data.role !== 'agent' && ws.data.role !== 'administrator') return;
         ws.send(message);
@@ -169,6 +195,36 @@ const server = Bun.serve({
       } catch (e: any) {
         console.error(`[WS] Upgrade Token Error: ${e.message}`);
         return new Response('Unauthorized: Invalid token', { status: 401 });
+      }
+    } else if (url.pathname === '/ws/widget') {
+      const token = url.searchParams.get('token');
+      if (!token) return new Response('Unauthorized: Token required', { status: 401 });
+
+      try {
+        const [session] = await sql`
+          SELECT account_id, inbox_id, contact_id, conversation_id 
+          FROM widget_sessions 
+          WHERE session_token = ${token} LIMIT 1
+        `;
+        if (!session) return new Response('Unauthorized: Invalid token', { status: 401 });
+
+        const upgradeSuccess = server.upgrade(req, {
+          data: {
+            accountId: Number(session.account_id),
+            inboxId: Number(session.inbox_id),
+            contactId: Number(session.contact_id),
+            conversationId: Number(session.conversation_id),
+            sessionToken: token,
+            isAlive: true,
+            isWidget: true
+          }
+        });
+        
+        if (upgradeSuccess) return;
+        return new Response('Upgrade failed', { status: 500 });
+      } catch (e: any) {
+        console.error(`[WS/Widget] Upgrade Token Error: ${e.message}`);
+        return new Response('Server error during upgrade', { status: 500 });
       }
     }
     return app.fetch(req);

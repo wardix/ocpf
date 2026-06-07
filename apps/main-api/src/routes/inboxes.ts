@@ -351,7 +351,8 @@ const updateInboxSchema = z.object({
   name: z.string().min(1, 'Nama wajib diisi').max(255),
   description: z.string().max(1000).optional().nullable(),
   greeting_message: z.string().max(2000).optional().nullable(),
-  is_active: z.boolean().optional()
+  is_active: z.boolean().optional(),
+  widget_config: z.record(z.any()).optional().nullable()
 });
 
 // GET /api/inboxes (Daftar inbox, filtered by user access for agents)
@@ -476,7 +477,7 @@ inboxesRoutes.put('/:id', zValidator('json', updateInboxSchema, (result, c) => {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const { name, description, greeting_message, is_active } = c.req.valid('json');
+    const { name, description, greeting_message, is_active, widget_config } = c.req.valid('json');
 
     const [updatedInbox] = await sql`
       UPDATE inboxes 
@@ -484,6 +485,7 @@ inboxesRoutes.put('/:id', zValidator('json', updateInboxSchema, (result, c) => {
           description = ${description || null}, 
           greeting_message = ${greeting_message || null}, 
           is_active = ${is_active !== undefined ? is_active : true},
+          widget_config = ${widget_config || null},
           updated_at = NOW()
       WHERE id = ${inboxId} AND account_id = ${accountId}
       RETURNING *

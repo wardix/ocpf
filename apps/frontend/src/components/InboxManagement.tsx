@@ -48,7 +48,18 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
   const [savingNewInbox, setSavingNewInbox] = useState(false);
 
   // Edit Inbox Form State
-  const [editData, setEditData] = useState({ name: '', description: '', greeting_message: '', is_active: true });
+  const [editData, setEditData] = useState({ 
+    name: '', 
+    description: '', 
+    greeting_message: '', 
+    is_active: true,
+    widget_config: {
+      theme_color: '#0284c7',
+      position: 'right',
+      bubble_label: 'Chat',
+      allowed_domains: ''
+    }
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Get active inbox object
@@ -57,11 +68,18 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
   // Sync edit form with active inbox
   useEffect(() => {
     if (activeInbox) {
+      const config = (activeInbox as any).widget_config || {};
       setEditData({
         name: activeInbox.name,
         description: activeInbox.description || '',
         greeting_message: activeInbox.greeting_message || '',
-        is_active: activeInbox.is_active
+        is_active: activeInbox.is_active,
+        widget_config: {
+          theme_color: config.theme_color || '#0284c7',
+          position: config.position || 'right',
+          bubble_label: config.bubble_label || 'Chat',
+          allowed_domains: config.allowed_domains || ''
+        }
       });
     }
   }, [activeInboxId, inboxes]);
@@ -390,13 +408,132 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
                     </div>
                   </div>
 
-                  <div className="flex justify-end mt-2">
+                  <div className="divider text-xs opacity-50">Kustomisasi Web Chat Widget</div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="form-control">
+                      <label className="label"><span className="label-text text-xs">Warna Tema Widget</span></label>
+                      <div className="flex gap-2 items-center">
+                        <input 
+                          type="color" 
+                          className="w-8 h-8 rounded cursor-pointer border border-base-300"
+                          value={editData.widget_config?.theme_color || '#0284c7'}
+                          onChange={e => setEditData({
+                            ...editData,
+                            widget_config: {
+                              ...editData.widget_config,
+                              theme_color: (e.target as HTMLInputElement).value
+                            }
+                          })}
+                        />
+                        <input 
+                          type="text" 
+                          className="input input-xs input-bordered w-24 font-mono text-[11px]"
+                          value={editData.widget_config?.theme_color || '#0284c7'}
+                          onChange={e => setEditData({
+                            ...editData,
+                            widget_config: {
+                              ...editData.widget_config,
+                              theme_color: (e.target as HTMLInputElement).value
+                            }
+                          })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-control">
+                      <label className="label"><span className="label-text text-xs">Posisi Widget</span></label>
+                      <select 
+                        className="select select-sm select-bordered w-full"
+                        value={editData.widget_config?.position || 'right'}
+                        onChange={e => setEditData({
+                          ...editData,
+                          widget_config: {
+                            ...editData.widget_config,
+                            position: (e.target as HTMLSelectElement).value
+                          }
+                        })}
+                      >
+                        <option value="right">Kanan Bawah (Bottom Right)</option>
+                        <option value="left">Kiri Bawah (Bottom Left)</option>
+                      </select>
+                    </div>
+
+                    <div className="form-control">
+                      <label className="label"><span className="label-text text-xs">Label Tombol Bubble</span></label>
+                      <input 
+                        type="text" 
+                        className="input input-sm input-bordered w-full"
+                        value={editData.widget_config?.bubble_label || 'Chat'}
+                        onChange={e => setEditData({
+                          ...editData,
+                          widget_config: {
+                            ...editData.widget_config,
+                            bubble_label: (e.target as HTMLInputElement).value
+                          }
+                        })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 mt-2">
+                    <div className="form-control">
+                      <label className="label">
+                        <span className="label-text text-xs font-semibold">Whitelist Domain (CORS)</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="mywebsite.com, shop.domain.id (kosongkan untuk mengizinkan semua domain)"
+                        className="input input-sm input-bordered w-full font-mono text-xs"
+                        value={editData.widget_config?.allowed_domains || ''}
+                        onChange={e => setEditData({
+                          ...editData,
+                          widget_config: {
+                            ...editData.widget_config,
+                            allowed_domains: (e.target as HTMLInputElement).value
+                          }
+                        })}
+                      />
+                      <label className="label">
+                        <span className="label-text-alt text-[10px] text-base-content/50">
+                          Pisahkan beberapa domain dengan koma. Subdomain diizinkan secara otomatis (misal: domain.com mencakup *.domain.com).
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="form-control mt-2">
+                    <label className="label">
+                      <span className="label-text text-xs font-semibold">Kode Embed Script (Salin & Tempel di Website Anda)</span>
+                    </label>
+                    <div className="relative">
+                      <textarea
+                        readOnly
+                        className="textarea textarea-sm textarea-bordered w-full font-mono bg-base-300 text-xs h-16 resize-none pr-16"
+                        value={`<script src="${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/widget.js" data-inbox-id="${activeInboxId}" data-api-url="${import.meta.env.VITE_API_URL || 'http://localhost:3000'}"></script>`}
+                        onClick={e => (e.target as HTMLTextAreaElement).select()}
+                      ></textarea>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-primary absolute top-2 right-2"
+                        onClick={() => {
+                          const code = `<script src="${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/widget.js" data-inbox-id="${activeInboxId}" data-api-url="${import.meta.env.VITE_API_URL || 'http://localhost:3000'}"></script>`;
+                          navigator.clipboard.writeText(code);
+                          addToast('Kode embed berhasil disalin ke clipboard', 'success');
+                        }}
+                      >
+                        Salin
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end mt-4">
                     <button 
                       type="submit" 
                       className={`btn btn-xs btn-primary ${savingEdit ? 'loading' : ''}`}
                       disabled={savingEdit}
                     >
-                      Perbarui Info Inbox
+                      Perbarui Info & Widget
                     </button>
                   </div>
                 </form>
