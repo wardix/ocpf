@@ -109,9 +109,24 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     const content = data.content || '';
 
     let [contact] = await tx`
-      SELECT id FROM contacts WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} LIMIT 1
+      SELECT id, deleted_at, merged_into_id FROM contacts 
+      WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} 
+      LIMIT 1
     `;
     
+    if (contact) {
+      if (contact.deleted_at) {
+        if (contact.merged_into_id) {
+          const [primaryContact] = await tx`
+            SELECT id FROM contacts WHERE id = ${contact.merged_into_id} AND deleted_at IS NULL LIMIT 1
+          `;
+          contact = primaryContact || null;
+        } else {
+          contact = null;
+        }
+      }
+    }
+
     if (!contact) {
       [contact] = await tx`
         INSERT INTO contacts (account_id, name, phone_number)

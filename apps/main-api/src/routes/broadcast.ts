@@ -41,7 +41,7 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
     const agentId = jwtPayload.id;
 
     const contacts = await sql`
-      SELECT id, phone_number FROM contacts WHERE id IN ${sql(contact_ids)} AND account_id = ${ACCOUNT_ID}
+      SELECT id, phone_number FROM contacts WHERE id IN ${sql(contact_ids)} AND account_id = ${ACCOUNT_ID} AND deleted_at IS NULL
     `;
 
     (async () => {

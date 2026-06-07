@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
+import { useToastStore } from '../store/toastStore';
 
 interface Props {
   onUpdate: (newName: string, newEmail: string) => void;
@@ -10,6 +11,8 @@ const ContactInfo = ({ onUpdate }: Props) => {
   const { token } = useAuthStore();
   const { selectedConv } = useChatStore();
 
+  const { addToast } = useToastStore();
+
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
   const [isSaving, setIsSaving] = useState(false);
@@ -17,6 +20,94 @@ const ContactInfo = ({ onUpdate }: Props) => {
   const [availableLabels, setAvailableLabels] = useState<any[]>([]);
   const [conversationLabels, setConversationLabels] = useState<any[]>([]);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
+
+  // Contact Merging States
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [similarContacts, setSimilarContacts] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedSecondary, setSelectedSecondary] = useState<any | null>(null);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+
+  // Fetch similar contacts when modal opens
+  useEffect(() => {
+    if (showMergeModal && selectedConv && token) {
+      setLoadingSimilar(true);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      fetch(`${apiUrl}/api/contacts/${selectedConv.contact_id}/similar`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(result => {
+          if (result.success) {
+            setSimilarContacts(result.data || []);
+          }
+        })
+        .catch(console.error)
+        .finally(() => setLoadingSimilar(false));
+    } else {
+      setSimilarContacts([]);
+      setSearchQuery('');
+      setSearchResults([]);
+      setSelectedSecondary(null);
+    }
+  }, [showMergeModal, selectedConv, token]);
+
+  const handleSearchContacts = async () => {
+    if (!selectedConv || !searchQuery.trim() || !token) return;
+    setLoadingSearch(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/contacts?q=${encodeURIComponent(searchQuery)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        const filtered = (result.data || []).filter((c: any) => c.id !== selectedConv.contact_id);
+        setSearchResults(filtered);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingSearch(false);
+    }
+  };
+
+  const handleExecuteMerge = async () => {
+    if (!selectedSecondary || !selectedConv || !token) return;
+    setIsMerging(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/contacts/merge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          primary_id: selectedConv.contact_id,
+          secondary_id: selectedSecondary.id
+        })
+      });
+      if (response.ok) {
+        addToast('Kontak berhasil digabungkan!', 'success');
+        setShowMergeModal(false);
+        const { setSelectedConv, triggerRefresh } = useChatStore.getState();
+        setSelectedConv(null);
+        triggerRefresh();
+      } else {
+        const err = await response.json();
+        addToast(`Gagal menggabungkan: ${err.error || 'Terjadi kesalahan'}`, 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedConv) {
@@ -233,12 +324,197 @@ const ContactInfo = ({ onUpdate }: Props) => {
 
         <div className="divider opacity-10"></div>
         
-        <div className="px-2">
+        <div className="px-2 space-y-2">
+          <button 
+            type="button" 
+            className="btn btn-sm btn-block btn-outline btn-primary"
+            onClick={() => setShowMergeModal(true)}
+          >
+            🤝 Gabungkan Kontak
+          </button>
           <button className="btn btn-sm btn-block btn-outline btn-error opacity-70">Blokir Kontak</button>
         </div>
         
       </div>
       
+      {showMergeModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-lg bg-base-100 border border-base-300 shadow-2xl rounded-2xl p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+              🤝 Gabungkan Kontak Duplikat
+            </h3>
+            <p className="text-xs text-base-content/60 mt-1">
+              Satukan dua kontak yang serupa menjadi satu kontak utama untuk merapikan riwayat percakapan.
+            </p>
+
+            <div className="divider my-4"></div>
+
+            {/* Step 1: Select Secondary Contact */}
+            {!selectedSecondary ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-base-content/50 uppercase tracking-wider">
+                    Kontak Utama (Data yang Dipertahankan)
+                  </label>
+                  <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 p-3 rounded-xl">
+                    <div className="avatar placeholder">
+                      <div className="bg-primary text-primary-content rounded-full w-10">
+                        <span className="text-sm font-bold">{selectedConv.name.substring(0,2).toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm">{selectedConv.name}</h4>
+                      <p className="text-xs opacity-75 font-mono">{selectedConv.phone}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-base-content/50 uppercase tracking-wider block">
+                    Cari Kontak Sekunder (Akan Digabungkan & Dihapus)
+                  </label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      className="input input-sm input-bordered flex-1"
+                      placeholder="Nama atau nomor WA..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSearchContacts()}
+                    />
+                    <button 
+                      type="button" 
+                      className={`btn btn-sm btn-primary ${loadingSearch ? 'loading' : ''}`}
+                      onClick={handleSearchContacts}
+                    >
+                      Cari
+                    </button>
+                  </div>
+                </div>
+
+                {/* Similar Contacts Suggestion */}
+                <div>
+                  <h4 className="text-xs font-semibold text-base-content/70 mb-2">Kontak yang Serupa (Saran)</h4>
+                  {loadingSimilar ? (
+                    <div className="flex justify-center py-4">
+                      <span className="loading loading-spinner loading-sm text-primary"></span>
+                    </div>
+                  ) : similarContacts.length === 0 ? (
+                    <p className="text-xs italic opacity-50 text-center py-2 bg-base-200/50 rounded-xl">Tidak ada saran kontak serupa</p>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                      {similarContacts.map(c => (
+                        <div 
+                          key={c.id}
+                          className="flex justify-between items-center bg-base-200/50 hover:bg-base-200 p-2.5 rounded-xl border border-base-300 transition-colors cursor-pointer"
+                          onClick={() => setSelectedSecondary(c)}
+                        >
+                          <div>
+                            <h5 className="font-semibold text-xs">{c.name}</h5>
+                            <p className="text-[10px] opacity-70 font-mono">{c.phone_number}</p>
+                          </div>
+                          <span className="badge badge-sm badge-outline text-[10px] font-bold text-primary">Pilih</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-base-content/70 mb-2">Hasil Pencarian</h4>
+                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                      {searchResults.map(c => (
+                        <div 
+                          key={c.id}
+                          className="flex justify-between items-center bg-base-200/50 hover:bg-base-200 p-2.5 rounded-xl border border-base-300 transition-colors cursor-pointer"
+                          onClick={() => setSelectedSecondary(c)}
+                        >
+                          <div>
+                            <h5 className="font-semibold text-xs">{c.name}</h5>
+                            <p className="text-[10px] opacity-70 font-mono">{c.phone_number}</p>
+                          </div>
+                          <span className="badge badge-sm badge-outline text-[10px] font-bold text-primary">Pilih</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Step 2: Confirm Merge
+              <div className="space-y-4">
+                <div className="bg-warning/10 border border-warning/20 p-4 rounded-xl text-xs text-warning-content space-y-1">
+                  <p className="font-bold flex items-center gap-1">⚠️ Perhatian Sebelum Melanjutkan:</p>
+                  <p>Seluruh riwayat pesan, tiket chat, dan CSAT rating dari <strong>{selectedSecondary.name}</strong> akan dipindahkan ke <strong>{selectedConv.name}</strong>.</p>
+                  <p>Kontak <strong>{selectedSecondary.name}</strong> akan di-soft-delete dan tidak akan muncul lagi di sistem.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-base-200/50 p-3 rounded-xl border border-base-300 flex flex-col items-center text-center">
+                    <span className="text-[10px] font-bold text-base-content/40 uppercase mb-2">Kontak Sekunder (Dihapus)</span>
+                    <div className="avatar placeholder mb-2">
+                      <div className="bg-error/10 text-error rounded-full w-10">
+                        <span className="text-xs font-bold">{selectedSecondary.name.substring(0,2).toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <h5 className="font-semibold text-xs truncate w-full">{selectedSecondary.name}</h5>
+                    <p className="text-[10px] opacity-60 font-mono">{selectedSecondary.phone_number}</p>
+                  </div>
+
+                  <div className="bg-base-200/50 p-3 rounded-xl border border-base-300 flex flex-col items-center text-center">
+                    <span className="text-[10px] font-bold text-base-content/40 uppercase mb-2">Kontak Utama (Dipertahankan)</span>
+                    <div className="avatar placeholder mb-2">
+                      <div className="bg-success/10 text-success rounded-full w-10">
+                        <span className="text-xs font-bold">{selectedConv.name.substring(0,2).toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <h5 className="font-semibold text-xs truncate w-full">{selectedConv.name}</h5>
+                    <p className="text-[10px] opacity-60 font-mono">{selectedConv.phone}</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center bg-base-200 p-3 rounded-xl text-xs">
+                  <span>Atribut Kustom</span>
+                  <span className="font-semibold text-success">Akan Digabungkan</span>
+                </div>
+              </div>
+            )}
+
+            <div className="modal-action gap-2">
+              <button 
+                type="button" 
+                className="btn btn-sm btn-ghost" 
+                onClick={() => setShowMergeModal(false)}
+                disabled={isMerging}
+              >
+                Batal
+              </button>
+              {selectedSecondary && (
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline" 
+                  onClick={() => setSelectedSecondary(null)}
+                  disabled={isMerging}
+                >
+                  Kembali
+                </button>
+              )}
+              {selectedSecondary && (
+                <button 
+                  type="button" 
+                  className={`btn btn-sm btn-primary ${isMerging ? 'loading' : ''}`}
+                  onClick={handleExecuteMerge}
+                  disabled={isMerging}
+                >
+                  Konfirmasi Gabung
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -50,7 +50,7 @@ export function startCSATWorker() {
                 SELECT c.phone_number 
                 FROM contacts c
                 JOIN conversations conv ON conv.contact_id = c.id
-                WHERE conv.id = ${conversation_id} AND conv.account_id = ${account_id}
+                WHERE conv.id = ${conversation_id} AND conv.account_id = ${account_id} AND c.deleted_at IS NULL
                 LIMIT 1
               `;
 
