@@ -3,6 +3,7 @@ import UserManagement from './UserManagement';
 import LabelManagement from './LabelManagement';
 import InboxManagement from './InboxManagement';
 import WebhookManagement from './WebhookManagement';
+import AutomationManagement from './AutomationManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -842,6 +843,7 @@ const Settings = () => {
         <LabelManagement />
         <UserManagement />
         <WebhookManagement />
+        {user?.role === 'administrator' && <AutomationManagement />}
 
         {user?.role === 'administrator' && (
           <div className="card bg-base-100 shadow-sm border border-base-300">

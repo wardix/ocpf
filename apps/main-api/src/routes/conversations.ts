@@ -5,6 +5,7 @@ import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
 import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { dispatchWebhook } from '../utils/webhooks';
+import { evaluateAutomationRules } from '../utils/automation';
 
 export const conversationsRoutes = new Hono();
 
@@ -325,6 +326,10 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
     const agentName = jwtPayload.name;
     const { status } = c.req.valid('json');
 
+    const [currentTicket] = await sql`
+      SELECT status, account_id FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved' LIMIT 1
+    `;
+
     const [ticket] = await sql`
       UPDATE tickets 
       SET 
@@ -334,6 +339,15 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
       WHERE conversation_id = ${conversationId} AND status != 'resolved'
       RETURNING *;
     `;
+
+    if (ticket && currentTicket && currentTicket.status !== status) {
+      evaluateAutomationRules(Number(currentTicket.account_id), 'status.changed', {
+        conversationId,
+        ticketId: ticket.id,
+        previousStatus: currentTicket.status,
+        newStatus: status
+      }).catch(err => console.error('[Automation Engine] Error executing status.changed rules:', err));
+    }
 
     if (ticket && status === 'resolved') {
       try {
@@ -504,6 +518,10 @@ conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (resul
     }
 
     const ticket = await sql.begin(async (tx) => {
+      const [currentTicket] = await tx`
+        SELECT status FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved' LIMIT 1
+      `;
+
       const [updatedTicket] = await tx`
         UPDATE tickets
         SET status = 'snoozed', snoozed_until = ${snoozed_until}, updated_at = NOW()
@@ -512,6 +530,15 @@ conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (resul
       `;
 
       if (!updatedTicket) throw new Error('NOT_FOUND');
+
+      if (currentTicket && currentTicket.status !== 'snoozed') {
+        evaluateAutomationRules(Number(updatedTicket.account_id), 'status.changed', {
+          conversationId,
+          ticketId: updatedTicket.id,
+          previousStatus: currentTicket.status,
+          newStatus: 'snoozed'
+        }).catch(err => console.error('[Automation Engine] Error executing status.changed rules:', err));
+      }
 
       await tx`
         INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
