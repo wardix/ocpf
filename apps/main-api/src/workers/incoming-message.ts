@@ -94,7 +94,11 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
       console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
-      const INBOX_ID = data.inbox_id || 1; 
+      const INBOX_ID = data.inbox_id;
+      if (!INBOX_ID) {
+        console.error('Payload incoming message tidak menyertakan inbox_id.');
+        return null;
+      }
 
       const [inbox] = await tx`SELECT account_id FROM inboxes WHERE id = ${INBOX_ID} LIMIT 1`;
       if (!inbox) {

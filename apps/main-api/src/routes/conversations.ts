@@ -12,6 +12,9 @@ conversationsRoutes.use('/*', jwtMiddleware);
 conversationsRoutes.get('/', async (c) => {
   try {
     const activeTab = c.req.query('tab') || 'unassigned';
+    const inboxIdQuery = c.req.query('inbox_id');
+    const inboxId = inboxIdQuery ? parseInt(inboxIdQuery, 10) : null;
+    
     const jwtPayload = c.get('jwtPayload') as any;
     const currentAgentId = jwtPayload?.id;
     const accountId = jwtPayload?.account_id || 1;
@@ -21,6 +24,9 @@ conversationsRoutes.get('/', async (c) => {
     const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
     const offset = (page - 1) * perPage;
 
+    const isInboxFilter = inboxId !== null && !isNaN(inboxId);
+    const isAgent = jwtPayload?.role !== 'administrator';
+
     // Menghitung total data untuk tab ini
     const [totalRow] = await sql`
       WITH FilteredConvs AS (
@@ -29,6 +35,7 @@ conversationsRoutes.get('/', async (c) => {
         FROM conversations c
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         WHERE c.account_id = ${accountId}
+          ${isInboxFilter ? sql`AND c.inbox_id = ${inboxId}` : (isAgent ? sql`AND c.inbox_id IN (SELECT inbox_id FROM inbox_members WHERE user_id = ${currentAgentId})` : sql``)}
       )
       SELECT COUNT(*) as total FROM FilteredConvs
       WHERE 
@@ -45,6 +52,8 @@ conversationsRoutes.get('/', async (c) => {
         SELECT 
           c.id,
           c.id as conversation_id,
+          c.inbox_id,
+          i.name as inbox_name,
           t.id as ticket_id, 
           t.status, 
           t.assignee_id,
@@ -65,9 +74,11 @@ conversationsRoutes.get('/', async (c) => {
           ) as labels
         FROM conversations c
         JOIN contacts con ON c.contact_id = con.id
+        JOIN inboxes i ON c.inbox_id = i.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
         WHERE c.account_id = ${accountId} AND con.deleted_at IS NULL
+          ${isInboxFilter ? sql`AND c.inbox_id = ${inboxId}` : (isAgent ? sql`AND c.inbox_id IN (SELECT inbox_id FROM inbox_members WHERE user_id = ${currentAgentId})` : sql``)}
       )
       SELECT * FROM ActiveConversations
       WHERE 

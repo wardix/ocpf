@@ -36,7 +36,27 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
+  const [inboxes, setInboxes] = useState<any[]>([]);
+  const [selectedInboxId, setSelectedInboxId] = useState<number | null>(null);
   const [agents, setAgents] = useState<any[]>([]);
+
+  const fetchInboxes = useCallback(async () => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setInboxes(result.data);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch inboxes', e);
+    }
+  }, [token]);
 
   const fetchAgents = useCallback(async () => {
     if (!token) return;
@@ -55,6 +75,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   }, [token]);
 
   useEffect(() => {
+    fetchInboxes();
     fetchAgents();
     
     const handleStatusChange = (e: any) => {
@@ -72,7 +93,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
 
     window.addEventListener('agentStatusChanged', handleStatusChange);
     return () => window.removeEventListener('agentStatusChanged', handleStatusChange);
-  }, [fetchAgents]);
+  }, [fetchAgents, fetchInboxes]);
 
   // Navigasi keyboard (Arrow Up / Arrow Down)
   useKeyboardShortcuts([
@@ -105,7 +126,8 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
     
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}&page=${pageNum}&per_page=25`, {
+      const inboxParam = selectedInboxId ? `&inbox_id=${selectedInboxId}` : '';
+      const response = await fetch(`${apiUrl}/api/conversations?tab=${activeTab}&page=${pageNum}&per_page=25${inboxParam}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -130,9 +152,11 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
 
   const fetchInboxStatus = async () => {
     if (!token) return;
+    const activeInboxes = inboxes.filter(i => i.is_active);
+    const inboxIdToQuery = selectedInboxId || (activeInboxes.length > 0 ? activeInboxes[0].id : 1);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const response = await fetch(`${apiUrl}/api/inboxes/1/business-hours/status`, {
+      const response = await fetch(`${apiUrl}/api/inboxes/${inboxIdToQuery}/business-hours/status`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -156,7 +180,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
       fetchInboxStatus();
     }, 10000);
     return () => clearInterval(interval);
-  }, [refreshKey, activeTab]);
+  }, [refreshKey, activeTab, selectedInboxId, inboxes]);
 
   const handleLoadMore = () => {
     const nextPage = page + 1;
@@ -190,6 +214,26 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             ➕ Baru
           </button>
         </div>
+
+        {/* Dropdown Filter Inbox */}
+        <div className="w-full">
+          <select 
+            className="select select-xs select-bordered w-full font-medium"
+            value={selectedInboxId || ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedInboxId(val ? Number(val) : null);
+            }}
+          >
+            <option value="">📥 Semua Inbox</option>
+            {inboxes.map((inbox) => (
+              <option key={inbox.id} value={inbox.id}>
+                📥 {inbox.name} {!inbox.is_active ? ' (Nonaktif)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex gap-2 w-full mb-1">
           <button className="btn btn-sm btn-ghost w-full bg-base-100 flex justify-between items-center text-base-content/50"
                   onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}>
@@ -289,6 +333,11 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
                 </span>
                 <div className="flex gap-1 mt-2 flex-wrap">
                    <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
+                   {(conv as any).inbox_name && (
+                     <div className="badge badge-accent badge-outline text-[9px] h-4 max-w-[100px] truncate" title={(conv as any).inbox_name}>
+                       📥 {(conv as any).inbox_name}
+                     </div>
+                   )}
                    {conv.status === 'open' && <div className="badge badge-success badge-xs text-white">Active</div>}
                    {conv.status === 'snoozed' && (
                      <div className="badge badge-warning badge-xs gap-1 text-[9px] text-white">
