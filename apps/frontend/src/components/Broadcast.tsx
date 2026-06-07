@@ -30,8 +30,8 @@ const Broadcast = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
-        const data = await response.json();
-        setContacts(data);
+        const result = await response.json();
+        setContacts(result.data || []);
       }
     } catch (err) {
       console.error('Gagal mengambil kontak:', err);

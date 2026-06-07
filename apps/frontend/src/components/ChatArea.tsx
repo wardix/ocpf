@@ -237,8 +237,8 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
-          const data = await response.json();
-          setCannedResponses(data);
+          const result = await response.json();
+          setCannedResponses(result.data || []);
         }
       } catch (err) {
         console.error('Gagal mengambil canned responses:', err);
