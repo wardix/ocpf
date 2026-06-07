@@ -68,6 +68,9 @@ CREATE TABLE inbox_settings (
     auto_assignment_algorithm VARCHAR(20) DEFAULT 'round_robin' CHECK (auto_assignment_algorithm IN ('round_robin', 'least_busy')),
     auto_assignment_max_tickets INTEGER DEFAULT 10,
     last_assigned_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    csat_enabled BOOLEAN DEFAULT FALSE,
+    csat_delay_minutes INTEGER DEFAULT 5,
+    csat_message TEXT DEFAULT 'Terima kasih telah menghubungi kami! Bagaimana penilaian Anda terhadap layanan kami? Reply 1-5 (1=Sangat Buruk, 5=Sangat Baik)',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (inbox_id)
 );
@@ -116,6 +119,7 @@ CREATE TABLE tickets (
     is_bot_active BOOLEAN DEFAULT TRUE,
     bot_state VARCHAR(255) DEFAULT 'start',
     snoozed_until TIMESTAMP WITH TIME ZONE,
+    csat_survey_sent BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     resolved_at TIMESTAMP WITH TIME ZONE
@@ -207,3 +211,21 @@ CREATE INDEX idx_messages_account_id_created_at ON messages(account_id, created_
 CREATE INDEX idx_messages_wa_message_id ON messages(wa_message_id);
 
 CREATE INDEX idx_contact_inboxes_source_id ON contact_inboxes(source_id);
+
+CREATE TABLE csat_ratings (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    ticket_id BIGINT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    assigned_agent_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    rating SMALLINT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    feedback TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (ticket_id)
+);
+
+CREATE INDEX idx_csat_ratings_ticket_id ON csat_ratings(ticket_id);
+CREATE INDEX idx_csat_ratings_account_id ON csat_ratings(account_id);
+CREATE INDEX idx_csat_ratings_assigned_agent_id ON csat_ratings(assigned_agent_id);
+

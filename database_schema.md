@@ -138,7 +138,20 @@ Tabel untuk mencatat log aktivitas atau perubahan status pada percakapan.
 *   `event_data` (JSONB) - Data tambahan (misal: `{ "old_status": "open", "new_status": "resolved" }`).
 *   `created_at` (Timestamp)
 
+### `csat_ratings` (Customer Satisfaction)
+Tabel untuk mencatat hasil survei kepuasan pelanggan terhadap layanan agen.
+*   `id` (Primary Key)
+*   `account_id` (Foreign Key -> accounts.id)
+*   `ticket_id` (Foreign Key -> tickets.id, Unique)
+*   `conversation_id` (Foreign Key -> conversations.id)
+*   `contact_id` (Foreign Key -> contacts.id)
+*   `assigned_agent_id` (Foreign Key -> users.id, Nullable) - Agen yang menangani tiket tersebut.
+*   `rating` (Integer, 1-5) - Nilai kepuasan dari pelanggan (1 = Sangat Buruk, 5 = Sangat Baik).
+*   `feedback` (Text, Nullable) - Umpan balik opsional tertulis.
+*   `created_at` (Timestamp)
+
 ## 4. Tabel Organisasi Tambahan (Tags & Teams)
+
 
 ### `canned_responses`
 Tabel untuk menyimpan template balasan cepat yang bisa digunakan agen.
