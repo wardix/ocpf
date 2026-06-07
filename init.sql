@@ -123,6 +123,8 @@ CREATE TABLE contact_merge_logs (
 );
 
 CREATE INDEX idx_contacts_deleted_at ON contacts(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX idx_contact_merge_logs_account_id ON contact_merge_logs(account_id);
+CREATE INDEX idx_contact_merge_logs_primary_contact_id ON contact_merge_logs(primary_contact_id);
 
 -- -------------------------------------------------------------------------
 -- 4. Conversations, Tickets, & Messages
