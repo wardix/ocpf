@@ -178,8 +178,21 @@ function App() {
   useEffect(() => {
     if (selectedConv) {
       fetchMessages(selectedConv.id);
+      
+      // Fetch scheduled messages
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      fetch(`${apiUrl}/api/scheduled-messages/${selectedConv.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          useChatStore.getState().setScheduledMessages(selectedConv.id, res.data);
+        }
+      })
+      .catch(err => console.error('Gagal memuat pesan terjadwal:', err));
     }
-  }, [selectedConv?.id]); // Hentikan prop drilling effect. Cukup pantau ID-nya saja
+  }, [selectedConv?.id, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -238,6 +251,12 @@ function App() {
           } else if (payload.event === 'conversation.viewers_updated') {
             const { conversation_id, viewers } = payload.data;
             useChatStore.getState().setActiveViewers(conversation_id, viewers);
+          } else if (payload.event === 'message.scheduled') {
+            const msg = payload.data;
+            useChatStore.getState().addScheduledMessage(msg.conversation_id, msg);
+          } else if (payload.event === 'message.schedule_cancelled' || payload.event === 'message.schedule_sent') {
+            const { conversation_id, id: messageId } = payload.data;
+            useChatStore.getState().removeScheduledMessage(conversation_id, messageId);
           }
         } catch (e) {
           console.error('Invalid WS message:', event.data);

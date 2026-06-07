@@ -29,6 +29,14 @@ export interface Viewer {
   name: string;
 }
 
+export interface ScheduledMessage {
+  id: number;
+  content: string;
+  scheduled_at: string;
+  status: 'pending' | 'sent' | 'cancelled' | 'failed';
+  created_at: string;
+}
+
 interface ChatState {
   selectedConv: SelectedConversation | null;
   messages: Message[];
@@ -40,6 +48,7 @@ interface ChatState {
   isContactTyping: boolean;
   wsInstance: WebSocket | null;
   activeViewers: Record<number, Viewer[]>;
+  scheduledMessages: Record<number, ScheduledMessage[]>;
   
   setSelectedConv: (conv: SelectedConversation | null) => void;
   setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
@@ -51,6 +60,9 @@ interface ChatState {
   setIsLoadingOlder: (isLoading: boolean) => void;
   setIsInitialChatLoading: (isLoading: boolean) => void;
   setActiveViewers: (conversationId: number, viewers: Viewer[]) => void;
+  setScheduledMessages: (conversationId: number, messages: ScheduledMessage[]) => void;
+  addScheduledMessage: (conversationId: number, message: ScheduledMessage) => void;
+  removeScheduledMessage: (conversationId: number, messageId: number) => void;
   clearChat: () => void;
 }
 
@@ -65,6 +77,7 @@ export const useChatStore = create<ChatState>((set) => ({
   isLoadingOlder: false,
   isInitialChatLoading: false,
   activeViewers: {},
+  scheduledMessages: {},
 
   setSelectedConv: (conv) => set({ selectedConv: conv }),
   setMessages: (updater) => set((state) => ({
@@ -83,5 +96,29 @@ export const useChatStore = create<ChatState>((set) => ({
       [conversationId]: viewers
     }
   })),
-  clearChat: () => set({ selectedConv: null, messages: [], activeViewers: {} })
+  setScheduledMessages: (conversationId, messages) => set((state) => ({
+    scheduledMessages: {
+      ...state.scheduledMessages,
+      [conversationId]: messages
+    }
+  })),
+  addScheduledMessage: (conversationId, message) => set((state) => {
+    const existing = state.scheduledMessages[conversationId] || [];
+    return {
+      scheduledMessages: {
+        ...state.scheduledMessages,
+        [conversationId]: [...existing, message].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      }
+    };
+  }),
+  removeScheduledMessage: (conversationId, messageId) => set((state) => {
+    const existing = state.scheduledMessages[conversationId] || [];
+    return {
+      scheduledMessages: {
+        ...state.scheduledMessages,
+        [conversationId]: existing.filter(m => m.id !== messageId)
+      }
+    };
+  }),
+  clearChat: () => set({ selectedConv: null, messages: [], activeViewers: {}, scheduledMessages: {} })
 }));

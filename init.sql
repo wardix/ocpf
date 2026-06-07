@@ -433,7 +433,24 @@ CREATE INDEX idx_automation_logs_account_id ON automation_logs(account_id);
 CREATE INDEX idx_automation_logs_rule_id ON automation_logs(rule_id);
 CREATE INDEX idx_automation_logs_created_at ON automation_logs(created_at DESC);
 
+CREATE TYPE scheduled_message_status AS ENUM ('pending', 'sent', 'cancelled', 'failed');
 
+CREATE TABLE scheduled_messages (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    ticket_id BIGINT REFERENCES tickets(id) ON DELETE SET NULL,
+    content TEXT NOT NULL,
+    media JSONB,
+    scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    status scheduled_message_status DEFAULT 'pending',
+    sent_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    retry_count INT DEFAULT 0,
+    created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
 
 CREATE TABLE email_message_metadata (
@@ -455,3 +472,5 @@ CREATE TABLE email_message_metadata (
 CREATE UNIQUE INDEX idx_email_meta_message_id ON email_message_metadata(message_id);
 CREATE INDEX idx_email_meta_email_message_id ON email_message_metadata(email_message_id);
 CREATE INDEX idx_email_meta_in_reply_to ON email_message_metadata(in_reply_to);
+
+CREATE INDEX idx_scheduled_messages_pending ON scheduled_messages(scheduled_at) WHERE status = 'pending';

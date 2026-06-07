@@ -6,6 +6,7 @@ import { startSnoozeChecker } from './workers/snooze-checker';
 import { startCSATWorker } from './workers/csat-worker';
 import { startWebhookWorker } from './workers/webhook-worker';
 import { startIdleTracker } from './workers/idle-tracker';
+import { startScheduledMessagesWorker } from './workers/scheduled-messages-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
 import { redisSub, PUB_SUB_CH } from './config/redis';
@@ -31,6 +32,7 @@ import { chatbotRoutes } from './routes/chatbot';
 import { webhooksRoutes } from './routes/webhooks';
 import { aiRoutes } from './routes/ai';
 import { automationRoutes } from './routes/automation';
+import { scheduledMessagesRoutes } from './routes/scheduled_messages';
 
 const app = new Hono();
 
@@ -112,6 +114,7 @@ app.route('/api/webhooks', webhooksRoutes);
 app.route('/api/ai', aiRoutes);
 app.route('/api/automation-rules', automationRoutes);
 app.route('/api/docs', docsRoutes);
+app.route('/api/scheduled-messages', scheduledMessagesRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
@@ -178,6 +181,7 @@ startSnoozeChecker();
 startCSATWorker();
 startWebhookWorker();
 startIdleTracker();
+startScheduledMessagesWorker();
 
 // Bun HTTP + WebSocket Server
 const server = Bun.serve({
