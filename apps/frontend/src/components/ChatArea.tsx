@@ -66,6 +66,9 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [isResolving, setIsResolving] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [isUnassigning, setIsUnassigning] = useState(false);
+  const [isSnoozing, setIsSnoozing] = useState(false);
+  const [showCustomSnooze, setShowCustomSnooze] = useState(false);
+  const [customSnoozeDate, setCustomSnoozeDate] = useState(() => new Date().toISOString().slice(0, 16));
   const [confirmAction, setConfirmAction] = useState<{ type: 'resolve' | 'unassign' } | null>(null);
   const [isPrivateNote, setIsPrivateNote] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -233,6 +236,52 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
       addToast('Terjadi kesalahan jaringan', 'error');
     } finally {
       setIsUnassigning(false);
+    }
+  };
+
+  const snoozePresets = [
+    { label: '1 Jam',      getTime: () => new Date(Date.now() + 1 * 60 * 60 * 1000) },
+    { label: '3 Jam',      getTime: () => new Date(Date.now() + 3 * 60 * 60 * 1000) },
+    { label: 'Besok 09:00', getTime: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    }},
+    { label: 'Minggu Depan', getTime: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    }},
+  ];
+
+  const handleSnooze = async (snoozedUntil: string) => {
+    if (!token) return;
+    setIsSnoozing(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/conversations/${selectedConv.id}/snooze`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ snoozed_until: snoozedUntil })
+      });
+      if (response.ok) {
+        addToast('Tiket berhasil di-snooze', 'success');
+        setShowCustomSnooze(false);
+        onResolve(); 
+      } else {
+        const errData = await response.json();
+        addToast(errData.error || 'Gagal snooze tiket', 'error');
+      }
+    } catch (err) {
+      console.error('Gagal snooze tiket:', err);
+      addToast('Terjadi kesalahan jaringan', 'error');
+    } finally {
+      setIsSnoozing(false);
     }
   };
 
@@ -453,14 +502,44 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                     <button 
                       className={`btn btn-sm btn-ghost ${isUnassigning ? 'loading' : ''}`}
                       onClick={() => setConfirmAction({ type: 'unassign' })}
-                      disabled={isUnassigning || isResolving}
+                      disabled={isUnassigning || isResolving || isSnoozing}
                     >
                       Lepas Tiket
                     </button>
+
+                    <div className="dropdown dropdown-end">
+                      <label tabIndex={0} className={`btn btn-sm btn-outline btn-warning gap-1 ${isSnoozing ? 'loading' : ''}`} disabled={isResolving || isUnassigning || isSnoozing}>
+                        <span className="hidden sm:inline">⏱ Snooze</span>
+                        <span className="sm:hidden">⏱</span>
+                      </label>
+                      <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-48 p-2 shadow-lg z-50 mt-1">
+                        {snoozePresets.map(preset => (
+                          <li key={preset.label}>
+                            <a onClick={() => {
+                              const active = document.activeElement as HTMLElement;
+                              active?.blur(); // Tutup dropdown
+                              handleSnooze(preset.getTime().toISOString());
+                            }}>
+                              {preset.label}
+                            </a>
+                          </li>
+                        ))}
+                        <li className="border-t border-base-300 mt-1 pt-1">
+                          <a onClick={() => {
+                            const active = document.activeElement as HTMLElement;
+                            active?.blur();
+                            setShowCustomSnooze(true);
+                          }}>
+                            📅 Custom...
+                          </a>
+                        </li>
+                      </ul>
+                    </div>
+
                     <button 
                       className={`btn btn-sm btn-outline btn-error ${isResolving ? 'loading' : ''}`}
                       onClick={() => setConfirmAction({ type: 'resolve' })}
-                      disabled={isResolving || isUnassigning}
+                      disabled={isResolving || isUnassigning || isSnoozing}
                     >
                       Tutup Tiket
                     </button>
@@ -685,6 +764,34 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         onConfirm={() => { handleUnassign(); setConfirmAction(null); }}
         onCancel={() => setConfirmAction(null)}
       />
+
+      {showCustomSnooze && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-xs shadow-xl border border-base-300">
+            <h3 className="font-bold text-lg mb-4 text-center">Tidur Sementara (Snooze)</h3>
+            <p className="text-xs text-base-content/60 mb-2 text-center">Pilih waktu kapan tiket ini akan dibuka otomatis kembali ke antrean aktif Anda.</p>
+            <input
+              type="datetime-local"
+              className="input input-bordered w-full font-mono text-sm"
+              min={new Date().toISOString().slice(0, 16)}
+              value={customSnoozeDate}
+              onChange={e => setCustomSnoozeDate(e.target.value)}
+            />
+            <div className="modal-action">
+              <button className="btn btn-sm btn-ghost" onClick={() => setShowCustomSnooze(false)}>Batal</button>
+              <button 
+                className="btn btn-sm btn-warning" 
+                onClick={() => handleSnooze(new Date(customSnoozeDate).toISOString())}
+              >
+                Snooze
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => setShowCustomSnooze(false)}>
+            <button>close</button>
+          </form>
+        </dialog>
+      )}
     </div>
   );
 };

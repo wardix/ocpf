@@ -15,6 +15,7 @@ interface Conversation {
   assignee_id?: number | null;
   assignee_name?: string | null;
   ticket_id?: number | null;
+  snoozed_until?: string | null;
   labels?: { id: number, title: string, color: string }[];
 }
 
@@ -251,6 +252,11 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
                 <div className="flex gap-1 mt-2 flex-wrap">
                    <div className="badge badge-primary badge-outline text-[9px] h-4">WhatsApp</div>
                    {conv.status === 'open' && <div className="badge badge-success badge-xs text-white">Active</div>}
+                   {conv.status === 'snoozed' && (
+                     <div className="badge badge-warning badge-xs gap-1 text-[9px] text-white">
+                       💤 {conv.snoozed_until ? new Date(conv.snoozed_until).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'Snoozed'}
+                     </div>
+                   )}
                    {conv.assignee_name && (
                      <div className="badge badge-neutral badge-outline text-[9px] h-4 truncate max-w-[80px]">
                        {conv.assignee_name}

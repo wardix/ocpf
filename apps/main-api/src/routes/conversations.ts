@@ -48,6 +48,7 @@ conversationsRoutes.get('/', async (c) => {
           t.id as ticket_id, 
           t.status, 
           t.assignee_id,
+          t.snoozed_until,
           u.name as assignee_name,
           con.id as contact_id,
           con.name as contact_name, 
@@ -394,6 +395,70 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
       return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     }
     return c.json({ success: false, error: 'Gagal melakukan assignment tiket' }, 500);
+  }
+});
+
+const snoozeSchema = z.object({
+  snoozed_until: z.string().datetime({ message: 'Format timestamp tidak valid (ISO 8601)' })
+});
+
+conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  const conversationId = parseInt(c.req.param('id'), 10);
+  if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
+
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    const { snoozed_until } = c.req.valid('json');
+
+    if (new Date(snoozed_until) <= new Date()) {
+      return c.json({ error: 'Waktu snooze harus di masa depan' }, 400);
+    }
+
+    const ticket = await sql.begin(async (tx) => {
+      const [updatedTicket] = await tx`
+        UPDATE tickets
+        SET status = 'snoozed', snoozed_until = ${snoozed_until}, updated_at = NOW()
+        WHERE conversation_id = ${conversationId} AND status != 'resolved'
+        RETURNING *
+      `;
+
+      if (!updatedTicket) throw new Error('NOT_FOUND');
+
+      await tx`
+        INSERT INTO conversation_events (account_id, conversation_id, ticket_id, actor_type, actor_id, event_type, event_data)
+        VALUES (${updatedTicket.account_id}, ${conversationId}, ${updatedTicket.id}, 'User', ${jwtPayload.id}, 'snoozed', ${sql.json({ snoozed_until })})
+      `;
+
+      const [sysMsg] = await tx`
+        INSERT INTO messages (account_id, conversation_id, ticket_id, sender_type, sender_id, content, message_type, status)
+        VALUES (${updatedTicket.account_id}, ${conversationId}, ${updatedTicket.id}, 'System', NULL,
+          ${`Tiket di-snooze sampai ${new Date(snoozed_until).toLocaleString('id-ID')}`},
+          'template', 'sent')
+        RETURNING *
+      `;
+      await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: sysMsg }));
+      
+      // Update global conversation list real-time via pubsub
+      await redis.publish(PUB_SUB_CH, JSON.stringify({ 
+        event: 'conversation.updated', 
+        data: { 
+          id: conversationId, 
+          account_id: updatedTicket.account_id,
+          status: 'snoozed',
+          snoozed_until: snoozed_until
+        } 
+      }));
+
+      return updatedTicket;
+    });
+
+    return c.json({ success: true, data: ticket });
+  } catch (error: any) {
+    console.error('Error snooze ticket:', error);
+    if (error.message === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan atau sudah ditutup' }, 404);
+    return c.json({ success: false, error: 'Gagal snooze tiket' }, 500);
   }
 });
 

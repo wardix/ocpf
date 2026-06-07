@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import { startWorker } from './workers/incoming-message';
+import { startSnoozeChecker } from './workers/snooze-checker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
 import { redisSub, PUB_SUB_CH } from './config/redis';
@@ -132,6 +133,7 @@ redisSub.on('message', async (channel, message) => {
 
 // Start Background Worker
 startWorker();
+startSnoozeChecker();
 
 // Bun HTTP + WebSocket Server
 const server = Bun.serve({
