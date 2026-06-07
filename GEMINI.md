@@ -1,14 +1,29 @@
 # Panduan Pengembangan (GEMINI.md)
 
-Dokumen ini berisi panduan, konvensi, dan aturan arsitektur khusus untuk proyek **Omnichannel Customer Support Platform**. Dokumen ini dirancang agar setiap *engineer* atau AI Assistant yang ikut berkontribusi dapat memahami struktur dan keputusan teknis yang telah diambil.
+Dokumen ini berisi panduan, konvensi, dan aturan arsitektur khusus untuk proyek **Omnichannel Customer Support Platform**. Dokumen ini dirancang agar setiap *engineer* atau AI Assistant (termasuk saya, Gemini) yang ikut berkontribusi dapat memahami struktur dan keputusan teknis yang telah diambil.
+
+## 🚨 ATURAN KRITIS (CRITICAL CONSTRAINTS) - WAJIB DIPATUHI
+1. **Batasan Runtime (JANGAN DICAMPUR):**
+   - `apps/main-api`: WAJIB berjalan di atas **Bun** (Hono).
+   - `apps/wa-adapter`: WAJIB berjalan di atas **Node.js** (via `tsx`). JANGAN paksakan `bun` di sini karena pustaka Baileys memiliki masalah kompatibilitas *crypto/net* dengan Bun.
+   - `apps/frontend`: React (Vite) + Zustand + TailwindCSS + DaisyUI.
+2. **Aturan Database (STRICTLY NO ORM):**
+   - **TIDAK BOLEH** menginstal Prisma, TypeORM, Drizzle, atau ORM apa pun.
+   - Proyek ini menggunakan `postgres.js` murni. Semua kueri harus menggunakan Raw SQL dengan Tagged Template Literals.
+   - Semua *insert/update* krusial harus dibungkus dalam *Transaction* (`await sql.begin(async (tx) => { ... })`).
+   - Setiap tabel (kecuali master) WAJIB difilter menggunakan `account_id` untuk menjaga Isolasi Multi-Tenancy. Jangan pernah melakukan `SELECT` tanpa menyertakan `WHERE account_id = ...`.
+3. **Komunikasi Antar-Layanan (IPC):**
+   - Main API dan WA Adapter **TIDAK** berkomunikasi lewat HTTP REST.
+   - Komunikasi harus melalui **Redis Queue** (`lpush`/`brpop`) dan **Redis Pub/Sub** (`publish`/`subscribe`).
+   - Semua *payload* JSON yang lewat di Redis WAJIB divalidasi saat *runtime* menggunakan skema `Zod` yang terpusat di `packages/shared-types`.
 
 ## 1. Visi & Arsitektur Utama
 Platform ini dibangun dengan arsitektur **Microservices** terpisah (*decoupled*) berbasis **Monorepo** (Bun Workspaces) untuk menangani pesan *real-time* dengan konkurensi tinggi.
 
 *   **`apps/main-api`**: Dibangun dengan **Bun + Hono**. Sangat cepat dan fokus pada manipulasi database serta manajemen koneksi WebSocket ke *frontend*.
-*   **`apps/wa-adapter`**: Dibangun dengan **Node.js murni + Baileys**. Layanan ini *harus* berjalan di Node.js (bukan Bun) karena ketergantungan library Baileys terhadap modul internal kriptografi dan *stream* Node.js untuk menjaga stabilitas koneksi WhatsApp.
+*   **`apps/wa-adapter`**: Dibangun dengan **Node.js murni + Baileys**. Layanan ini *harus* berjalan di Node.js (bukan Bun).
 *   **`apps/frontend`**: Dibangun dengan **React + Vite + DaisyUI** (Tailwind CSS) untuk UI/UX yang modern dan responsif.
-*   **Perantara Komunikasi (Message Broker):** Menggunakan **Valkey/Redis**. Semua komunikasi data antara `wa-adapter` dan `main-api` **wajib** melalui antrean Redis, bukan pemanggilan HTTP langsung.
+*   **Perantara Komunikasi (Message Broker):** Menggunakan **Valkey/Redis**.
 
 ## 2. Aturan & Konvensi Database
 *   **Wajib Menggunakan Raw SQL:** Di dalam `main-api`, kita menggunakan pustaka `postgres` murni. **JANGAN gunakan ORM** (seperti Prisma atau TypeORM). Keputusan ini diambil secara sadar untuk mencegah *memory bloat* dan menjaga efisiensi saat menangani jutaan baris data pesan.
