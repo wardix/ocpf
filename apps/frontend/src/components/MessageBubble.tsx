@@ -111,7 +111,12 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
           </div>
         )}
         
-        {msg.content}
+        {msg.content.split(/(https?:\/\/[^\s]+)/g).map((part, i) => {
+          if (part.match(/(https?:\/\/[^\s]+)/)) {
+            return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 font-semibold">{part}</a>;
+          }
+          return <span key={i}>{part}</span>;
+        })}
       </div>
       <div className="chat-footer opacity-50 text-[10px] mt-1 flex items-center gap-1">
         {msg.sender_type === 'Contact' ? 'Diterima' : (

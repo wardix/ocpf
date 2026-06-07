@@ -1,0 +1,21 @@
+{
+  "name": "telegram-adapter",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "grammy": "^1.43.0",
+    "ioredis": "^5.11.1",
+    "postgres": "^3.4.9"
+  }
+}
