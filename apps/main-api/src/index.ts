@@ -22,6 +22,7 @@ import broadcastRoutes from './routes/broadcast';
 import docsRoutes from './routes/docs';
 import { labelsRoutes } from './routes/labels';
 import { searchRoutes } from './routes/search';
+import { inboxesRoutes } from './routes/inboxes';
 
 const app = new Hono();
 
@@ -81,6 +82,7 @@ app.route('/api/analytics', analyticsRoutes);
 app.route('/api/broadcast', broadcastRoutes);
 app.route('/api/labels', labelsRoutes);
 app.route('/api/search', searchRoutes);
+app.route('/api/inboxes', inboxesRoutes);
 app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets

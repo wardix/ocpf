@@ -3,6 +3,7 @@ import UserManagement from './UserManagement';
 import LabelManagement from './LabelManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
+import { useToastStore } from '../store/toastStore';
 
 interface CannedResponse {
   id: number;
@@ -11,7 +12,8 @@ interface CannedResponse {
 }
 
 const Settings = () => {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
+  const { addToast } = useToastStore();
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState<number | null>(null);
@@ -19,6 +21,15 @@ const Settings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+
+  // Inbox Settings State
+  const [inboxSettings, setInboxSettings] = useState({
+    auto_assignment_enabled: false,
+    auto_assignment_algorithm: 'round_robin',
+    auto_assignment_max_tickets: 10
+  });
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const fetchCanned = async () => {
     if (!token) return;
@@ -37,9 +48,66 @@ const Settings = () => {
     }
   };
 
+  const fetchInboxSettings = async () => {
+    if (!token) return;
+    setLoadingSettings(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes/1/settings`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setInboxSettings(result.data);
+        }
+      }
+    } catch (err) {
+      console.error('Gagal mengambil setting inbox:', err);
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setSavingSettings(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/inboxes/1/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          auto_assignment_enabled: inboxSettings.auto_assignment_enabled,
+          auto_assignment_algorithm: inboxSettings.auto_assignment_algorithm,
+          auto_assignment_max_tickets: Number(inboxSettings.auto_assignment_max_tickets)
+        })
+      });
+      if (response.ok) {
+        addToast('Pengaturan inbox berhasil diperbarui', 'success');
+      } else {
+        const errorResult = await response.json();
+        addToast(`Gagal menyimpan: ${errorResult.error || 'Terjadi kesalahan'}`, 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   useEffect(() => {
     fetchCanned();
   }, [token, page]);
+
+  useEffect(() => {
+    fetchInboxSettings();
+  }, [token]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +178,97 @@ const Settings = () => {
         <div>
           <h1 className="text-3xl font-bold">⚙️ Pengaturan</h1>
           <p className="text-base-content/60 mt-1">Kelola preferensi dan alat produktivitas agen di sini.</p>
+        </div>
+
+        <div className="card bg-base-100 shadow-sm border border-base-300">
+          <div className="card-body">
+            <h2 className="card-title text-xl mb-1">📬 Pengaturan Inbox & Auto-Assignment</h2>
+            <p className="text-sm text-base-content/60 mb-4">
+              Konfigurasi pembagian antrean pesan masuk otomatis ke agen secara adil dan merata.
+            </p>
+
+            {loadingSettings ? (
+              <div className="flex justify-center py-4">
+                <span className="loading loading-spinner loading-md text-primary"></span>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveSettings} className="space-y-4">
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-4 p-0">
+                    <input 
+                      type="checkbox" 
+                      className="toggle toggle-primary toggle-sm"
+                      checked={inboxSettings.auto_assignment_enabled}
+                      onChange={e => setInboxSettings({ ...inboxSettings, auto_assignment_enabled: e.target.checked })}
+                      disabled={user?.role !== 'administrator'}
+                    />
+                    <div>
+                      <span className="label-text font-semibold">Aktifkan Alokasi Otomatis (Auto-Assignment)</span>
+                      <p className="text-xs text-base-content/50">Tiket masuk baru akan langsung ditugaskan ke agen yang online.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {inboxSettings.auto_assignment_enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-base-200/50 p-4 rounded-xl border border-base-300 mt-2">
+                    <div className="form-control w-full">
+                      <label className="label">
+                        <span className="label-text font-semibold text-xs">Algoritma Distribusi</span>
+                      </label>
+                      <select 
+                        className="select select-sm select-bordered w-full"
+                        value={inboxSettings.auto_assignment_algorithm}
+                        onChange={e => setInboxSettings({ ...inboxSettings, auto_assignment_algorithm: e.target.value })}
+                        disabled={user?.role !== 'administrator'}
+                      >
+                        <option value="round_robin">Round Robin (Bergilir Bergantian)</option>
+                        <option value="least_busy">Least Busy (Beban Kerja Terendah)</option>
+                      </select>
+                      <label className="label">
+                        <span className="label-text-alt text-[10px] text-base-content/60">
+                          {inboxSettings.auto_assignment_algorithm === 'round_robin' 
+                            ? 'Menugaskan tiket secara bergantian ke agen online berikutnya.' 
+                            : 'Menugaskan tiket ke agen online yang memiliki tiket aktif paling sedikit.'}
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="form-control w-full">
+                      <label className="label">
+                        <span className="label-text font-semibold text-xs">Batas Maksimum Tiket Aktif</span>
+                      </label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={100}
+                        className="input input-sm input-bordered w-full"
+                        value={inboxSettings.auto_assignment_max_tickets}
+                        onChange={e => setInboxSettings({ ...inboxSettings, auto_assignment_max_tickets: parseInt(e.target.value, 10) || 10 })}
+                        disabled={user?.role !== 'administrator'}
+                      />
+                      <label className="label">
+                        <span className="label-text-alt text-[10px] text-base-content/60">
+                          Mencegah agen kewalahan jika jumlah tiket aktif (open + pending) melampaui batas ini.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {user?.role === 'administrator' && (
+                  <div className="flex justify-end mt-4">
+                    <button 
+                      type="submit" 
+                      className={`btn btn-sm btn-primary ${savingSettings ? 'loading' : ''}`}
+                      disabled={savingSettings}
+                    >
+                      Simpan Pengaturan Inbox
+                    </button>
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
         </div>
 
         <div className="card bg-base-100 shadow-sm border border-base-300">

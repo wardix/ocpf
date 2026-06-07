@@ -508,10 +508,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                     </button>
 
                     <div className="dropdown dropdown-end">
-                      <label tabIndex={0} className={`btn btn-sm btn-outline btn-warning gap-1 ${isSnoozing ? 'loading' : ''}`} disabled={isResolving || isUnassigning || isSnoozing}>
+                      <div 
+                        role="button"
+                        tabIndex={isResolving || isUnassigning || isSnoozing ? undefined : 0} 
+                        className={`btn btn-sm btn-outline btn-warning gap-1 ${isSnoozing ? 'loading' : ''} ${isResolving || isUnassigning || isSnoozing ? 'btn-disabled' : ''}`}
+                      >
                         <span className="hidden sm:inline">⏱ Snooze</span>
                         <span className="sm:hidden">⏱</span>
-                      </label>
+                      </div>
                       <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-48 p-2 shadow-lg z-50 mt-1">
                         {snoozePresets.map(preset => (
                           <li key={preset.label}>
