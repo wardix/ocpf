@@ -87,7 +87,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         wsInstance.send(JSON.stringify({
           event: 'typing.agent',
           data: {
-            inbox_id: 1, // Assume default or derived
+            inbox_id: selectedConv.inbox_id || 1,
             phone: selectedConv.phone
           }
         }));

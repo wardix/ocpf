@@ -20,6 +20,7 @@ export interface SelectedConversation {
   status?: string | null;
   assignee_id?: number | null;
   assignee_name?: string | null;
+  inbox_id?: number | null;
 }
 
 interface ChatState {

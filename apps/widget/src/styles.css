@@ -1,0 +1,338 @@
+:host {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-sizing: border-box;
+  --primary-color: #0284c7;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+.omni-widget-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.omni-widget-container.pos-left {
+  right: auto;
+  left: 24px;
+  align-items: flex-start;
+}
+
+/* Toggle Bubble Button */
+.omni-bubble-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  border: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.omni-bubble-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.omni-bubble-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  transition: transform 0.25s ease;
+}
+
+.omni-bubble-btn.open svg {
+  transform: rotate(90deg);
+}
+
+/* Chat Card Window */
+.omni-chat-card {
+  width: 360px;
+  height: 520px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.omni-chat-card.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Header */
+.omni-header {
+  background: var(--primary-color);
+  color: white;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.omni-header-title {
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0;
+}
+
+.omni-header-desc {
+  font-size: 11px;
+  opacity: 0.8;
+  margin: 2px 0 0 0;
+}
+
+/* Body / Chat Area */
+.omni-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+/* Pre-chat Form */
+.omni-prechat {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  justify-content: center;
+  height: 100%;
+}
+
+.omni-prechat-title {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1f2937;
+  margin: 0 0 4px 0;
+}
+
+.omni-prechat-desc {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.omni-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.omni-form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.omni-form-input {
+  padding: 10px 12px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  outline: none;
+  background: white;
+  color: #1f2937;
+  transition: border-color 0.15s ease;
+}
+
+.omni-form-input:focus {
+  border-color: var(--primary-color);
+}
+
+.omni-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.omni-btn:hover {
+  opacity: 0.9;
+}
+
+.omni-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Messages List */
+.omni-messages-list {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.omni-message-bubble {
+  max-width: 80%;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  border-radius: 12px;
+  word-break: break-word;
+}
+
+.omni-message-bubble.incoming {
+  background: #e5e7eb;
+  color: #1f2937;
+  align-self: flex-start;
+  border-bottom-left-radius: 2px;
+}
+
+.omni-message-bubble.outgoing {
+  background: var(--primary-color);
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 2px;
+}
+
+.omni-message-bubble.system {
+  background: rgba(0, 0, 0, 0.04);
+  color: #4b5563;
+  align-self: center;
+  font-size: 11px;
+  text-align: center;
+  max-width: 90%;
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+/* Typing Indicator */
+.omni-typing-indicator {
+  align-self: flex-start;
+  background: #e5e7eb;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border-bottom-left-radius: 2px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.omni-typing-dot {
+  width: 6px;
+  height: 6px;
+  background: #6b7280;
+  border-radius: 50%;
+  animation: omni-bounce 1.3s infinite ease-in-out;
+}
+
+.omni-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.omni-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes omni-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* Input Footer */
+.omni-footer {
+  padding: 12px;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.omni-chat-textarea {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 13px;
+  outline: none;
+  resize: none;
+  max-height: 80px;
+  background: white;
+  color: #1f2937;
+  transition: border-color 0.15s ease;
+  height: 36px;
+}
+
+.omni-chat-textarea:focus {
+  border-color: var(--primary-color);
+}
+
+.omni-send-btn {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+
+.omni-send-btn:hover {
+  opacity: 0.9;
+}
+
+.omni-send-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.omni-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Utility Scrollbar */
+.omni-messages-list::-webkit-scrollbar {
+  width: 6px;
+}
+.omni-messages-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.omni-messages-list::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 3px;
+}

@@ -48,8 +48,10 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const { target_id, content, conversation_id, media, is_private } = c.req.valid('json');
 
     const [conv] = await sql`
-      SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id 
+      SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id, ch.provider_type
       FROM conversations c
+      JOIN inboxes i ON c.inbox_id = i.id
+      JOIN channels ch ON i.channel_id = ch.id
       LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
       WHERE c.id = ${conversation_id} AND c.account_id = ${accountId} LIMIT 1
     `;
@@ -115,7 +117,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const tDbEnd = Date.now();
     console.log(`[DEBUG-LATENCY] (${tDbEnd}) Simpan DB PostgreSQL selesai (Memakan waktu: ${tDbEnd - tDbStart}ms)`);
 
-    if (!is_private) {
+    if (!is_private && conv.provider_type !== 'web_widget') {
       const payload: SendMessagePayload = {
         event: 'message.send',
         data: {
@@ -133,7 +135,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       await redis.rpush(targetQueue, payloadStr);
       console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan berhasil dilempar ke antrean Redis (${targetQueue}).`);
     } else {
-      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan adalah Private Note, dilewati dari antrean Redis.`);
+      console.log(`[DEBUG-LATENCY] (${Date.now()}) Pesan dilewati dari antrean Redis (Private Note atau Web Widget).`);
     }
     
     const finalMsgData = {
