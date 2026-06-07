@@ -28,6 +28,7 @@ searchRoutes.get('/', async (c) => {
         FROM contacts c
         LEFT JOIN conversations conv ON conv.contact_id = c.id AND conv.account_id = ${accountId}
         WHERE c.account_id = ${accountId}
+          AND c.deleted_at IS NULL
           AND (c.name ILIKE ${'%' + query + '%'}
                OR c.phone_number ILIKE ${'%' + query + '%'}
                OR c.email ILIKE ${'%' + query + '%'})
@@ -38,6 +39,7 @@ searchRoutes.get('/', async (c) => {
       const [countRow] = await sql`
         SELECT COUNT(*)::int as total FROM contacts
         WHERE account_id = ${accountId}
+          AND deleted_at IS NULL
           AND (name ILIKE ${'%' + query + '%'}
                OR phone_number ILIKE ${'%' + query + '%'}
                OR email ILIKE ${'%' + query + '%'})
@@ -57,6 +59,7 @@ searchRoutes.get('/', async (c) => {
         JOIN conversations c ON c.id = m.conversation_id
         JOIN contacts con ON con.id = c.contact_id
         WHERE m.account_id = ${accountId}
+          AND con.deleted_at IS NULL
           AND m.search_vector @@ plainto_tsquery('indonesian', ${query})
         ORDER BY ts_rank(m.search_vector, plainto_tsquery('indonesian', ${query})) DESC, m.created_at DESC
         LIMIT ${perPage} OFFSET ${offset}
@@ -84,6 +87,7 @@ searchRoutes.get('/', async (c) => {
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
         WHERE c.account_id = ${accountId}
+          AND con.deleted_at IS NULL
           AND (con.name ILIKE ${'%' + query + '%'} OR con.phone_number ILIKE ${'%' + query + '%'})
         ORDER BY c.updated_at DESC
         LIMIT ${perPage} OFFSET ${offset}

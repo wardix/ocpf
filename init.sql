@@ -97,6 +97,8 @@ CREATE TABLE contacts (
     phone_number VARCHAR(255),
     avatar_url VARCHAR(1024),
     custom_attributes JSONB DEFAULT '{}'::jsonb,
+    deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    merged_into_id BIGINT REFERENCES contacts(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -108,6 +110,19 @@ CREATE TABLE contact_inboxes (
     source_id VARCHAR(255) NOT NULL, -- ID unik dari platform asli (cth: nomor WA)
     UNIQUE (inbox_id, source_id)
 );
+
+CREATE TABLE contact_merge_logs (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    primary_contact_id BIGINT NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    secondary_contact_id BIGINT NOT NULL,
+    secondary_contact_data JSONB NOT NULL,
+    merged_by_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversations_moved INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_contacts_deleted_at ON contacts(deleted_at) WHERE deleted_at IS NOT NULL;
 
 -- -------------------------------------------------------------------------
 -- 4. Conversations, Tickets, & Messages

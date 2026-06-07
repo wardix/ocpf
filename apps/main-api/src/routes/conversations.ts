@@ -67,7 +67,7 @@ conversationsRoutes.get('/', async (c) => {
         JOIN contacts con ON c.contact_id = con.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
-        WHERE c.account_id = ${accountId} 
+        WHERE c.account_id = ${accountId} AND con.deleted_at IS NULL
       )
       SELECT * FROM ActiveConversations
       WHERE 
@@ -112,7 +112,7 @@ conversationsRoutes.get('/info/:id', async (c) => {
       JOIN conversations conv ON t.conversation_id = conv.id
       JOIN contacts con ON conv.contact_id = con.id
       LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE t.id = ${ticketId} AND t.account_id = ${jwtPayload.account_id}
+      WHERE t.id = ${ticketId} AND t.account_id = ${jwtPayload.account_id} AND con.deleted_at IS NULL
       LIMIT 1
     `;
     
@@ -142,7 +142,7 @@ conversationsRoutes.get('/by-phone/:phone', async (c) => {
       JOIN conversations conv ON t.conversation_id = conv.id
       JOIN contacts con ON conv.contact_id = con.id
       LEFT JOIN users u ON t.assignee_id = u.id
-      WHERE con.phone_number = ${phone} AND t.account_id = ${jwtPayload.account_id}
+      WHERE con.phone_number = ${phone} AND t.account_id = ${jwtPayload.account_id} AND con.deleted_at IS NULL
       ORDER BY t.updated_at DESC
       LIMIT 1
     `;
@@ -214,7 +214,24 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
     const ACCOUNT_ID = getAccountId(c);
     const INBOX_ID = parseInt(process.env.INBOX_ID || '1'); 
 
-    let [contact] = await sql`SELECT id, name, email FROM contacts WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} LIMIT 1`;
+    let [contact] = await sql`
+      SELECT id, name, email, deleted_at, merged_into_id FROM contacts 
+      WHERE phone_number = ${sourceJid} AND account_id = ${ACCOUNT_ID} 
+      LIMIT 1
+    `;
+    if (contact) {
+      if (contact.deleted_at) {
+        if (contact.merged_into_id) {
+          const [primaryContact] = await sql`
+            SELECT id, name, email FROM contacts WHERE id = ${contact.merged_into_id} AND deleted_at IS NULL LIMIT 1
+          `;
+          contact = primaryContact || null;
+        } else {
+          contact = null;
+        }
+      }
+    }
+
     if (!contact) {
       [contact] = await sql`
         INSERT INTO contacts (account_id, name, phone_number)

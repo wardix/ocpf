@@ -100,7 +100,7 @@ redisSub.on('message', async (channel, message) => {
           SELECT c.account_id, c.id as contact_id, c.name, conv.id as conversation_id 
           FROM contacts c 
           JOIN conversations conv ON conv.contact_id = c.id
-          WHERE c.phone_number = ${jid} LIMIT 1
+          WHERE c.phone_number = ${jid} AND c.deleted_at IS NULL LIMIT 1
         `;
         if (contact) {
           const typingMsg = JSON.stringify({

@@ -197,6 +197,7 @@ analyticsRoutes.get('/csat/ratings', async (c) => {
       LEFT JOIN users u ON cr.assigned_agent_id = u.id
       JOIN contacts c ON cr.contact_id = c.id
       WHERE cr.account_id = ${accountId}
+        AND c.deleted_at IS NULL
         AND cr.created_at >= ${startDate}
         AND cr.created_at <= ${endDate}
       ORDER BY cr.created_at DESC
