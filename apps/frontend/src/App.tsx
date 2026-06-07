@@ -498,7 +498,6 @@ function App() {
                       }}
                     />
                     <ContactInfo 
-                      selectedConv={selectedConv as any} 
                       onUpdate={(newName, newEmail) => {
                         setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
                         triggerRefresh();

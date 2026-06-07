@@ -60,6 +60,19 @@ CREATE TABLE inboxes (
     greeting_message TEXT
 );
 
+CREATE TABLE inbox_settings (
+    id BIGSERIAL PRIMARY KEY,
+    inbox_id BIGINT NOT NULL REFERENCES inboxes(id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    auto_assignment_enabled BOOLEAN DEFAULT FALSE,
+    auto_assignment_algorithm VARCHAR(20) DEFAULT 'round_robin' CHECK (auto_assignment_algorithm IN ('round_robin', 'least_busy')),
+    auto_assignment_max_tickets INTEGER DEFAULT 10,
+    last_assigned_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (inbox_id)
+);
+
+
 CREATE TABLE contacts (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

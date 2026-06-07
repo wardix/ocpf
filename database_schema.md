@@ -41,12 +41,24 @@ Tabel polimorfik atau penyimpan konfigurasi spesifik tiap platform (Misal: Token
 *   `provider_config` (JSONB) - Menyimpan kredensial spesifik secara fleksibel (misal: API Key, Webhook Secret).
 
 ### `inboxes`
-Instansi spesifik dari sebuah Channel. 
+Tabel polimorfik atau penyimpan konfigurasi spesifik tiap platform (Misal: Token API WhatsApp, Script Web Widget).
 *   `id` (Primary Key)
 *   `account_id` (Foreign Key -> accounts.id)
 *   `channel_id` (Foreign Key -> channels.id)
 *   `name` (String) - (Misal: "WA CS Jakarta")
 *   `greeting_message` (Text) - Pesan sapaan otomatis.
+
+### `inbox_settings`
+Menyimpan konfigurasi fitur tambahan per-inbox, seperti pengaturan Auto-Assignment.
+*   `id` (Primary Key)
+*   `inbox_id` (Foreign Key -> inboxes.id, Unique)
+*   `account_id` (Foreign Key -> accounts.id)
+*   `auto_assignment_enabled` (Boolean) - Menentukan apakah pesan masuk ke inbox ini dialokasikan otomatis ke agen.
+*   `auto_assignment_algorithm` (Enum/String: 'round_robin', 'least_busy') - Algoritma pembagian tiket.
+*   `auto_assignment_max_tickets` (Integer) - Batas maksimum tiket aktif per agen sebelum dilewati oleh auto-assignment.
+*   `last_assigned_user_id` (Foreign Key -> users.id, Nullable) - Menyimpan ID agen terakhir yang menerima penugasan (untuk algoritma Round Robin).
+*   `updated_at` (Timestamp)
+
 
 ### `contacts`
 Tabel pelanggan yang menghubungi sistem.
