@@ -60,6 +60,12 @@ authRoutes.post('/login', loginRateLimiter, zValidator('json', loginSchema, (res
     };
     const token = await sign(payload, JWT_SECRET);
 
+    // Auto online
+    await sql`
+      UPDATE account_users SET availability_status = 'online'
+      WHERE user_id = ${user.id} AND account_id = ${user.account_id}
+    `;
+
     return c.json({ 
       success: true, 
       token, 

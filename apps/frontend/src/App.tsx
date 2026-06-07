@@ -57,6 +57,38 @@ function App() {
   const { addToast } = useToastStore();
 
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [myStatus, setMyStatus] = useState<'online' | 'busy' | 'offline'>('online');
+
+  const updateAvailability = async (status: 'online' | 'busy' | 'offline') => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/users/me/availability`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status })
+      });
+      if (response.ok) {
+        setMyStatus(status);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    const handleBeforeUnload = () => {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      // Fire-and-forget: update status ke offline saat tab ditutup
+      navigator.sendBeacon(
+        `${apiUrl}/api/users/me/availability`,
+        new Blob([JSON.stringify({ status: 'offline' })], { type: 'application/json' })
+      );
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [token]);
 
   useKeyboardShortcuts([
     { 
@@ -198,6 +230,8 @@ function App() {
             if (selectedConv && typingData.conversation_id === selectedConv.id) {
               setIsContactTyping(typingData.is_typing);
             }
+          } else if (payload.event === 'agent.availability_changed') {
+            window.dispatchEvent(new CustomEvent('agentStatusChanged', { detail: payload.data }));
           }
         } catch (e) {
           console.error('Invalid WS message:', event.data);
@@ -332,15 +366,27 @@ function App() {
         </div>
       )}
       <div className="w-16 bg-neutral flex flex-col items-center py-4 shrink-0 shadow-lg z-20">
-        <div className="tooltip tooltip-right mb-8" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'})`}>
-          <div className={`avatar placeholder cursor-pointer ${wsStatus === 'open' ? 'online' : 'offline'}`}>
-            <div className="bg-primary text-primary-content rounded-full w-10 border-2 border-neutral">
-              <span className="text-sm font-bold">
-                {user?.name ? user.name.substring(0, 2).toUpperCase() : 'AG'}
-              </span>
+        
+        <div className="dropdown dropdown-right mb-8">
+          <div tabIndex={0} className="tooltip tooltip-right cursor-pointer" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'}) - ${myStatus}`}>
+            <div className="relative">
+              <div className="avatar placeholder">
+                <div className="bg-primary text-primary-content rounded-full w-10 border-2 border-neutral">
+                  <span className="text-sm font-bold">
+                    {user?.name ? user.name.substring(0, 2).toUpperCase() : 'AG'}
+                  </span>
+                </div>
+              </div>
+              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-neutral ${myStatus === 'online' ? 'bg-success' : myStatus === 'busy' ? 'bg-warning' : 'bg-error'}`} />
             </div>
           </div>
+          <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-32 p-2 shadow-lg z-50 ml-2">
+            <li><a onClick={() => updateAvailability('online')} className={myStatus === 'online' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-success"/> Online</a></li>
+            <li><a onClick={() => updateAvailability('busy')} className={myStatus === 'busy' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-warning"/> Busy</a></li>
+            <li><a onClick={() => updateAvailability('offline')} className={myStatus === 'offline' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-error"/> Offline</a></li>
+          </ul>
         </div>
+
         <div className="flex flex-col gap-6 text-neutral-content/60 w-full px-2">
           <button 
             className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/inbox') || location.pathname === '/' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 

@@ -68,5 +68,22 @@ export const websocketHandlers = {
   close(ws: ServerWebSocket<WebSocketData>) {
     console.log(`[WS] User ${ws.data.userId} Terputus ❌`);
     activeWebSockets.delete(ws);
+
+    // Auto-offline
+    import('../config/database').then(({ sql }) => {
+      sql`
+        UPDATE account_users SET availability_status = 'offline'
+        WHERE user_id = ${ws.data.userId} AND account_id = ${ws.data.accountId}
+      `.catch(err => console.error('Error auto-offline:', err));
+    });
+
+    redis.publish('chat:events', JSON.stringify({
+      event: 'agent.availability_changed',
+      data: { 
+        account_id: ws.data.accountId,
+        user_id: ws.data.userId, 
+        availability_status: 'offline' 
+      }
+    })).catch(err => console.error('Error publish offline:', err));
   },
 };

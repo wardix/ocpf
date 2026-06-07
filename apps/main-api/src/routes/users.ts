@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { jwtMiddleware } from '../middleware/auth';
+import { redis, PUB_SUB_CH } from '../config/redis';
 
 export const usersRoutes = new Hono();
 
@@ -45,6 +46,44 @@ usersRoutes.get('/', async (c) => {
   } catch (error) {
     console.error('Error fetch users:', error);
     return c.json({ error: 'Gagal mengambil daftar pengguna' }, 500);
+  }
+});
+
+const availabilitySchema = z.object({
+  status: z.enum(['online', 'busy', 'offline'])
+});
+
+usersRoutes.patch('/me/availability', zValidator('json', availabilitySchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    const { status } = c.req.valid('json');
+
+    const [result] = await sql`
+      UPDATE account_users
+      SET availability_status = ${status}
+      WHERE user_id = ${jwtPayload.id} AND account_id = ${jwtPayload.account_id}
+      RETURNING user_id, availability_status
+    `;
+
+    if (!result) return c.json({ error: 'User tidak ditemukan' }, 404);
+
+    // Broadcast ke semua WebSocket connections di akun yang sama
+    await redis.publish(PUB_SUB_CH, JSON.stringify({
+      event: 'agent.availability_changed',
+      data: {
+        account_id: jwtPayload.account_id,
+        user_id: jwtPayload.id,
+        name: jwtPayload.name,
+        availability_status: status
+      }
+    }));
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error update availability:', error);
+    return c.json({ error: 'Gagal update status availability' }, 500);
   }
 });
 

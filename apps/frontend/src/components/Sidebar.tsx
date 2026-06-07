@@ -34,6 +34,44 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
+  const [agents, setAgents] = useState<any[]>([]);
+
+  const fetchAgents = useCallback(async () => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/users/agents`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setAgents(result || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch agents', e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchAgents();
+    
+    const handleStatusChange = (e: any) => {
+      const { user_id, availability_status } = e.detail;
+      setAgents(prev => {
+        const copy = prev.map(a => a.id === user_id ? { ...a, availability_status } : a);
+        return copy.sort((a, b) => {
+           const map: any = { online: 1, busy: 2, offline: 3 };
+           const aScore = map[a.availability_status] || 4;
+           const bScore = map[b.availability_status] || 4;
+           return aScore - bScore;
+        });
+      });
+    };
+
+    window.addEventListener('agentStatusChanged', handleStatusChange);
+    return () => window.removeEventListener('agentStatusChanged', handleStatusChange);
+  }, [fetchAgents]);
+
   // Navigasi keyboard (Arrow Up / Arrow Down)
   useKeyboardShortcuts([
     {
@@ -236,6 +274,33 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
           </div>
         )}
       </div>
+
+      {/* Team Availability */}
+      {agents.length > 0 && (
+        <div className="px-4 py-3 border-t border-base-300 bg-base-100 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <h4 className="text-xs font-bold text-base-content/50 mb-3 flex items-center justify-between">
+            <span>Tim ({agents.filter(a => a.availability_status === 'online').length} Online)</span>
+          </h4>
+          <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-1">
+            {agents.map(agent => (
+              <div key={agent.id} className="flex flex-col items-center gap-1 w-12 shrink-0">
+                <div className="relative tooltip" data-tip={`${agent.name} - ${agent.availability_status}`}>
+                  <div className="avatar placeholder">
+                    <div className="bg-neutral text-neutral-content rounded-full w-8">
+                      <span className="text-xs">{agent.name.substring(0, 2).toUpperCase()}</span>
+                    </div>
+                  </div>
+                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-base-100 ${
+                    agent.availability_status === 'online' ? 'bg-success' : 
+                    agent.availability_status === 'busy' ? 'bg-warning' : 'bg-error'
+                  }`} />
+                </div>
+                <span className="text-[9px] w-full text-center truncate">{agent.name.split(' ')[0]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
