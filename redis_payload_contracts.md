@@ -47,7 +47,23 @@ Dikirim oleh Baileys saat status pesan berubah (misal: dikirim, dibaca).
     "inbox_id": 1,
     "wa_message_id": "3EB0XXXXXXX",
     "source_id": "6281234567890@s.whatsapp.net",
-    "status": "read"                // Enum: 'sent', 'delivered', 'read', 'failed'
+    "status": "read",               // Enum: 'sent', 'delivered', 'read', 'failed'
+    "timestamp": 1696123500         // Waktu indikator status dikirim
+  }
+}
+```
+
+### Event: `typing.update`
+Dikirim oleh WA Adapter saat ada pergerakan indikator mengetik (composing/paused) dari pelanggan.
+*   **Pub/Sub Channel:** `chat:events`
+
+```json
+{
+  "event": "typing.update",
+  "data": {
+    "inbox_id": 1,
+    "jid": "6281234567890@s.whatsapp.net",
+    "is_typing": true
   }
 }
 ```
@@ -75,6 +91,20 @@ Dikirim oleh Main API ke antrean spesifik inbox.
       "data_base64": "JVBERi0xLjQK...",
       "filename": "invoice.pdf"
     }
+  }
+}
+```
+
+### Event: `typing.send`
+Dikirim oleh Main API untuk memberi sinyal 'sedang mengetik' ke WhatsApp pelanggan.
+*   **Queue Name Dinamis:** `queue:outgoing_messages:inbox_{INBOX_ID}`
+
+```json
+{
+  "event": "typing.send",
+  "data": {
+    "inbox_id": 1,
+    "jid": "6281234567890@s.whatsapp.net"
   }
 }
 ```

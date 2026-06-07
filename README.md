@@ -25,7 +25,15 @@ Proyek ini menggunakan **Bun Workspaces** untuk mengelola beberapa layanan dalam
     *   Memiliki fitur **Message Dumps** (`apps/wa-adapter/message_dumps/`) yang otomatis menyimpan raw payload JSON dari Baileys untuk keperluan *debugging* atau pengembangan fitur baru (seperti *location*, *reaction*, dll).
 
 4.  **`packages/shared-types`**
-    *   Berisi definisi TypeScript interface (`IncomingMessagePayload`, `SendMessagePayload`, dll) yang digunakan bersama oleh `main-api`, `wa-adapter`, dan `frontend` agar struktur data (kontrak komunikasi via Redis) tetap konsisten.
+    *   Berisi definisi TypeScript interface (`IncomingMessagePayload`, `SendMessagePayload`, dll) yang digunakan bersama oleh `main-api`, `wa-adapter`, dan `frontend` agar struktur data (kontrak komunikasi via Redis) tetap konsisten. Telah dilengkapi runtime validation menggunakan **Zod**.
+
+## Fitur Unggulan (MVP+)
+*   **Multi-Tenancy Isolasi Kedap Air:** Setiap rute API dilindungi middleware ketat yang memisahkan data berdasarkan `account_id` pengguna.
+*   **Sistem Kategorisasi (Labels/Tags):** Agen dapat menyematkan chip warna-warni ke percakapan, dikelola sepenuhnya oleh administrator.
+*   **Visibilitas Tim & Penugasan Paksa (Admin Reassign):** Administrator dapat melihat status agen (Online/Busy/Offline) secara *real-time* via Pub/Sub dan dapat secara paksa mengambil alih atau melempar tiket ke agen lain.
+*   **PostgreSQL Full-Text Search (Unified Search):** Pencarian teks super cepat yang langsung menandai (highlight) kata kunci dalam pesan, dapat dipanggil dengan jalan pintas `Ctrl+K` (Command Palette).
+*   **Ergonomi Tingkat Lanjut:** Dilengkapi dukungan UI/UX penuh seperti Dark Mode (*Theme Switcher*), indikator "Sedang Mengetik" (Typing Indicator), centang biru WhatsApp (*Read Receipts*), hingga *Snoozed Timer* untuk menunda tiket dan menunggunya bangun secara mandiri.
+*   **Keyboard Shortcuts Global:** Agen dapat melakukan penugasan, mengirim pesan, atau beralih mode tiket dalam kedipan mata cukup dengan menekan tombol (e.g. `Alt+R`, `Ctrl+Enter`, `Shift+?`).
 
 ## Tech Stack Utama
 *   **Runtime:** Bun & Node.js (v20+)

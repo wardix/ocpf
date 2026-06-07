@@ -102,6 +102,8 @@ Tabel yang menyimpan setiap baris pesan di dalam sebuah percakapan. Tabel ini ak
 *   `message_type` (Enum: 'incoming', 'outgoing', 'template') - Arah pesan.
 *   `is_private` (Boolean) - `true` jika ini adalah *Private Note* antar agen.
 *   `status` (Enum: 'sent', 'delivered', 'read', 'failed') - Status pengiriman ke platform asli.
+*   `wa_message_id` (String, Nullable) - ID spesifik pesan dari WhatsApp.
+*   `search_vector` (TSVector, Nullable) - Vektor penelusuran berindeks GIN untuk pencarian teks penuh (*Full-Text Search*).
 *   `created_at` (Timestamp)
 
 ### `attachments` (Polymorphic)
