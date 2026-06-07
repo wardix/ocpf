@@ -75,6 +75,82 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
+  // AI Assistant States
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [summaryData, setSummaryData] = useState<{ summary: string; key_points: string[] } | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+
+  const handleFetchSuggestions = async () => {
+    if (!token || !selectedConv) return;
+    setLoadingSuggestions(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/ai/suggest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ conversation_id: Number(selectedConv.id) })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setSuggestions(result.data || []);
+      } else {
+        addToast(result.error || 'Gagal mengambil saran balasan', 'error');
+      }
+    } catch (err) {
+      console.error('Error fetching reply suggestions:', err);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const handleSelectSuggestion = (text: string) => {
+    setInputText(text);
+    setSuggestions([]);
+  };
+
+  const handleFetchSummary = async () => {
+    if (!token || !selectedConv) return;
+    setLoadingSummary(true);
+    setSummaryData(null);
+    setShowSummaryModal(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/ai/summarize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ conversation_id: Number(selectedConv.id) })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setSummaryData(result.data);
+      } else {
+        addToast(result.error || 'Gagal membuat ringkasan percakapan', 'error');
+        setShowSummaryModal(false);
+      }
+    } catch (err) {
+      console.error('Error summarizing conversation:', err);
+      addToast('Gagal menghubungi server', 'error');
+      setShowSummaryModal(false);
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
+  useEffect(() => {
+    setSuggestions([]);
+    setSummaryData(null);
+    setShowSummaryModal(false);
+  }, [selectedConv?.id]);
+
   const lastTypingTime = useRef<number>(0);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -438,6 +514,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         
         <div className="flex items-center gap-4">
           <button 
+            className={`btn btn-xs btn-ghost text-primary gap-1 ${loadingSummary ? 'loading' : ''}`}
+            onClick={handleFetchSummary}
+            title="Buat Ringkasan Percakapan AI"
+            disabled={loadingSummary}
+          >
+            📋 Ringkasan AI
+          </button>
+          <button 
             className="btn btn-xs btn-ghost text-base-content/50"
             onClick={() => handleCopyLink('phone', selectedConv.phone)}
             title="Salin Tautan Percakapan Terkini"
@@ -652,6 +736,31 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           </div>
         )}
 
+        {/* Suggested Replies Chips */}
+        {suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3 p-2 bg-base-200/60 rounded-xl border border-base-300 items-center">
+            <span className="text-[10px] font-bold text-base-content/50 flex items-center gap-1 uppercase tracking-wider ml-1">
+              ✨ Saran AI:
+            </span>
+            {suggestions.map((s, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSelectSuggestion(s)}
+                className="btn btn-xs btn-outline btn-primary normal-case font-normal max-w-xs truncate rounded-full"
+                title={s}
+              >
+                {s}
+              </button>
+            ))}
+            <button 
+              onClick={() => setSuggestions([])} 
+              className="btn btn-xs btn-ghost text-error ml-auto"
+            >
+              ✕ Batal
+            </button>
+          </div>
+        )}
+
         {selectedFile && (
           <div className="mb-2 p-2 bg-base-200 rounded-lg flex items-center justify-between border border-base-300">
             <span className="text-sm truncate max-w-xs font-medium">📎 {selectedFile.name}</span>
@@ -674,6 +783,14 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
             disabled={!canReply}
           >
             📎
+          </button>
+          <button 
+            className={`btn btn-circle btn-ghost text-primary ${loadingSuggestions ? 'loading' : ''}`}
+            onClick={handleFetchSuggestions}
+            title="Saran Balasan AI (Smart Reply)"
+            disabled={!canReply || loadingSuggestions}
+          >
+            ✨
           </button>
           <div className="flex-1 relative">
             {/* Canned Responses Dropdown */}
@@ -792,6 +909,61 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
             </div>
           </div>
           <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => setShowCustomSnooze(false)}>
+            <button>close</button>
+          </form>
+        </dialog>
+      )}
+
+      {showSummaryModal && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-md shadow-2xl border border-base-300 rounded-2xl p-6 bg-base-100">
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+              📋 Ringkasan Percakapan AI
+            </h3>
+            <p className="text-xs text-base-content/50 mb-4">
+              Dibuat secara otomatis berdasarkan riwayat pesan terakhir.
+            </p>
+
+            {loadingSummary ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3">
+                <span className="loading loading-spinner loading-lg text-primary"></span>
+                <span className="text-xs text-base-content/60 animate-pulse">Sedang menganalisis obrolan...</span>
+              </div>
+            ) : summaryData ? (
+              <div className="space-y-4">
+                <div className="bg-base-200/50 p-4 rounded-xl border border-base-300 italic text-sm text-base-content/80">
+                  "{summaryData.summary}"
+                </div>
+
+                {summaryData.key_points && summaryData.key_points.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-base-content/60 uppercase tracking-wider mb-2">
+                      Poin Penting:
+                    </h4>
+                    <ul className="list-disc pl-5 text-sm space-y-1.5">
+                      {summaryData.key_points.map((point, i) => (
+                        <li key={i} className="text-base-content/85">{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-sm text-error font-semibold">
+                Gagal memuat ringkasan. Silakan coba lagi.
+              </div>
+            )}
+
+            <div className="modal-action mt-6">
+              <button 
+                className="btn btn-sm btn-outline btn-neutral" 
+                onClick={() => setShowSummaryModal(false)}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => setShowSummaryModal(false)}>
             <button>close</button>
           </form>
         </dialog>

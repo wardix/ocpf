@@ -20,6 +20,39 @@ const ContactInfo = ({ onUpdate }: Props) => {
   const [availableLabels, setAvailableLabels] = useState<any[]>([]);
   const [conversationLabels, setConversationLabels] = useState<any[]>([]);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
+  const [aiRecommendedLabels, setAiRecommendedLabels] = useState<any[]>([]);
+  const [loadingAiLabels, setLoadingAiLabels] = useState(false);
+
+  const fetchAiLabels = async () => {
+    if (!token || !selectedConv) return;
+    setLoadingAiLabels(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/ai/categorize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ conversation_id: Number(selectedConv.id) })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setAiRecommendedLabels(result.data || []);
+      } else {
+        addToast(result.error || 'Gagal menyarankan label', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Gagal menghubungi server', 'error');
+    } finally {
+      setLoadingAiLabels(false);
+    }
+  };
+
+  useEffect(() => {
+    setAiRecommendedLabels([]);
+  }, [selectedConv?.id]);
 
   // Contact Merging States
   const [showMergeModal, setShowMergeModal] = useState(false);
@@ -297,7 +330,41 @@ const ContactInfo = ({ onUpdate }: Props) => {
             >
               {showLabelMenu ? 'Tutup' : '+ Tambah'}
             </button>
+            <button 
+              className={`badge badge-sm cursor-pointer border-dashed hover:bg-base-200 text-primary gap-1 ${loadingAiLabels ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={fetchAiLabels}
+              disabled={loadingAiLabels}
+            >
+              {loadingAiLabels ? 'Loading...' : '✨ Saran AI'}
+            </button>
           </div>
+
+          {aiRecommendedLabels.length > 0 && (
+            <div className="mt-3 p-2 bg-base-200/50 rounded-lg border border-base-300">
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wider block mb-1">Rekomendasi Label AI:</span>
+              <div className="flex flex-wrap gap-1">
+                {aiRecommendedLabels
+                  .filter(rec => !conversationLabels.some(cl => cl.id === rec.id))
+                  .map(rec => (
+                    <button
+                      key={rec.id}
+                      onClick={() => {
+                        addLabel(rec.id);
+                        setAiRecommendedLabels(prev => prev.filter(p => p.id !== rec.id));
+                      }}
+                      className="badge badge-sm cursor-pointer hover:scale-105 transition-all text-white font-medium gap-1"
+                      style={{ backgroundColor: availableLabels.find(al => al.id === rec.id)?.color || '#3b82f6', border: 'none' }}
+                      title={`Confidence: ${Math.round(rec.confidence * 100)}%`}
+                    >
+                      ✨ {rec.title} ({Math.round(rec.confidence * 100)}%)
+                    </button>
+                  ))}
+                {aiRecommendedLabels.filter(rec => !conversationLabels.some(cl => cl.id === rec.id)).length === 0 && (
+                  <span className="text-[10px] italic opacity-50">Saran label sudah terpasang</span>
+                )}
+              </div>
+            </div>
+          )}
           
           {showLabelMenu && (
             <ul className="menu menu-xs bg-base-200 rounded-box w-full mt-2 shadow-sm border border-base-300">

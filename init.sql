@@ -361,3 +361,34 @@ CREATE INDEX idx_webhooks_active ON webhooks(active) WHERE active = true;
 CREATE INDEX idx_webhook_delivery_logs_webhook_id ON webhook_delivery_logs(webhook_id);
 CREATE INDEX idx_webhook_delivery_logs_created_at ON webhook_delivery_logs(created_at DESC);
 
+CREATE TABLE ai_configs (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL DEFAULT 'openai',
+    api_key_encrypted TEXT NOT NULL,
+    model VARCHAR(100) NOT NULL DEFAULT 'gpt-4o-mini',
+    max_tokens INT DEFAULT 500,
+    temperature NUMERIC(2,1) DEFAULT 0.7,
+    is_active BOOLEAN DEFAULT TRUE,
+    features_enabled TEXT[] DEFAULT '{smart_reply,summarize,auto_categorize}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(account_id)
+);
+
+CREATE TABLE ai_usage_logs (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    feature VARCHAR(50) NOT NULL,
+    tokens_input INT NOT NULL DEFAULT 0,
+    tokens_output INT NOT NULL DEFAULT 0,
+    latency_ms INT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ai_configs_account_id ON ai_configs(account_id);
+CREATE INDEX idx_ai_configs_active ON ai_configs(is_active) WHERE is_active = true;
+CREATE INDEX idx_ai_usage_logs_account_id ON ai_usage_logs(account_id);
+CREATE INDEX idx_ai_usage_logs_created_at ON ai_usage_logs(created_at DESC);
+
+
