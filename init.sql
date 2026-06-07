@@ -212,6 +212,11 @@ CREATE INDEX idx_messages_wa_message_id ON messages(wa_message_id);
 
 CREATE INDEX idx_contact_inboxes_source_id ON contact_inboxes(source_id);
 
+CREATE INDEX idx_messages_ticket_sender_type ON messages(ticket_id, sender_type, created_at);
+CREATE INDEX idx_tickets_resolved_at ON tickets(resolved_at) WHERE resolved_at IS NOT NULL;
+CREATE INDEX idx_tickets_account_created ON tickets(account_id, created_at);
+
+
 CREATE TABLE csat_ratings (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,

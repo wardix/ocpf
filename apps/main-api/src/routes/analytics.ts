@@ -79,11 +79,22 @@ analyticsRoutes.get('/csat', async (c) => {
     }
     const accountId = getAccountId(c);
 
+    const startDateStr = c.req.query('start_date');
+    const endDateStr = c.req.query('end_date');
+    
+    let startDate = startDateStr ? new Date(startDateStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let endDate = endDateStr ? new Date(endDateStr) : new Date();
+    if (endDateStr && endDateStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
     // 1. Average Rating & Total Ratings
     const [summary] = await sql`
       SELECT COALESCE(AVG(rating)::float, 0) as avg_rating, COUNT(*)::int as total_ratings 
       FROM csat_ratings 
       WHERE account_id = ${accountId}
+        AND created_at >= ${startDate}
+        AND created_at <= ${endDate}
     `;
 
     // 2. Rating Distribution (1-5)
@@ -91,6 +102,8 @@ analyticsRoutes.get('/csat', async (c) => {
       SELECT rating, COUNT(*)::int as count 
       FROM csat_ratings 
       WHERE account_id = ${accountId} 
+        AND created_at >= ${startDate}
+        AND created_at <= ${endDate}
       GROUP BY rating 
       ORDER BY rating DESC
     `;
@@ -112,6 +125,8 @@ analyticsRoutes.get('/csat', async (c) => {
       FROM csat_ratings cr
       JOIN users u ON cr.assigned_agent_id = u.id
       WHERE cr.account_id = ${accountId}
+        AND cr.created_at >= ${startDate}
+        AND cr.created_at <= ${endDate}
       GROUP BY u.id, u.name
       ORDER BY avg_rating DESC
     `;
@@ -119,8 +134,8 @@ analyticsRoutes.get('/csat', async (c) => {
     // 4. Response Rate Stats
     const [rates] = await sql`
       SELECT 
-        (SELECT COUNT(*)::int FROM tickets WHERE account_id = ${accountId} AND csat_survey_sent = true) as total_surveys_sent,
-        (SELECT COUNT(*)::int FROM csat_ratings WHERE account_id = ${accountId}) as total_responses
+        (SELECT COUNT(*)::int FROM tickets WHERE account_id = ${accountId} AND csat_survey_sent = true AND resolved_at >= ${startDate} AND resolved_at <= ${endDate}) as total_surveys_sent,
+        (SELECT COUNT(*)::int FROM csat_ratings WHERE account_id = ${accountId} AND created_at >= ${startDate} AND created_at <= ${endDate}) as total_responses
     `;
 
     const surveysSent = rates?.total_surveys_sent || 0;
@@ -156,12 +171,24 @@ analyticsRoutes.get('/csat/ratings', async (c) => {
     }
     const accountId = getAccountId(c);
 
+    const startDateStr = c.req.query('start_date');
+    const endDateStr = c.req.query('end_date');
+
+    let startDate = startDateStr ? new Date(startDateStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let endDate = endDateStr ? new Date(endDateStr) : new Date();
+    if (endDateStr && endDateStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
     const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
     const offset = (page - 1) * perPage;
 
     const [totalRow] = await sql`
-      SELECT COUNT(*)::int as count FROM csat_ratings WHERE account_id = ${accountId}
+      SELECT COUNT(*)::int as count FROM csat_ratings 
+      WHERE account_id = ${accountId}
+        AND created_at >= ${startDate}
+        AND created_at <= ${endDate}
     `;
 
     const ratingsList = await sql`
@@ -170,6 +197,8 @@ analyticsRoutes.get('/csat/ratings', async (c) => {
       LEFT JOIN users u ON cr.assigned_agent_id = u.id
       JOIN contacts c ON cr.contact_id = c.id
       WHERE cr.account_id = ${accountId}
+        AND cr.created_at >= ${startDate}
+        AND cr.created_at <= ${endDate}
       ORDER BY cr.created_at DESC
       LIMIT ${perPage} OFFSET ${offset}
     `;
@@ -186,5 +215,195 @@ analyticsRoutes.get('/csat/ratings', async (c) => {
   } catch (error) {
     console.error('Error fetch CSAT ratings list:', error);
     return c.json({ error: 'Gagal mengambil daftar penilaian CSAT' }, 500);
+  }
+});
+
+// GET /api/analytics/overview
+analyticsRoutes.get('/overview', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+    const accountId = getAccountId(c);
+
+    const startDateStr = c.req.query('start_date');
+    const endDateStr = c.req.query('end_date');
+    
+    let startDate = startDateStr ? new Date(startDateStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let endDate = endDateStr ? new Date(endDateStr) : new Date();
+    if (endDateStr && endDateStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    const [totals] = await sql`
+      SELECT 
+        COUNT(*)::int as total_tickets,
+        COUNT(CASE WHEN status = 'resolved' THEN 1 END)::int as resolved_tickets
+      FROM tickets
+      WHERE account_id = ${accountId}
+        AND created_at >= ${startDate}
+        AND created_at <= ${endDate}
+    `;
+
+    const [frt] = await sql`
+      WITH TicketFirstResponse AS (
+        SELECT 
+          t.id as ticket_id,
+          EXTRACT(EPOCH FROM (MIN(m.created_at) - t.created_at))::float as response_delay
+        FROM tickets t
+        JOIN messages m ON m.ticket_id = t.id
+        WHERE t.account_id = ${accountId}
+          AND t.created_at >= ${startDate}
+          AND t.created_at <= ${endDate}
+          AND m.sender_type = 'User'
+        GROUP BY t.id, t.created_at
+      )
+      SELECT 
+        COALESCE(AVG(response_delay)::float, 0) as avg_frt,
+        COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_delay)::float, 0) as median_frt
+      FROM TicketFirstResponse;
+    `;
+
+    const [resTime] = await sql`
+      WITH TicketResolution AS (
+        SELECT 
+          EXTRACT(EPOCH FROM (resolved_at - created_at))::float as resolution_delay
+        FROM tickets
+        WHERE account_id = ${accountId}
+          AND status = 'resolved'
+          AND resolved_at IS NOT NULL
+          AND resolved_at >= ${startDate}
+          AND resolved_at <= ${endDate}
+      )
+      SELECT 
+        COALESCE(AVG(resolution_delay)::float, 0) as avg_resolution,
+        COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY resolution_delay)::float, 0) as median_resolution
+      FROM TicketResolution;
+    `;
+
+    return c.json({
+      success: true,
+      data: {
+        total_tickets: totals?.total_tickets || 0,
+        resolved_tickets: totals?.resolved_tickets || 0,
+        avg_frt: frt?.avg_frt || 0,
+        median_frt: frt?.median_frt || 0,
+        avg_resolution_time: resTime?.avg_resolution || 0,
+        median_resolution_time: resTime?.median_resolution || 0
+      }
+    });
+  } catch (error) {
+    console.error('Error fetch overview analytics:', error);
+    return c.json({ error: 'Gagal mengambil data analitik overview' }, 500);
+  }
+});
+
+// GET /api/analytics/volume
+analyticsRoutes.get('/volume', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+    const accountId = getAccountId(c);
+
+    const startDateStr = c.req.query('start_date');
+    const endDateStr = c.req.query('end_date');
+    const granularity = c.req.query('granularity') || 'daily';
+
+    let startDate = startDateStr ? new Date(startDateStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let endDate = endDateStr ? new Date(endDateStr) : new Date();
+    if (endDateStr && endDateStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    let truncUnit = 'day';
+    if (granularity === 'hourly') truncUnit = 'hour';
+    else if (granularity === 'weekly') truncUnit = 'week';
+
+    const volumeData = await sql`
+      SELECT 
+        DATE_TRUNC(${truncUnit}, created_at) as period,
+        COUNT(*)::int as count
+      FROM tickets
+      WHERE account_id = ${accountId}
+        AND created_at >= ${startDate}
+        AND created_at <= ${endDate}
+      GROUP BY period
+      ORDER BY period ASC
+    `;
+
+    const formatted = volumeData.map((row: any) => ({
+      period: new Date(row.period).toISOString(),
+      count: row.count
+    }));
+
+    return c.json({
+      success: true,
+      data: formatted
+    });
+  } catch (error) {
+    console.error('Error fetch volume analytics:', error);
+    return c.json({ error: 'Gagal mengambil data volume analitik' }, 500);
+  }
+});
+
+// GET /api/analytics/agents
+analyticsRoutes.get('/agents', async (c) => {
+  try {
+    const jwtPayload = c.get('jwtPayload') as any;
+    if (jwtPayload?.role !== 'administrator') {
+      return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
+    }
+    const accountId = getAccountId(c);
+
+    const startDateStr = c.req.query('start_date');
+    const endDateStr = c.req.query('end_date');
+
+    let startDate = startDateStr ? new Date(startDateStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    let endDate = endDateStr ? new Date(endDateStr) : new Date();
+    if (endDateStr && endDateStr.length === 10) {
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    const leaderboard = await sql`
+      SELECT 
+        u.id as agent_id,
+        u.name as agent_name,
+        COUNT(DISTINCT t.id)::int as assigned_tickets,
+        COUNT(DISTINCT CASE WHEN t.status = 'resolved' THEN t.id END)::int as resolved_tickets,
+        COALESCE(AVG(cr.rating)::float, 0) as avg_csat,
+        COUNT(DISTINCT cr.id)::int as total_csat_responses,
+        (
+          SELECT COUNT(*)::int 
+          FROM messages m 
+          WHERE m.sender_id = u.id 
+            AND m.sender_type = 'User' 
+            AND m.created_at >= ${startDate}
+            AND m.created_at <= ${endDate}
+        ) as messages_sent
+      FROM users u
+      JOIN account_users au ON au.user_id = u.id
+      LEFT JOIN tickets t ON t.assignee_id = u.id 
+        AND t.account_id = ${accountId}
+        AND t.created_at >= ${startDate}
+        AND t.created_at <= ${endDate}
+      LEFT JOIN csat_ratings cr ON cr.assigned_agent_id = u.id 
+        AND cr.account_id = ${accountId}
+        AND cr.created_at >= ${startDate}
+        AND cr.created_at <= ${endDate}
+      WHERE au.account_id = ${accountId}
+      GROUP BY u.id, u.name
+      ORDER BY resolved_tickets DESC
+    `;
+
+    return c.json({
+      success: true,
+      data: leaderboard || []
+    });
+  } catch (error) {
+    console.error('Error fetch agents analytics:', error);
+    return c.json({ error: 'Gagal mengambil data leaderboard agen' }, 500);
   }
 });
