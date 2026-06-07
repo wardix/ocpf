@@ -4,6 +4,7 @@ import { serveStatic } from 'hono/bun';
 import { startWorker } from './workers/incoming-message';
 import { startSnoozeChecker } from './workers/snooze-checker';
 import { startCSATWorker } from './workers/csat-worker';
+import { startWebhookWorker } from './workers/webhook-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
 import { redisSub, PUB_SUB_CH } from './config/redis';
@@ -26,6 +27,7 @@ import { searchRoutes } from './routes/search';
 import { inboxesRoutes } from './routes/inboxes';
 import { widgetRoutes } from './routes/widget';
 import { chatbotRoutes } from './routes/chatbot';
+import { webhooksRoutes } from './routes/webhooks';
 
 const app = new Hono();
 
@@ -103,6 +105,7 @@ app.route('/api/search', searchRoutes);
 app.route('/api/inboxes', inboxesRoutes);
 app.route('/api/widget', widgetRoutes);
 app.route('/api/chatbot', chatbotRoutes);
+app.route('/api/webhooks', webhooksRoutes);
 app.route('/api/docs', docsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
@@ -168,6 +171,7 @@ redisSub.on('message', async (channel, message) => {
 startWorker();
 startSnoozeChecker();
 startCSATWorker();
+startWebhookWorker();
 
 // Bun HTTP + WebSocket Server
 const server = Bun.serve({

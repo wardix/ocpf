@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
-import { jwtMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { dispatchWebhook } from '../utils/webhooks';
 
 export const conversationsRoutes = new Hono();
 
@@ -243,7 +244,9 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
       }
     }
 
+    let isNewContact = false;
     if (!contact) {
+      isNewContact = true;
       [contact] = await sql`
         INSERT INTO contacts (account_id, name, phone_number)
         VALUES (${ACCOUNT_ID}, ${name || cleanPhone}, ${sourceJid})
@@ -251,12 +254,14 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
       `;
     }
 
+    let isNewConversation = false;
     let [conversation] = await sql`
       SELECT id FROM conversations
       WHERE account_id = ${ACCOUNT_ID} AND inbox_id = ${INBOX_ID} AND contact_id = ${contact.id}
       LIMIT 1
     `;
     if (!conversation) {
+      isNewConversation = true;
       [conversation] = await sql`
         INSERT INTO conversations (account_id, inbox_id, contact_id)
         VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
@@ -271,6 +276,18 @@ conversationsRoutes.post('/start', zValidator('json', startConversationSchema, (
       WHERE t.conversation_id = ${conversation.id} AND t.status != 'resolved'
       LIMIT 1
     `;
+
+    if (isNewContact) {
+      dispatchWebhook(ACCOUNT_ID, 'contact.created', contact).catch(e => console.error(e));
+    }
+    if (isNewConversation) {
+      dispatchWebhook(ACCOUNT_ID, 'conversation.created', {
+        id: Number(conversation.id),
+        account_id: ACCOUNT_ID,
+        inbox_id: INBOX_ID,
+        contact_id: Number(contact.id)
+      }).catch(e => console.error(e));
+    }
 
     return c.json({
       success: true,
@@ -348,6 +365,13 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
       } catch (csatErr) {
         console.error('Gagal menjadwalkan CSAT survey:', csatErr);
       }
+
+      dispatchWebhook(Number(ticket.account_id), 'conversation.resolved', {
+        conversation_id: Number(ticket.conversation_id),
+        ticket_id: Number(ticket.id),
+        status: 'resolved',
+        resolved_at: new Date().toISOString()
+      }).catch(e => console.error(e));
     }
 
     if (!ticket) {

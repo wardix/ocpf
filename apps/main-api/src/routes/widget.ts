@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis } from '../config/redis';
+import { dispatchWebhook } from '../utils/webhooks';
 
 export const widgetRoutes = new Hono();
 
@@ -170,6 +171,10 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
     const ipAddress = c.req.header('x-forwarded-for') || null;
     const userAgent = c.req.header('user-agent') || null;
 
+    let contactData: any = null;
+    let isNewContact = false;
+    let isNewConversation = false;
+
     const result = await sql.begin(async (tx) => {
       // 5a. Cari/buat kontak
       let contactId: number;
@@ -181,16 +186,19 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
       if (existingContact) {
         contactId = Number(existingContact.id);
       } else {
+        isNewContact = true;
         const virtualPhone = `widget_${fingerprint.substring(0, 15)}_${Date.now().toString().slice(-4)}`;
         const [newContact] = await tx`
           INSERT INTO contacts (account_id, name, email, phone_number)
           VALUES (${accountId}, ${name}, ${email}, ${virtualPhone})
-          RETURNING id
+          RETURNING *
         `;
         contactId = Number(newContact.id);
+        contactData = newContact;
       }
 
       // 5b. Buat conversation baru
+      isNewConversation = true;
       const [newConv] = await tx`
         INSERT INTO conversations (account_id, inbox_id, contact_id)
         VALUES (${accountId}, ${inbox_id}, ${contactId})
@@ -229,6 +237,18 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
 
       return { contactId, conversationId, welcomeMessages };
     });
+
+    if (isNewContact && contactData) {
+      dispatchWebhook(accountId, 'contact.created', contactData).catch(e => console.error(e));
+    }
+    if (isNewConversation) {
+      dispatchWebhook(accountId, 'conversation.created', {
+        id: Number(result.conversationId),
+        account_id: accountId,
+        inbox_id: inbox_id,
+        contact_id: Number(result.contactId)
+      }).catch(e => console.error(e));
+    }
 
     return c.json({
       success: true,
@@ -307,6 +327,8 @@ widgetRoutes.post('/message', zValidator('json', postMessageSchema), async (c) =
     };
     
     await redis.publish('chat:events', JSON.stringify(wsPayload));
+
+    dispatchWebhook(accountId, 'message.incoming', newMessage).catch(e => console.error(e));
 
     return c.json({
       success: true,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import UserManagement from './UserManagement';
 import LabelManagement from './LabelManagement';
 import InboxManagement from './InboxManagement';
+import WebhookManagement from './WebhookManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -732,6 +733,7 @@ const Settings = () => {
 
         <LabelManagement />
         <UserManagement />
+        <WebhookManagement />
 
       </div>
 

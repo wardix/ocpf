@@ -1,6 +1,7 @@
 import { sql } from '../config/database';
 import { redis, PUB_SUB_CH } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
+import { dispatchWebhook } from '../utils/webhooks';
 
 // In-memory cache for chatbot rules per inbox
 const chatbotCache = new Map<number, { rules: any; expiresAt: number }>();
@@ -112,6 +113,9 @@ export async function evaluateChatbot(
             RETURNING *;
           `;
           await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.new', data: botMsg }));
+          
+          dispatchWebhook(ACCOUNT_ID, 'message.outgoing', botMsg).catch(e => console.error(e));
+
           const payload: SendMessagePayload = {
             event: 'message.send',
             data: {
