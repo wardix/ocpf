@@ -325,3 +325,8 @@ CREATE TABLE chatbot_config_versions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (chatbot_config_id, version)
 );
+
+CREATE INDEX idx_chatbot_configs_account ON chatbot_configs(account_id);
+CREATE INDEX idx_chatbot_configs_inbox ON chatbot_configs(inbox_id);
+CREATE INDEX idx_chatbot_configs_active ON chatbot_configs(is_active) WHERE is_active = true;
+CREATE INDEX idx_chatbot_versions_config ON chatbot_config_versions(chatbot_config_id);
