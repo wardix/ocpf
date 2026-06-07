@@ -300,5 +300,8 @@ CREATE TABLE widget_sessions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX idx_widget_sessions_token ON widget_sessions(session_token);
+CREATE INDEX idx_widget_sessions_fingerprint ON widget_sessions(fingerprint, inbox_id);
+CREATE INDEX idx_widget_sessions_contact_id ON widget_sessions(contact_id);
+CREATE INDEX idx_widget_sessions_account_id ON widget_sessions(account_id);
 
 
