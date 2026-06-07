@@ -8,6 +8,8 @@
     "@hono/swagger-ui": "^0.6.1",
     "@hono/zod-validator": "^0.8.0",
     "@omnichannel/shared-types": "workspace:*",
+    "csv-stringify": "^6.7.0",
+    "exceljs": "^4.4.0",
     "hono": "^4.0.0",
     "ioredis": "^5.3.0",
     "postgres": "^3.4.0",

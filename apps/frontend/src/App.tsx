@@ -6,6 +6,7 @@ import ContactInfo from './components/ContactInfo'
 import Login from './components/Login'
 import Settings from './components/Settings'
 import Analytics from './components/Analytics'
+import ReportsDashboard from './components/ReportsDashboard'
 import Contacts from './components/Contacts'
 import Broadcast from './components/Broadcast'
 import ChatbotBuilder from './components/ChatbotBuilder'
@@ -444,6 +445,13 @@ function App() {
                 📊
               </button>
               <button 
+                className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/reports') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
+                onClick={() => navigate('/reports')}
+                title="Laporan & Ekspor Data"
+              >
+                📁
+              </button>
+              <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/chatbot') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/chatbot')}
                 title="Chatbot Flow Builder"
@@ -556,6 +564,7 @@ function App() {
         <Route path="/contacts" element={<Contacts onStartChat={startNewChat} />} />
         <Route path="/broadcast" element={<Broadcast />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/reports" element={<ReportsDashboard />} />
         <Route path="/settings" element={<Settings />} />
         {user?.role === 'administrator' && (
           <Route path="/chatbot" element={<ChatbotBuilder />} />
