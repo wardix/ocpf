@@ -39,7 +39,7 @@ async function processExportJob(jobStr: string) {
       return;
     }
 
-    const filename = \`export_\${exportType}_\${accountId}_\${Date.now()}.\${format}\`;
+    const filename = `export_${exportType}_${accountId}_${Date.now()}.${format}`;
     const filePath = path.join(EXPORTS_DIR, filename);
 
     const workbook = new ExcelJS.Workbook();
@@ -68,21 +68,21 @@ async function processExportJob(jobStr: string) {
     for (let offset = 0; offset < totalRows; offset += BATCH_SIZE) {
       let dataQuery;
       if (exportType === 'conversations') {
-        dataQuery = sql\`
+        dataQuery = sql`
           SELECT id, contact_id, status, channel_id, created_at, resolved_at 
           FROM conversations 
-          WHERE account_id = \${accountId}
+          WHERE account_id = ${accountId}
           ORDER BY id ASC
-          LIMIT \${BATCH_SIZE} OFFSET \${offset}
-        \`;
+          LIMIT ${BATCH_SIZE} OFFSET ${offset}
+        `;
       } else {
-        dataQuery = sql\`
+        dataQuery = sql`
           SELECT id, name, phone_number, email, created_at
           FROM contacts
-          WHERE account_id = \${accountId}
+          WHERE account_id = ${accountId}
           ORDER BY id ASC
-          LIMIT \${BATCH_SIZE} OFFSET \${offset}
-        \`;
+          LIMIT ${BATCH_SIZE} OFFSET ${offset}
+        `;
       }
 
       const rows = await dataQuery;
@@ -128,7 +128,7 @@ async function processExportJob(jobStr: string) {
 }
 
 function publishEvent(accountId: string | number, event: any) {
-  redis.publish(\`chat:events:\${accountId}\`, JSON.stringify(event));
+  redis.publish(`chat:events:${accountId}`, JSON.stringify(event));
 }
 
 // Cleanup expired exports (Runs occasionally)

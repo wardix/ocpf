@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { authMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { redis } from '../config/redis';
 import { z } from 'zod';
 import { serveStatic } from 'hono/bun';
@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 
 export const exportsRoutes = new Hono();
-exportsRoutes.use('/*', authMiddleware);
+exportsRoutes.use('/*', jwtMiddleware);
 
 const createExportSchema = z.object({
   export_type: z.enum(['conversations', 'agent_performance', 'contacts']),
@@ -18,8 +18,8 @@ const createExportSchema = z.object({
 
 // Enqueue export job
 exportsRoutes.post('/', async (c) => {
-  const accountId = c.get('account_id');
-  const userId = c.get('user_id');
+  const accountId = getAccountId(c);
+  const userId = (c.get('jwtPayload') as any)?.id;
 
   try {
     const body = await c.req.json();
@@ -44,7 +44,7 @@ exportsRoutes.post('/', async (c) => {
 
 // List jobs
 exportsRoutes.get('/', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
 
   try {
     const jobs = await sql`
@@ -63,7 +63,7 @@ exportsRoutes.get('/', async (c) => {
 
 // Serve download securely
 exportsRoutes.get('/:id/download', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
