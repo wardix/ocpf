@@ -14,7 +14,7 @@ const createApiKeySchema = z.object({
 
 function generateApiKey(): { key: string; hash: string; prefix: string } {
   const randomBytes = crypto.randomBytes(32).toString('hex');
-  const key = \`omni_live_\${randomBytes}\`;
+  const key = `omni_live_${randomBytes}`;
   const prefix = key.slice(0, 15);
   const hash = crypto.createHash('sha256').update(key).digest('hex');
   return { key, hash, prefix };

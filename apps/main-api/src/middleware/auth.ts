@@ -63,7 +63,7 @@ export function requirePermission(requiredPermission: string) {
     if (authMethod === 'api_key') {
       const permissions = c.get('permissions') || [];
       if (!permissions.includes(requiredPermission)) {
-        throw new HTTPException(403, { message: \`Missing required permission: \${requiredPermission}\` });
+        throw new HTTPException(403, { message: `Missing required permission: ${requiredPermission}` });
       }
       return next();
     }
