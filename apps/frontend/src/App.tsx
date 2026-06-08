@@ -21,6 +21,8 @@ import { useNotificationStore } from './store/notificationStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { ShortcutsModal } from './components/ShortcutsModal'
 import { SearchPalette } from './components/SearchPalette'
+import { useSwipeBack } from './hooks/useSwipeBack'
+import BottomNav from './components/BottomNav'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -51,7 +53,7 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { token, user, login, logout } = useAuthStore();
-  const { isMuted, toggleMute } = useUiStore();
+  const { isMuted, toggleMute, activeView, setActiveView } = useUiStore();
   const { theme, themes, setTheme } = useThemeStore();
   const { 
     selectedConv, messages, wsStatus, refreshKey, hasMoreMessages, isLoadingOlder, isInitialChatLoading, isContactTyping,
@@ -60,6 +62,26 @@ function App() {
   } = useChatStore();
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
+
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useSwipeBack(() => {
+    if (activeView === 'chat' || activeView === 'contacts') {
+      setActiveView('sidebar');
+      navigate('/inbox');
+    }
+  });
 
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -389,14 +411,23 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-base-200 font-sans text-base-content relative">
+    <div className="flex flex-col md:flex-row h-[100dvh] w-screen overflow-hidden bg-base-200 font-sans text-base-content relative">
       <ToastContainer />
-      {wsStatus !== 'open' && (
+      
+      {isOffline && (
+        <div className="absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md bg-error text-white">
+          ❌ Tidak ada koneksi internet (Offline). Menunggu jaringan...
+        </div>
+      )}
+
+      {wsStatus !== 'open' && !isOffline && (
         <div className={`absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md transition-all ${wsStatus === 'connecting' ? 'bg-warning text-warning-content' : 'bg-error text-white'}`}>
           {wsStatus === 'connecting' ? '⏳ Menghubungkan ke server real-time...' : '❌ Terputus dari server. Mencoba menghubungkan kembali...'}
         </div>
       )}
-      <div className="w-16 bg-neutral flex flex-col items-center py-4 shrink-0 shadow-lg z-20">
+      
+      {/* Desktop Sidebar (Leftmost) */}
+      <div className="hidden md:flex w-16 bg-neutral flex-col items-center py-4 shrink-0 shadow-lg z-20">
         
         <div className="dropdown dropdown-right mb-8">
           <div tabIndex={0} className="tooltip tooltip-right cursor-pointer" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'}) - ${myStatus}`}>
@@ -500,81 +531,96 @@ function App() {
         </div>
       </div>
 
-      <Routes>
-        <Route path="/" element={<Navigate to="/inbox" replace />} />
-        <Route path="/inbox/*" element={
-          <>
-            <Sidebar 
-              selectedId={selectedConv?.id || null} 
-              onSelect={(conv) => {
-                setSelectedConv({
-                  id: conv.id,
-                  contact_id: conv.contact_id,
-                  phone: conv.contact_phone,
-                  name: conv.contact_name,
-                  email: conv.contact_email,
-                  ticket_id: conv.ticket_id,
-                  status: conv.status,
-                  assignee_id: conv.assignee_id,
-                  assignee_name: conv.assignee_name,
-                  inbox_id: conv.inbox_id,
-                  provider_type: conv.provider_type
-                });
-                navigate(`/inbox/${conv.id}`);
-              }} 
-              refreshKey={refreshKey}
-              onStartChat={startNewChat}
-            />
-            <Routes>
-              <Route path=":conversationId" element={
-                selectedConv ? (
-                  <>
-                    <ChatArea 
-                      onResolve={() => {
-                        setSelectedConv(null);
-                        navigate('/inbox');
-                        triggerRefresh();
-                      }}
-                      onAssign={() => triggerRefresh()}
-                      onLoadMore={() => {
-                        if (messages.length > 0) {
-                          fetchMessages(selectedConv.id, messages[0].id);
-                        }
-                      }}
-                    />
-                    <ContactInfo 
-                      onUpdate={(newName, newEmail) => {
-                        setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
-                        triggerRefresh();
-                      }} 
-                    />
-                  </>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
-                    <span className="text-6xl mb-4">⏳</span>
-                    <h2 className="text-xl font-bold">Memuat percakapan...</h2>
-                  </div>
-                )
-              } />
-              <Route path="" element={
-                <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
-                  <span className="text-6xl mb-4">📥</span>
-                  <h2 className="text-xl font-bold">Pilih percakapan untuk memulai</h2>
-                  <p className="text-sm">Silakan pilih salah satu pesan di samping kiri.</p>
-                </div>
-              } />
-            </Routes>
-          </>
-        } />
-        <Route path="/contacts" element={<Contacts onStartChat={startNewChat} />} />
-        <Route path="/broadcast" element={<Broadcast />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/reports" element={<ReportsDashboard />} />
-        <Route path="/settings" element={<Settings />} />
-        {user?.role === 'administrator' && (
-          <Route path="/chatbot" element={<ChatbotBuilder />} />
-        )}
-      </Routes>
+      <div className="flex-1 flex overflow-hidden mb-[3.25rem] md:mb-0">
+        <Routes>
+          <Route path="/" element={<Navigate to="/inbox" replace />} />
+          <Route path="/inbox/*" element={
+            <>
+              {/* Inbox Sidebar (Column 1) */}
+              <div className={`${activeView === 'sidebar' ? 'block' : 'hidden'} md:block md:w-80 lg:w-80 shrink-0 h-full w-full md:w-auto`}>
+                <Sidebar 
+                  selectedId={selectedConv?.id || null} 
+                  onSelect={(conv) => {
+                    setActiveView('chat');
+                    setSelectedConv({
+                      id: conv.id,
+                      contact_id: conv.contact_id,
+                      phone: conv.contact_phone,
+                      name: conv.contact_name,
+                      email: conv.contact_email,
+                      ticket_id: conv.ticket_id,
+                      status: conv.status,
+                      assignee_id: conv.assignee_id,
+                      assignee_name: conv.assignee_name,
+                      inbox_id: conv.inbox_id,
+                      provider_type: conv.provider_type
+                    });
+                    navigate(`/inbox/${conv.id}`);
+                  }} 
+                  refreshKey={refreshKey}
+                  onStartChat={(p: string, n?: string) => { setActiveView('chat'); startNewChat(p, n); }}
+                />
+              </div>
+
+              {/* Chat Area (Column 2 & 3) */}
+              <div className={`${activeView === 'chat' ? 'flex' : 'hidden'} md:flex flex-1 h-full w-full md:w-auto`}>
+                <Routes>
+                  <Route path=":conversationId" element={
+                    selectedConv ? (
+                      <>
+                        <ChatArea 
+                          onResolve={() => {
+                            setSelectedConv(null);
+                            setActiveView('sidebar');
+                            navigate('/inbox');
+                            triggerRefresh();
+                          }}
+                          onAssign={() => triggerRefresh()}
+                          onLoadMore={() => {
+                            if (messages.length > 0) {
+                              fetchMessages(selectedConv.id, messages[0].id);
+                            }
+                          }}
+                        />
+                        <div className="hidden lg:block w-80 shrink-0 h-full border-l border-base-300">
+                          <ContactInfo 
+                            onUpdate={(newName, newEmail) => {
+                              setSelectedConv({ ...selectedConv, name: newName, email: newEmail } as any);
+                              triggerRefresh();
+                            }} 
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
+                        <span className="text-6xl mb-4">⏳</span>
+                        <h2 className="text-xl font-bold">Memuat percakapan...</h2>
+                      </div>
+                    )
+                  } />
+                  <Route path="" element={
+                    <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-base-200/30 text-base-content/40">
+                      <span className="text-6xl mb-4">📥</span>
+                      <h2 className="text-xl font-bold">Pilih percakapan untuk memulai</h2>
+                      <p className="text-sm">Silakan pilih salah satu pesan di samping kiri.</p>
+                    </div>
+                  } />
+                </Routes>
+              </div>
+            </>
+          } />
+          <Route path="/contacts" element={<div className={`${activeView === 'contacts' ? 'block' : 'hidden'} md:block flex-1 h-full w-full`}><Contacts onStartChat={(p: string) => { setActiveView('chat'); startNewChat(p); }} /></div>} />
+          <Route path="/broadcast" element={<div className="flex-1 h-full w-full overflow-y-auto"><Broadcast /></div>} />
+          <Route path="/analytics" element={<div className="flex-1 h-full w-full overflow-y-auto"><Analytics /></div>} />
+          <Route path="/reports" element={<div className="flex-1 h-full w-full overflow-y-auto"><ReportsDashboard /></div>} />
+          <Route path="/settings" element={<div className={`${activeView === 'settings' ? 'block' : 'hidden'} md:block flex-1 h-full w-full overflow-y-auto`}><Settings /></div>} />
+          {user?.role === 'administrator' && (
+            <Route path="/chatbot" element={<div className="flex-1 h-full w-full overflow-y-auto"><ChatbotBuilder /></div>} />
+          )}
+        </Routes>
+      </div>
+
+      <BottomNav />
 
       <ShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <SearchPalette 
