@@ -50,7 +50,7 @@ interface Props {
 
 const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const { token, user: currentUser } = useAuthStore();
-  const { messages, selectedConv, hasMoreMessages, isLoadingOlder, isInitialChatLoading, wsInstance, isContactTyping } = useChatStore();
+  const { messages, isLoadingOlder, isContactTyping, selectedConv, scheduledMessages, hasMoreMessages, isInitialChatLoading, wsInstance } = useChatStore();
   const { addToast } = useToastStore();
 
   const parentRef = useRef<HTMLDivElement>(null);
@@ -79,6 +79,16 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   const activeViewers = useViewingPresence(selectedConv?.id);
+  const currentScheduledMsgs = selectedConv ? (scheduledMessages[selectedConv.id] || []) : [];
+
+  // Schedule Message States
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1);
+    return d.toISOString().slice(0, 16);
+  });
+  const [isScheduling, setIsScheduling] = useState(false);
 
   // AI Assistant States
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -395,6 +405,60 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     }
   };
 
+  const handleScheduleMessage = async () => {
+    if ((!inputText.trim() && !selectedFile) || !token) return;
+    setIsScheduling(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/scheduled-messages`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          conversation_id: Number(selectedConv.id),
+          content: inputText,
+          scheduled_at: scheduleDate
+        })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setInputText('');
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setShowScheduleModal(false);
+        addToast('Pesan berhasil dijadwalkan', 'success');
+      } else {
+        addToast(result.error || 'Gagal menjadwalkan pesan', 'error');
+      }
+    } catch (err) {
+      console.error('Error scheduling message:', err);
+      addToast('Terjadi kesalahan jaringan', 'error');
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const handleCancelSchedule = async (scheduleId: number) => {
+    if (!token) return;
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const response = await fetch(`${apiUrl}/api/scheduled-messages/${scheduleId}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        addToast('Jadwal pesan dibatalkan', 'success');
+      } else {
+        addToast(result.error || 'Gagal membatalkan jadwal', 'error');
+      }
+    } catch (err) {
+      addToast('Terjadi kesalahan jaringan', 'error');
+    }
+  };
+
   const handleSendMessage = async () => {
     if ((!inputText.trim() && !selectedFile) || !token) return;
     setIsSending(true);
@@ -512,8 +576,15 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               <span>{selectedConv.name.substring(0, 2).toUpperCase()}</span>
             </div>
           </div>
-          <div>
-            <h2 className="font-bold text-sm sm:text-base">{selectedConv.name}</h2>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-sm sm:text-base">{selectedConv.name}</h2>
+              {currentScheduledMsgs.length > 0 && (
+                <div className="badge badge-primary badge-sm" title={`${currentScheduledMsgs.length} pesan terjadwal`}>
+                  🕐 {currentScheduledMsgs.length}
+                </div>
+              )}
+            </div>
             <p className="text-[10px] text-success font-medium flex gap-2">
               <span>Online</span>
               <span className="text-base-content/50 font-mono text-[9px]">
@@ -758,6 +829,36 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
             })}
           </div>
         )}
+
+        {/* Ghost Bubbles for Scheduled Messages */}
+        {currentScheduledMsgs.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="divider text-xs text-base-content/40 my-1">Pesan Terjadwal ({currentScheduledMsgs.length})</div>
+            {currentScheduledMsgs.map(msg => (
+              <div key={`sched-${msg.id}`} className="chat chat-end opacity-60 hover:opacity-100 transition-opacity relative group">
+                <div className="chat-header text-xs opacity-50 mb-1 flex items-center gap-1">
+                  <span>Sistem (Pesan Terjadwal)</span>
+                  <time className="font-semibold text-primary">{new Date(msg.scheduled_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}</time>
+                </div>
+                <div className="chat-bubble chat-bubble-primary text-sm whitespace-pre-wrap flex flex-col gap-1 border-dashed border-2 border-primary/50 bg-base-100 text-base-content">
+                  <div className="flex justify-between items-start gap-4">
+                    <span>{msg.content}</span>
+                    <button 
+                      className="btn btn-ghost btn-xs text-error p-0 h-4 min-h-4 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => handleCancelSchedule(msg.id)}
+                      title="Batalkan Jadwal"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {msg.status === 'failed' && (
+                    <span className="text-xs text-error mt-1">Gagal mengirim, akan dicoba lagi...</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Area Input Pesan Bawah */}
@@ -916,13 +1017,23 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
               disabled={isSending || !canReply}
             ></textarea>
           </div>
-          <button 
-            className={`btn btn-primary px-8 text-white h-12 ${isSending ? 'loading' : ''}`}
-            onClick={handleSendMessage}
-            disabled={isSending || (!inputText.trim() && !selectedFile) || !canReply}
-          >
-            {isSending ? '' : 'Kirim'}
-          </button>
+          <div className="flex gap-2">
+            <button 
+              className="btn btn-square btn-outline btn-primary h-12 w-12 border-base-300"
+              onClick={() => setShowScheduleModal(true)}
+              disabled={isSending || isScheduling || !inputText.trim() || !canReply}
+              title="Jadwalkan Pesan"
+            >
+              🕐
+            </button>
+            <button 
+              className={`btn btn-primary px-8 text-white h-12 ${isSending ? 'loading' : ''}`}
+              onClick={handleSendMessage}
+              disabled={isSending || (!inputText.trim() && !selectedFile) || !canReply}
+            >
+              {isSending ? '' : 'Kirim'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1027,6 +1138,47 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
             <button>close</button>
           </form>
         </dialog>
+      )}
+
+      {/* Modal Jadwal Pesan */}
+      {showScheduleModal && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <span className="text-xl">🕐</span> Jadwalkan Pesan
+            </h3>
+            <div className="form-control mb-4">
+              <label className="label">
+                <span className="label-text">Pilih Waktu (Minimal 5 menit dari sekarang)</span>
+              </label>
+              <input 
+                type="datetime-local" 
+                className="input input-bordered w-full" 
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 mb-6">
+              <button className="btn btn-xs btn-outline" onClick={() => {
+                const d = new Date(); d.setHours(d.getHours() + 1);
+                setScheduleDate(d.toISOString().slice(0, 16));
+              }}>+1 Jam</button>
+              <button className="btn btn-xs btn-outline" onClick={() => {
+                const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9,0,0,0);
+                setScheduleDate(d.toISOString().slice(0, 16));
+              }}>Besok 9 Pagi</button>
+            </div>
+            <div className="modal-action">
+              <button className="btn btn-ghost" onClick={() => setShowScheduleModal(false)}>Batal</button>
+              <button className={`btn btn-primary ${isScheduling ? 'loading' : ''}`} onClick={handleScheduleMessage} disabled={isScheduling}>
+                Jadwalkan
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop bg-base-300/40 backdrop-blur-sm" onClick={() => setShowScheduleModal(false)}>
+            <button>close</button>
+          </form>
+        </div>
       )}
     </div>
   );
