@@ -492,3 +492,22 @@ CREATE TABLE message_templates (
 );
 
 CREATE INDEX idx_message_templates_search ON message_templates USING GIN(to_tsvector('indonesian', name || ' ' || body));
+
+CREATE TYPE export_status AS ENUM ('queued', 'processing', 'completed', 'failed', 'expired');
+CREATE TYPE export_format AS ENUM ('csv', 'xlsx');
+
+CREATE TABLE export_jobs (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    export_type VARCHAR(50) NOT NULL,
+    export_format export_format NOT NULL DEFAULT 'csv',
+    filters JSONB DEFAULT '{}'::jsonb,
+    status export_status DEFAULT 'queued',
+    file_path VARCHAR(1024),
+    file_size_bytes BIGINT,
+    row_count INT,
+    progress_percent INT DEFAULT 0,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    created_by BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
