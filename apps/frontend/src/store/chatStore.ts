@@ -20,6 +20,8 @@ export interface SelectedConversation {
   status?: string | null;
   assignee_id?: number | null;
   assignee_name?: string | null;
+  team_id?: number | null;
+  team_name?: string | null;
   inbox_id?: number | null;
   provider_type?: string;
 }

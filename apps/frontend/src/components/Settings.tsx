@@ -6,6 +6,7 @@ import WebhookManagement from './WebhookManagement';
 import AutomationManagement from './AutomationManagement';
 import MessageTemplateManagement from './MessageTemplateManagement';
 import { ApiKeyManagement } from './ApiKeyManagement';
+import { TeamsManagement } from './TeamsManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -26,7 +27,7 @@ const Settings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation' | 'apikeys'>('inboxes');
+  const [activeTab, setActiveTab] = useState<'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation' | 'apikeys' | 'teams'>('inboxes');
 
   // Inboxes State
   const [inboxes, setInboxes] = useState<any[]>([]);
@@ -429,6 +430,9 @@ const Settings = () => {
           <a className={`tab ${activeTab === 'automation' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('automation')}>Automasi (Rules)</a>
           {user?.role === 'administrator' && (
             <a className={`tab ${activeTab === 'apikeys' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('apikeys')}>API Keys</a>
+          )}
+          {user?.role === 'administrator' && (
+            <a className={`tab ${activeTab === 'teams' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('teams')}>Tim/Departemen</a>
           )}
         </div>
 
@@ -867,6 +871,7 @@ const Settings = () => {
         {activeTab === 'webhooks' && <WebhookManagement />}
         {activeTab === 'automation' && <AutomationManagement />}
         {activeTab === 'templates' && <MessageTemplateManagement />}
+        {user?.role === 'administrator' && activeTab === 'teams' && <TeamsManagement />}
 
         {user?.role === 'administrator' && (
           <div className="card bg-base-100 shadow-sm border border-base-300">

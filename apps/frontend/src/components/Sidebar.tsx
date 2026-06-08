@@ -30,7 +30,7 @@ interface Props {
 const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const { token } = useAuthStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'assigned' | 'all'>('unassigned');
+  const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'my_teams' | 'assigned' | 'all'>('unassigned');
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -258,6 +258,13 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             Tiketku
           </button>
           <button 
+            className={`btn btn-xs shrink-0 ${activeTab === 'my_teams' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('my_teams')}
+            title="Tim Saya"
+          >
+            Tim Saya
+          </button>
+          <button 
             className={`btn btn-xs shrink-0 ${activeTab === 'assigned' ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setActiveTab('assigned')}
             title="Sedang Ditangani"
@@ -294,6 +301,7 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             <p className="text-xs whitespace-normal">
               {activeTab === 'unassigned' ? 'Hore! Tidak ada antrean tiket baru.' : 
                activeTab === 'mine' ? 'Anda belum mengambil tiket apa pun.' :
+               activeTab === 'my_teams' ? 'Tidak ada tiket yang ditugaskan ke tim Anda.' :
                activeTab === 'assigned' ? 'Belum ada tiket yang sedang ditangani.' : 
                'Belum ada tiket sama sekali.'}
             </p>
