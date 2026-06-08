@@ -333,8 +333,8 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
                   {conv.last_message || 'Tidak ada pesan...'}
                 </span>
                 <div className="flex gap-1 mt-2 flex-wrap">
-                   <div className={`badge badge-outline text-[9px] h-4 ${conv.provider_type === 'email' ? 'badge-info' : 'badge-primary'}`}>
-                     {conv.provider_type === 'email' ? 'Email' : 'WhatsApp'}
+                   <div className={`badge badge-outline text-[9px] h-4 ${conv.provider_type === 'email' ? 'badge-info' : conv.provider_type === 'telegram' ? 'badge-accent' : conv.provider_type === 'web_widget' ? 'badge-secondary' : 'badge-primary'}`}>
+                     {conv.provider_type === 'email' ? 'Email' : conv.provider_type === 'telegram' ? '✈️ Telegram' : conv.provider_type === 'web_widget' ? 'Web' : 'WhatsApp'}
                    </div>
                    {(conv as any).inbox_name && (
                      <div className="badge badge-accent badge-outline text-[9px] h-4 max-w-[100px] truncate" title={(conv as any).inbox_name}>

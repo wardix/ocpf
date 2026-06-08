@@ -394,9 +394,7 @@ inboxesRoutes.get('/', async (c) => {
 });
 
 // POST /api/inboxes (Admin only)
-inboxesRoutes.post('/', zValidator('json', createInboxSchema, (result, c) => {
-  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
-}), async (c) => {
+inboxesRoutes.post('/', zValidator('json', createInboxSchema), async (c) => {
   try {
     const accountId = getAccountId(c);
     const jwtPayload = c.get('jwtPayload') as any;
@@ -406,22 +404,21 @@ inboxesRoutes.post('/', zValidator('json', createInboxSchema, (result, c) => {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
-    const { name, description, greeting_message, channel_id } = c.req.valid('json');
+    const { name, description, greeting_message, channel_id, provider_type, provider_config } = c.req.valid('json');
+
+    if (provider_type === 'telegram' && (!provider_config || !provider_config.token)) {
+      return c.json({ error: 'Bot token wajib disertakan untuk Telegram' }, 400);
+    }
 
     // Resolve channel_id
     let channelId = channel_id;
     if (!channelId) {
-      const [firstChannel] = await sql`SELECT id FROM channels WHERE account_id = ${accountId} LIMIT 1`;
-      if (firstChannel) {
-        channelId = Number(firstChannel.id);
-      } else {
-        const [newChannel] = await sql`
-          INSERT INTO channels (account_id, name, provider_type, provider_config)
-          VALUES (${accountId}, ${name + ' Channel'}, 'whatsapp', '{}'::jsonb)
-          RETURNING id
-        `;
-        channelId = Number(newChannel.id);
-      }
+      const [newChannel] = await sql`
+        INSERT INTO channels (account_id, name, provider_type, provider_config)
+        VALUES (${accountId}, ${name + ' Channel'}, ${provider_type}, ${provider_config})
+        RETURNING id
+      `;
+      channelId = Number(newChannel.id);
     }
 
     const result = await sql.begin(async (tx) => {

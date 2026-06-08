@@ -44,7 +44,13 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
   
   // Create Inbox Form State
   const [isCreating, setIsCreating] = useState(false);
-  const [createData, setCreateData] = useState({ name: '', description: '', greeting_message: '' });
+  const [createData, setCreateData] = useState({ 
+    name: '', 
+    description: '', 
+    greeting_message: '',
+    provider_type: 'whatsapp',
+    provider_config: { token: '' }
+  });
   const [savingNewInbox, setSavingNewInbox] = useState(false);
 
   // Edit Inbox Form State
@@ -148,7 +154,7 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
       if (response.ok) {
         const result = await response.json();
         addToast('Inbox baru berhasil dibuat', 'success');
-        setCreateData({ name: '', description: '', greeting_message: '' });
+        setCreateData({ name: '', description: '', greeting_message: '', provider_type: 'whatsapp', provider_config: { token: '' } });
         setIsCreating(false);
         onRefreshInboxes();
         if (result.data?.id) {
@@ -283,6 +289,37 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
                 />
               </div>
               <div className="form-control">
+                <label className="label"><span className="label-text text-xs">Platform (Channel)</span></label>
+                <select 
+                  className="select select-sm select-bordered w-full"
+                  value={createData.provider_type}
+                  onChange={e => setCreateData({ ...createData, provider_type: e.target.value })}
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="email">Email</option>
+                  <option value="web_widget">Web Widget</option>
+                </select>
+              </div>
+
+              {createData.provider_type === 'telegram' && (
+                <div className="form-control md:col-span-2">
+                  <label className="label"><span className="label-text text-xs">Telegram Bot Token</span></label>
+                  <input 
+                    type="password" 
+                    placeholder="123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                    className="input input-sm input-bordered w-full font-mono text-sm" 
+                    value={createData.provider_config.token}
+                    onChange={e => setCreateData({ ...createData, provider_config: { ...createData.provider_config, token: e.target.value } })}
+                    required
+                  />
+                  <label className="label">
+                    <span className="label-text-alt text-info">Dapatkan token dari @BotFather di Telegram</span>
+                  </label>
+                </div>
+              )}
+
+              <div className="form-control md:col-span-2">
                 <label className="label"><span className="label-text text-xs">Deskripsi Singkat</span></label>
                 <input 
                   type="text" 

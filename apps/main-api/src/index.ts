@@ -37,6 +37,7 @@ import { scheduledMessagesRoutes } from './routes/scheduled_messages';
 import { messageTemplatesRoutes } from './routes/message_templates';
 import { exportsRoutes } from './routes/exports';
 import { apiKeysRoutes } from './routes/api_keys';
+import { channelsRoutes } from './routes/channels';
 
 const app = new Hono();
 
@@ -123,6 +124,7 @@ app.route('/api/scheduled-messages', scheduledMessagesRoutes);
 app.route('/api/message-templates', messageTemplatesRoutes);
 app.route('/api/exports', exportsRoutes);
 app.route('/api/api-keys', apiKeysRoutes);
+app.route('/api/channels', channelsRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);
