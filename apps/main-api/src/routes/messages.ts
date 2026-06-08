@@ -22,6 +22,11 @@ const sendMessageSchema = z.object({
     mimetype: z.string(),
     data_base64: z.string(),
     filename: z.string().optional()
+  }).optional(),
+  email_metadata: z.object({
+    subject: z.string().optional(),
+    cc_addresses: z.array(z.string()).optional(),
+    bcc_addresses: z.array(z.string()).optional()
   }).optional()
 }).refine(data => data.content || data.media, {
   message: "Pesan teks atau media harus diisi"
@@ -46,7 +51,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const agentId = jwtPayload.id;
     const accountId = getAccountId(c);
 
-    const { target_id, content, conversation_id, media, is_private } = c.req.valid('json');
+    const { target_id, content, conversation_id, media, is_private, email_metadata } = c.req.valid('json');
 
     const [conv] = await sql`
       SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id, ch.provider_type
@@ -78,6 +83,48 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
         )
         RETURNING *;
       `;
+
+      let in_reply_to = undefined;
+      let references = undefined;
+
+      if (conv.provider_type === 'email' && !is_private) {
+        const [lastEmail] = await tx`
+          SELECT em.email_message_id, em.email_references 
+          FROM email_message_metadata em
+          JOIN messages m ON em.message_id = m.id
+          WHERE m.conversation_id = ${conversation_id} AND m.message_type = 'incoming'
+          ORDER BY m.created_at DESC LIMIT 1
+        `;
+        if (lastEmail) {
+          in_reply_to = lastEmail.email_message_id;
+          references = lastEmail.email_references ? `${lastEmail.email_references} ${lastEmail.email_message_id}` : lastEmail.email_message_id;
+        }
+
+        // Insert outgoing email metadata
+        await tx`
+          INSERT INTO email_message_metadata (
+            message_id, in_reply_to, email_references,
+            from_address, to_addresses, cc_addresses, bcc_addresses,
+            subject, html_content, email_date
+          ) VALUES (
+            ${insertedMsg.id},
+            ${in_reply_to || null},
+            ${references || null},
+            'agent@omni.com',
+            ARRAY[${target_id}]::text[],
+            ${email_metadata?.cc_addresses || []},
+            ${email_metadata?.bcc_addresses || []},
+            ${email_metadata?.subject || null},
+            null,
+            NOW()
+          )
+        `;
+      }
+      
+      // Inject thread info for redis payload building later
+      (insertedMsg as any)._in_reply_to = in_reply_to;
+      (insertedMsg as any)._references = references;
+
       
       if (media) {
         try {
@@ -127,7 +174,14 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
           target_id: target_id,
           content: content || '',
           message_type: media ? 'image' : 'text',
-          media: media
+          media: media,
+          email_metadata: conv.provider_type === 'email' ? {
+             subject: email_metadata?.subject,
+             cc_addresses: email_metadata?.cc_addresses,
+             bcc_addresses: email_metadata?.bcc_addresses,
+             in_reply_to: (msg as any)._in_reply_to,
+             references: (msg as any)._references
+          } : undefined
         }
       };
       
@@ -158,5 +212,23 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
   } catch (error) {
     console.error('Error pengiriman pesan:', error);
     return c.json({ success: false, error: 'Gagal mengirim' }, 500);
+  }
+});
+
+messagesRoutes.get('/:id/email-metadata', async (c) => {
+  const accountId = getAccountId(c);
+  const msgId = c.req.param('id');
+  try {
+    const [meta] = await sql`
+      SELECT em.* FROM email_message_metadata em
+      JOIN messages m ON em.message_id = m.id
+      WHERE em.message_id = ${msgId} AND m.account_id = ${accountId}
+      LIMIT 1
+    `;
+    if (!meta) return c.json({ error: 'Metadata not found' }, 404);
+    return c.json({ success: true, data: meta });
+  } catch (err) {
+    console.error('Error getting metadata:', err);
+    return c.json({ success: false, error: 'Internal Server Error' }, 500);
   }
 });

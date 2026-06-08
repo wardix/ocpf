@@ -65,6 +65,7 @@ conversationsRoutes.get('/', async (c) => {
           con.name as contact_name, 
           con.email as contact_email,
           con.phone_number as contact_phone,
+          ch.provider_type,
           (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
           COALESCE((SELECT created_at FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1), c.updated_at) as updated_at,
           COALESCE(
@@ -77,6 +78,7 @@ conversationsRoutes.get('/', async (c) => {
         FROM conversations c
         JOIN contacts con ON c.contact_id = con.id
         JOIN inboxes i ON c.inbox_id = i.id
+        JOIN channels ch ON i.channel_id = ch.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
         LEFT JOIN users u ON t.assignee_id = u.id
         WHERE c.account_id = ${accountId} AND con.deleted_at IS NULL
@@ -186,7 +188,16 @@ conversationsRoutes.get('/:id/messages', async (c) => {
         COALESCE(
           json_agg(a.*) FILTER (WHERE a.id IS NOT NULL), 
           '[]'
-        ) AS attachments
+        ) AS attachments,
+        (
+          SELECT json_build_object(
+            'subject', em.subject,
+            'cc_addresses', em.cc_addresses,
+            'bcc_addresses', em.bcc_addresses,
+            'html_content', em.html_content,
+            'has_attachments', em.has_attachments
+          ) FROM email_message_metadata em WHERE em.message_id = m.id
+        ) as email_metadata
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
       WHERE m.conversation_id = ${conversationId} 

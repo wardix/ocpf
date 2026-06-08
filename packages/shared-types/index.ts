@@ -40,7 +40,20 @@ export const IncomingMessagePayloadSchema = z.object({
     participant_id: z.string().nullable().optional(),
     participant_name: z.string().nullable().optional(),
     is_host_echo: z.boolean().optional(),
-    media: MediaPayloadSchema.optional()
+    media: MediaPayloadSchema.optional(),
+    email_metadata: z.object({
+      message_id: z.string().optional(),
+      in_reply_to: z.string().optional(),
+      references: z.string().optional(),
+      from_address: z.string(),
+      to_addresses: z.array(z.string()),
+      cc_addresses: z.array(z.string()).optional(),
+      bcc_addresses: z.array(z.string()).optional(),
+      subject: z.string().optional(),
+      html_content: z.string().optional(),
+      has_attachments: z.boolean().optional(),
+      email_date: z.string().optional()
+    }).optional()
   })
 });
 
@@ -68,7 +81,15 @@ export const SendMessagePayloadSchema = z.object({
     content: z.string().optional(),
     message_type: MessageTypeSchema,
     is_private: z.boolean().optional(),
-    media: MediaPayloadSchema.optional()
+    media: MediaPayloadSchema.optional(),
+    email_metadata: z.object({
+      cc_addresses: z.array(z.string()).optional(),
+      bcc_addresses: z.array(z.string()).optional(),
+      subject: z.string().optional(),
+      html_content: z.string().optional(),
+      in_reply_to: z.string().optional(),
+      references: z.string().optional()
+    }).optional()
   })
 });
 

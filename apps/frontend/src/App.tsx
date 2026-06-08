@@ -482,7 +482,8 @@ function App() {
                   status: conv.status,
                   assignee_id: conv.assignee_id,
                   assignee_name: conv.assignee_name,
-                  inbox_id: conv.inbox_id
+                  inbox_id: conv.inbox_id,
+                  provider_type: conv.provider_type
                 });
                 navigate(`/inbox/${conv.id}`);
               }} 

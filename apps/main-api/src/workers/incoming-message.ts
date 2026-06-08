@@ -157,21 +157,42 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       `;
     }
 
-    let [conversation] = await tx`
-      SELECT id FROM conversations
-      WHERE account_id = ${ACCOUNT_ID} 
-        AND inbox_id = ${INBOX_ID} 
-        AND contact_id = ${contact.id}
-      LIMIT 1
-    `;
+    let conversation = null;
+    let threadedTicketId = null;
+
+    if (data.email_metadata && data.email_metadata.in_reply_to) {
+      const [existingThread] = await tx`
+        SELECT m.conversation_id, m.ticket_id
+        FROM email_message_metadata em
+        JOIN messages m ON em.message_id = m.id
+        WHERE em.email_message_id = ${data.email_metadata.in_reply_to}
+        LIMIT 1
+      `;
+      if (existingThread) {
+        conversation = { id: existingThread.conversation_id };
+        threadedTicketId = existingThread.ticket_id;
+      }
+    }
+
+    if (!conversation) {
+      const [conv] = await tx`
+        SELECT id FROM conversations
+        WHERE account_id = ${ACCOUNT_ID} 
+          AND inbox_id = ${INBOX_ID} 
+          AND contact_id = ${contact.id}
+        LIMIT 1
+      `;
+      conversation = conv;
+    }
 
     if (!conversation) {
       isNewConversation = true;
-      [conversation] = await tx`
+      const [newConv] = await tx`
         INSERT INTO conversations (account_id, inbox_id, contact_id)
         VALUES (${ACCOUNT_ID}, ${INBOX_ID}, ${contact.id})
         RETURNING id;
       `;
+      conversation = newConv;
     }
 
     let isOffHours = false;
@@ -361,6 +382,29 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       )
       RETURNING *;
     `;
+
+    if (data.email_metadata) {
+      await tx`
+        INSERT INTO email_message_metadata (
+          message_id, email_message_id, in_reply_to, email_references,
+          from_address, to_addresses, cc_addresses, bcc_addresses,
+          subject, html_content, has_attachments, email_date
+        ) VALUES (
+          ${msg.id}, 
+          ${data.email_metadata.message_id || null}, 
+          ${data.email_metadata.in_reply_to || null}, 
+          ${data.email_metadata.references || null},
+          ${data.email_metadata.from_address}, 
+          ${data.email_metadata.to_addresses || []}, 
+          ${data.email_metadata.cc_addresses || []}, 
+          ${data.email_metadata.bcc_addresses || []},
+          ${data.email_metadata.subject || null}, 
+          ${data.email_metadata.html_content || null}, 
+          ${data.email_metadata.has_attachments || false},
+          ${data.email_metadata.email_date ? new Date(data.email_metadata.email_date) : null}
+        )
+      `;
+    }
 
     let attachmentData = null;
     if (data.media) {

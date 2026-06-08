@@ -7,7 +7,7 @@
 -- -------------------------------------------------------------------------
 CREATE TYPE user_role AS ENUM ('administrator', 'agent');
 CREATE TYPE availability_status AS ENUM ('online', 'busy', 'offline');
-CREATE TYPE provider_type AS ENUM ('whatsapp', 'facebook', 'web_widget', 'api', 'telegram');
+CREATE TYPE provider_type AS ENUM ('whatsapp', 'facebook', 'web_widget', 'api', 'telegram', 'email');
 CREATE TYPE conversation_status AS ENUM ('open', 'pending', 'snoozed', 'resolved');
 CREATE TYPE sender_type AS ENUM ('Contact', 'User', 'System');
 CREATE TYPE message_type AS ENUM ('incoming', 'outgoing', 'template');
