@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { authMiddleware, getAccountId } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { redis } from '../config/redis';
 
 export const channelsRoutes = new Hono();
 
-channelsRoutes.use('/*', authMiddleware);
+channelsRoutes.use('/*', jwtMiddleware);
 
 const createChannelSchema = z.object({
   name: z.string().min(1).max(255),
@@ -33,7 +33,7 @@ channelsRoutes.post('/', zValidator('json', createChannelSchema), async (c) => {
         return c.json({ error: 'Bot token wajib disertakan untuk Telegram' }, 400);
       }
       
-      const res = await fetch(\`https://api.telegram.org/bot\${token}/getMe\`);
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
       const data = await res.json();
       if (!data.ok) {
         return c.json({ error: 'Token Telegram tidak valid' }, 400);
