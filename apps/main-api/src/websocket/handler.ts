@@ -7,6 +7,7 @@ import { SendTypingPayloadSchema } from '@omnichannel/shared-types';
 export type WebSocketData = {
   accountId: number;
   userId: number;
+  name: string;
   role: string;
   isAlive: boolean;
 };
@@ -99,6 +100,81 @@ export const websocketHandlers = {
               console.error('Error publishing agent typing status:', e);
             }
           });
+        }
+
+        // --- COLLISION DETECTION EVENTS ---
+        if (payload.event === 'conversation.viewing') {
+          const { conversation_id } = payload.data;
+          if (conversation_id) {
+            const userId = ws.data.userId;
+            const name = ws.data.name;
+            const viewKey = `viewing:${conversation_id}:${userId}`;
+            const setKey = `viewers:${conversation_id}`;
+            
+            // Set expire on individual user viewing status (15s TTL)
+            await redis.setex(viewKey, 15, name);
+            // Add user to the set of viewers
+            await redis.sadd(setKey, userId.toString());
+
+            // Get current active viewers
+            const userIds = await redis.smembers(setKey);
+            const activeViewers = [];
+
+            for (const uid of userIds) {
+              const uName = await redis.get(`viewing:${conversation_id}:${uid}`);
+              if (uName) {
+                activeViewers.push({ id: Number(uid), name: uName });
+              } else {
+                // Remove stale viewers from set
+                await redis.srem(setKey, uid);
+              }
+            }
+
+            // Broadcast to other agents
+            await redis.publish('chat:events', JSON.stringify({
+              event: 'conversation.viewers_updated',
+              data: {
+                account_id: ws.data.accountId,
+                conversation_id,
+                viewers: activeViewers
+              }
+            }));
+          }
+        }
+
+        if (payload.event === 'conversation.left') {
+          const { conversation_id } = payload.data;
+          if (conversation_id) {
+            const userId = ws.data.userId;
+            const viewKey = `viewing:${conversation_id}:${userId}`;
+            const setKey = `viewers:${conversation_id}`;
+
+            await redis.del(viewKey);
+            await redis.srem(setKey, userId.toString());
+
+            // Get current active viewers
+            const userIds = await redis.smembers(setKey);
+            const activeViewers = [];
+
+            for (const uid of userIds) {
+              const uName = await redis.get(`viewing:${conversation_id}:${uid}`);
+              if (uName) {
+                activeViewers.push({ id: Number(uid), name: uName });
+              } else {
+                await redis.srem(setKey, uid);
+              }
+            }
+
+            // Broadcast to other agents
+            await redis.publish('chat:events', JSON.stringify({
+              event: 'conversation.viewers_updated',
+              data: {
+                account_id: ws.data.accountId,
+                conversation_id,
+                viewers: activeViewers
+              }
+            }));
+          }
         }
       } catch (e) {
         // Abaikan parse error

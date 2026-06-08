@@ -235,6 +235,9 @@ function App() {
             }
           } else if (payload.event === 'agent.availability_changed') {
             window.dispatchEvent(new CustomEvent('agentStatusChanged', { detail: payload.data }));
+          } else if (payload.event === 'conversation.viewers_updated') {
+            const { conversation_id, viewers } = payload.data;
+            useChatStore.getState().setActiveViewers(conversation_id, viewers);
           }
         } catch (e) {
           console.error('Invalid WS message:', event.data);

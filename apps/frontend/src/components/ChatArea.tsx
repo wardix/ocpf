@@ -40,6 +40,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { MessageBubble } from './MessageBubble';
 import { ConfirmModal } from './ConfirmModal';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useViewingPresence } from '../hooks/useViewingPresence';
 
 interface Props {
   onResolve: () => void;
@@ -76,6 +77,8 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+
+  const activeViewers = useViewingPresence(selectedConv?.id);
 
   // AI Assistant States
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -654,6 +657,35 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         <div className="absolute top-16 left-0 w-full z-10 bg-base-100/80 backdrop-blur-sm border-b border-base-200 py-1 px-6 shadow-sm flex items-center gap-2 text-xs text-base-content/60 italic transition-all">
           <span className="loading loading-dots loading-xs text-primary"></span>
           <span>{selectedConv.name} sedang mengetik...</span>
+        </div>
+      )}
+
+      {/* Collision Indicator (Real-time Agent Presence) */}
+      {activeViewers.length > 0 && (
+        <div className={`absolute left-0 w-full z-10 bg-info/10 backdrop-blur-sm border-b border-info/20 py-1.5 px-6 shadow-sm flex items-center justify-between text-xs text-info-content transition-all ${isContactTyping ? 'top-24' : 'top-16'}`}>
+          <div className="flex items-center gap-2 font-medium">
+            <span className="text-info text-base animate-pulse">👁</span>
+            <span>
+              {activeViewers.slice(0, 2).map(v => v.name).join(', ')}
+              {activeViewers.length > 2 ? ` dan ${activeViewers.length - 2} lainnya` : ''} sedang melihat obrolan ini
+            </span>
+          </div>
+          <div className="avatar-group -space-x-3 rtl:space-x-reverse">
+            {activeViewers.slice(0, 3).map(v => (
+              <div key={v.id} className="avatar placeholder border-info/30" title={v.name}>
+                <div className="bg-info text-info-content w-6">
+                  <span className="text-[10px]">{v.name.substring(0, 2).toUpperCase()}</span>
+                </div>
+              </div>
+            ))}
+            {activeViewers.length > 3 && (
+              <div className="avatar placeholder border-info/30">
+                <div className="bg-base-200 text-base-content w-6">
+                  <span className="text-[10px]">+{activeViewers.length - 3}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
