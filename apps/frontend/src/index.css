@@ -25,3 +25,10 @@ mark {
   color: oklch(var(--wac));
   font-weight: 600;
 }
+
+/* Pastikan area sentuh pada mobile cukup besar sesuai standar (min 44px) */
+@media (max-width: 768px) {
+  button, .btn {
+    min-height: 44px;
+  }
+}
