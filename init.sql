@@ -435,3 +435,23 @@ CREATE INDEX idx_automation_logs_created_at ON automation_logs(created_at DESC);
 
 
 
+
+CREATE TABLE email_message_metadata (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    email_message_id VARCHAR(255),
+    in_reply_to VARCHAR(255),
+    email_references TEXT,
+    from_address VARCHAR(255) NOT NULL,
+    to_addresses TEXT[] NOT NULL,
+    cc_addresses TEXT[],
+    bcc_addresses TEXT[],
+    subject VARCHAR(500),
+    html_content TEXT,
+    has_attachments BOOLEAN DEFAULT FALSE,
+    email_date TIMESTAMP WITH TIME ZONE
+);
+
+CREATE UNIQUE INDEX idx_email_meta_message_id ON email_message_metadata(message_id);
+CREATE INDEX idx_email_meta_email_message_id ON email_message_metadata(email_message_id);
+CREATE INDEX idx_email_meta_in_reply_to ON email_message_metadata(in_reply_to);
