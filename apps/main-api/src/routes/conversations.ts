@@ -545,6 +545,18 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
       return updatedTicket;
     });
 
+    if (ticket.assignee_id && ticket.assignee_id !== actorId) {
+      const { createNotification } = await import('../utils/notifications');
+      await createNotification({
+        userId: ticket.assignee_id,
+        accountId: ticket.account_id,
+        type: 'conversation_assigned',
+        title: 'Tiket Di-assign ke Anda',
+        body: `Tiket #${ticket.id} telah ditugaskan ke Anda oleh ${actorName}.`,
+        data: { conversation_id: conversationId, ticket_id: ticket.id }
+      });
+    }
+
     return c.json({ success: true, data: ticket });
   } catch (error: any) {
     console.error('Error assign ticket:', error);

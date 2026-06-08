@@ -7,6 +7,7 @@ import AutomationManagement from './AutomationManagement';
 import MessageTemplateManagement from './MessageTemplateManagement';
 import { ApiKeyManagement } from './ApiKeyManagement';
 import { TeamsManagement } from './TeamsManagement';
+import NotificationSettings from './NotificationSettings';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -448,6 +449,8 @@ const Settings = () => {
                 onRefreshInboxes={fetchInboxes} 
               />
             )}
+
+            <NotificationSettings />
 
             <div className="card bg-base-100 shadow-sm border border-base-300">
               <div className="card-body">

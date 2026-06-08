@@ -45,6 +45,19 @@ export function startSnoozeChecker() {
             snoozed_until: null
           } 
         }));
+
+        // Create Notification
+        if (ticket.assignee_id) {
+          const { createNotification } = await import('../utils/notifications');
+          await createNotification({
+            userId: ticket.assignee_id,
+            accountId: ticket.account_id,
+            type: 'snoozed_ticket_due',
+            title: 'Snooze Berakhir',
+            body: `Waktu tunggu tiket #${ticket.id} telah berakhir.`,
+            data: { conversation_id: ticket.conversation_id, ticket_id: ticket.id }
+          });
+        }
       }
 
       if (expiredTickets.length > 0) {

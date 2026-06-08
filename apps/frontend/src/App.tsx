@@ -17,6 +17,7 @@ import { useUiStore } from './store/uiStore'
 import { useChatStore } from './store/chatStore'
 import { useToastStore } from './store/toastStore'
 import { useThemeStore } from './store/themeStore'
+import { useNotificationStore } from './store/notificationStore'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { ShortcutsModal } from './components/ShortcutsModal'
 import { SearchPalette } from './components/SearchPalette'
@@ -58,6 +59,7 @@ function App() {
     setWsInstance, setIsContactTyping
   } = useChatStore();
   const { addToast } = useToastStore();
+  const { addNotification } = useNotificationStore();
 
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -235,6 +237,9 @@ function App() {
             if (selectedConv && newMessage.conversation_id === selectedConv.id) {
               setMessages((prev: any) => [...prev, newMessage]);
             }
+          } else if (payload.event === 'notification.new') {
+            addNotification(payload.data);
+            playNotificationSound();
           } else if (payload.event === 'message.status_changed') {
             const updatedMessage = payload.data;
             if (selectedConv && updatedMessage.conversation_id === selectedConv.id) {
