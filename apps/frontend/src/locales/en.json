@@ -1,0 +1,46 @@
+{
+  "app": {
+    "offline_banner": "❌ No internet connection (Offline). Waiting for network...",
+    "connecting": "⏳ Connecting to real-time server...",
+    "disconnected": "❌ Disconnected from server. Trying to reconnect...",
+    "tooltip_inbox": "Inbox",
+    "tooltip_contacts": "Contacts",
+    "tooltip_broadcast": "Mass Messages (Broadcast)",
+    "tooltip_analytics": "Reports & Analytics",
+    "tooltip_reports": "Data Export",
+    "tooltip_chatbot": "Chatbot Flow Builder",
+    "tooltip_settings": "Settings",
+    "tooltip_theme": "Choose Theme",
+    "tooltip_unmute": "Unmute Notifications",
+    "tooltip_mute": "Mute Notifications",
+    "tooltip_logout": "Logout",
+    "status_online": "Online",
+    "status_busy": "Busy",
+    "status_offline": "Offline",
+    "loading_conversation": "Loading conversation...",
+    "select_conversation": "Select a conversation to start",
+    "select_conversation_desc": "Please select a message on the left panel."
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "language_id": "Bahasa Indonesia",
+    "language_en": "English",
+    "account": "Account",
+    "general": "General",
+    "save": "Save"
+  },
+  "chat": {
+    "send": "Send",
+    "type_message": "Type a message...",
+    "resolve": "Resolve",
+    "assign": "Assign",
+    "unassign": "Unassign"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit"
+  }
+}
