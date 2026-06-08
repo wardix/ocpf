@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { authMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { z } from 'zod';
 
 export const messageTemplatesRoutes = new Hono();
-messageTemplatesRoutes.use('/*', authMiddleware);
+messageTemplatesRoutes.use('/*', jwtMiddleware);
 
 // Utility to extract variables
 function extractVariables(text: string): string[] {
@@ -24,7 +24,7 @@ const templateSchema = z.object({
 
 // List templates (with optional search query)
 messageTemplatesRoutes.get('/', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const q = c.req.query('q');
 
   try {
@@ -58,7 +58,7 @@ messageTemplatesRoutes.get('/', async (c) => {
 
 // Get single template
 messageTemplatesRoutes.get('/:id', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
@@ -76,8 +76,8 @@ messageTemplatesRoutes.get('/:id', async (c) => {
 
 // Create template
 messageTemplatesRoutes.post('/', async (c) => {
-  const accountId = c.get('account_id');
-  const userId = c.get('user_id');
+  const accountId = getAccountId(c);
+  const userId = (c.get('jwtPayload') as any)?.id;
 
   try {
     const body = await c.req.json();
@@ -102,7 +102,7 @@ messageTemplatesRoutes.post('/', async (c) => {
 
 // Update template
 messageTemplatesRoutes.put('/:id', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
@@ -132,7 +132,7 @@ messageTemplatesRoutes.put('/:id', async (c) => {
 
 // Delete template (soft delete)
 messageTemplatesRoutes.delete('/:id', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
@@ -156,7 +156,7 @@ const resolveSchema = z.object({
 
 // Auto-resolve template
 messageTemplatesRoutes.post('/:id/resolve', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
