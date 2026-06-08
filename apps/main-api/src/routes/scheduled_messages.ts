@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { authMiddleware } from '../middleware/auth';
+import { jwtMiddleware, getAccountId } from '../middleware/auth';
 import { z } from 'zod';
 import { redis } from '../config/redis';
 
 export const scheduledMessagesRoutes = new Hono();
-scheduledMessagesRoutes.use('/*', authMiddleware);
+scheduledMessagesRoutes.use('/*', jwtMiddleware);
 
 const createScheduleSchema = z.object({
   conversation_id: z.number(),
@@ -20,8 +20,8 @@ const createScheduleSchema = z.object({
 
 // Create Schedule
 scheduledMessagesRoutes.post('/', async (c) => {
-  const accountId = c.get('account_id');
-  const userId = c.get('user_id');
+  const accountId = getAccountId(c);
+  const userId = (c.get('jwtPayload') as any)?.id;
 
   try {
     const body = await c.req.json();
@@ -57,7 +57,7 @@ scheduledMessagesRoutes.post('/', async (c) => {
 
 // List schedules for a conversation
 scheduledMessagesRoutes.get('/:conversationId', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const conversationId = c.req.param('conversationId');
 
   try {
@@ -77,7 +77,7 @@ scheduledMessagesRoutes.get('/:conversationId', async (c) => {
 
 // Cancel Schedule
 scheduledMessagesRoutes.patch('/:id/cancel', async (c) => {
-  const accountId = c.get('account_id');
+  const accountId = getAccountId(c);
   const id = c.req.param('id');
 
   try {
