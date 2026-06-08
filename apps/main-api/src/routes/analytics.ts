@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const analyticsRoutes = new Hono();
 
-analyticsRoutes.use('/*', jwtMiddleware);
+analyticsRoutes.use('/*', authMiddleware);
 
 analyticsRoutes.get('/', async (c) => {
   try {

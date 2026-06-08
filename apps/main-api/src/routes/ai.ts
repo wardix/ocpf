@@ -2,13 +2,13 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { encrypt, decrypt } from '../utils/crypto';
 import { callAI, parseJSONResponse } from '../utils/ai';
 
 export const aiRoutes = new Hono();
 
-aiRoutes.use('/*', jwtMiddleware);
+aiRoutes.use('/*', authMiddleware);
 
 const aiConfigSchema = z.object({
   provider: z.enum(['openai', 'gemini']),

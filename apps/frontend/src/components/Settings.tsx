@@ -5,6 +5,7 @@ import InboxManagement from './InboxManagement';
 import WebhookManagement from './WebhookManagement';
 import AutomationManagement from './AutomationManagement';
 import MessageTemplateManagement from './MessageTemplateManagement';
+import { ApiKeyManagement } from './ApiKeyManagement';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
@@ -25,7 +26,7 @@ const Settings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation'>('inboxes');
+  const [activeTab, setActiveTab] = useState<'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation' | 'apikeys'>('inboxes');
 
   // Inboxes State
   const [inboxes, setInboxes] = useState<any[]>([]);
@@ -426,11 +427,13 @@ const Settings = () => {
           <a className={`tab ${activeTab === 'inboxes' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('inboxes')}>Inbox & Channel</a>
           <a className={`tab ${activeTab === 'webhooks' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('webhooks')}>Webhooks</a>
           <a className={`tab ${activeTab === 'automation' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('automation')}>Automasi (Rules)</a>
+          {user?.role === 'administrator' && (
+            <a className={`tab ${activeTab === 'apikeys' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('apikeys')}>API Keys</a>
+          )}
         </div>
 
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'labels' && <LabelManagement />}
-
         {activeTab === 'inboxes' && (
           <>
             {user?.role === 'administrator' && (
@@ -1091,6 +1094,7 @@ const Settings = () => {
         {activeTab === 'webhooks' && <WebhookManagement />}
         {activeTab === 'automation' && <AutomationManagement />}
         {activeTab === 'templates' && <MessageTemplateManagement />}
+        {activeTab === 'apikeys' && <ApiKeyManagement />}
       </div>
 
       <ConfirmModal

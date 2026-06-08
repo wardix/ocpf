@@ -4,12 +4,12 @@ import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { redis } from '../config/redis';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { rateLimiter } from '../middleware/rate-limiter';
 import { dispatchWebhook } from '../utils/webhooks';
 
 const app = new Hono();
-app.use('/*', jwtMiddleware);
+app.use('/*', authMiddleware);
 
 const broadcastSchema = z.object({
   contact_ids: z.array(z.number().int()).min(1, 'Pilih minimal satu kontak'),

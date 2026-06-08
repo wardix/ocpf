@@ -36,6 +36,7 @@ import { automationRoutes } from './routes/automation';
 import { scheduledMessagesRoutes } from './routes/scheduled_messages';
 import { messageTemplatesRoutes } from './routes/message_templates';
 import { exportsRoutes } from './routes/exports';
+import { apiKeysRoutes } from './routes/api_keys';
 
 const app = new Hono();
 
@@ -86,7 +87,8 @@ app.use('/api/*', rateLimiter({
   windowMs: 60 * 1000, 
   max: 100,
   keyGenerator: (c) => {
-    // Di Bun/Hono, kita bisa mendapatkan IP dari header atau menggunakan default
+    const apiKey = c.req.header('x-api-key');
+    if (apiKey) return `apikey:${apiKey.slice(0, 15)}`; // Use prefix
     const ip = c.req.header('x-forwarded-for') || 'unknown-ip';
     return `general:${ip}`;
   }
@@ -120,6 +122,7 @@ app.route('/api/docs', docsRoutes);
 app.route('/api/scheduled-messages', scheduledMessagesRoutes);
 app.route('/api/message-templates', messageTemplatesRoutes);
 app.route('/api/exports', exportsRoutes);
+app.route('/api/api-keys', apiKeysRoutes);
 
 // Setup Pub/Sub Broadcaster for WebSockets
 redisSub.subscribe(PUB_SUB_CH);

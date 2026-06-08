@@ -2,11 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const automationRoutes = new Hono();
 
-automationRoutes.use('/*', jwtMiddleware);
+automationRoutes.use('/*', authMiddleware);
 
 const actionSchema = z.object({
   type: z.enum(['add_label', 'assign_agent', 'send_reply', 'change_status']),

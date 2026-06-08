@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
-import { jwtMiddleware } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import { redis, PUB_SUB_CH } from '../config/redis';
 
 export const usersRoutes = new Hono();
 
-usersRoutes.use('/*', jwtMiddleware);
+usersRoutes.use('/*', authMiddleware);
 
 usersRoutes.get('/agents', async (c) => {
   try {

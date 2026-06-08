@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const searchRoutes = new Hono();
-searchRoutes.use('/*', jwtMiddleware);
+searchRoutes.use('/*', authMiddleware);
 
 searchRoutes.get('/', async (c) => {
   try {
