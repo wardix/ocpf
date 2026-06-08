@@ -91,7 +91,7 @@ exportsRoutes.get('/:id/download', async (c) => {
     return new Response(fileStream as any, {
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': \`attachment; filename="\${fileName}"\`
+        'Content-Disposition': `attachment; filename="${fileName}"`
       }
     });
   } catch (error) {
