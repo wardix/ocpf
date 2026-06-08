@@ -23,6 +23,7 @@ import { ShortcutsModal } from './components/ShortcutsModal'
 import { SearchPalette } from './components/SearchPalette'
 import { useSwipeBack } from './hooks/useSwipeBack'
 import BottomNav from './components/BottomNav'
+import { useTranslation } from 'react-i18next'
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
@@ -62,6 +63,7 @@ function App() {
   } = useChatStore();
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
+  const { t } = useTranslation();
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -416,13 +418,13 @@ function App() {
       
       {isOffline && (
         <div className="absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md bg-error text-white">
-          ❌ Tidak ada koneksi internet (Offline). Menunggu jaringan...
+          {t('app.offline_banner')}
         </div>
       )}
 
       {wsStatus !== 'open' && !isOffline && (
         <div className={`absolute top-0 left-0 w-full z-50 text-center py-1 text-xs font-bold shadow-md transition-all ${wsStatus === 'connecting' ? 'bg-warning text-warning-content' : 'bg-error text-white'}`}>
-          {wsStatus === 'connecting' ? '⏳ Menghubungkan ke server real-time...' : '❌ Terputus dari server. Mencoba menghubungkan kembali...'}
+          {wsStatus === 'connecting' ? t('app.connecting') : t('app.disconnected')}
         </div>
       )}
       
@@ -430,7 +432,7 @@ function App() {
       <div className="hidden md:flex w-16 bg-neutral flex-col items-center py-4 shrink-0 shadow-lg z-20">
         
         <div className="dropdown dropdown-right mb-8">
-          <div tabIndex={0} className="tooltip tooltip-right cursor-pointer" data-tip={`${user?.name || 'Agen'} (${user?.role || 'User'}) - ${myStatus}`}>
+          <div tabIndex={0} className="tooltip tooltip-right cursor-pointer" data-tip={`${user?.name || t('app.agent')} (${user?.role || 'User'}) - ${t('app.status_' + myStatus)}`}>
             <div className="relative">
               <div className="avatar placeholder">
                 <div className="bg-primary text-primary-content rounded-full w-10 border-2 border-neutral">
@@ -443,9 +445,9 @@ function App() {
             </div>
           </div>
           <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-32 p-2 shadow-lg z-50 ml-2">
-            <li><a onClick={() => updateAvailability('online')} className={myStatus === 'online' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-success"/> Online</a></li>
-            <li><a onClick={() => updateAvailability('busy')} className={myStatus === 'busy' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-warning"/> Busy</a></li>
-            <li><a onClick={() => updateAvailability('offline')} className={myStatus === 'offline' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-error"/> Offline</a></li>
+            <li><a onClick={() => updateAvailability('online')} className={myStatus === 'online' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-success"/> {t('app.status_online')}</a></li>
+            <li><a onClick={() => updateAvailability('busy')} className={myStatus === 'busy' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-warning"/> {t('app.status_busy')}</a></li>
+            <li><a onClick={() => updateAvailability('offline')} className={myStatus === 'offline' ? 'active' : ''}><span className="w-2 h-2 rounded-full bg-error"/> {t('app.status_offline')}</a></li>
           </ul>
         </div>
 
@@ -453,14 +455,14 @@ function App() {
           <button 
             className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/inbox') || location.pathname === '/' ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
             onClick={() => navigate('/inbox')}
-            title="Inbox"
+            title={t('app.tooltip_inbox')}
           >
             💬
           </button>
           <button 
             className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/contacts') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
             onClick={() => navigate('/contacts')}
-            title="Buku Telepon (Pelanggan)"
+            title={t('app.tooltip_contacts')}
           >
             👥
           </button>
@@ -469,35 +471,35 @@ function App() {
               <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/broadcast') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/broadcast')}
-                title="Pesan Massal (Broadcast)"
+                title={t('app.tooltip_broadcast')}
               >
                 📢
               </button>
               <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/analytics') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/analytics')}
-                title="Laporan & Analitik"
+                title={t('app.tooltip_analytics')}
               >
                 📊
               </button>
               <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/reports') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/reports')}
-                title="Laporan & Ekspor Data"
+                title={t('app.tooltip_reports')}
               >
                 📁
               </button>
               <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/chatbot') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/chatbot')}
-                title="Chatbot Flow Builder"
+                title={t('app.tooltip_chatbot')}
               >
                 🤖
               </button>
               <button 
                 className={`btn btn-square w-full rounded-xl ${location.pathname.startsWith('/settings') ? 'btn-active text-white bg-white/20' : 'btn-ghost hover:bg-white/10 hover:text-white'}`} 
                 onClick={() => navigate('/settings')}
-                title="Pengaturan"
+                title={t('app.tooltip_settings')}
               >
                 ⚙️
               </button>
@@ -506,7 +508,7 @@ function App() {
           <div className="flex-1"></div>
           
           <div className="dropdown dropdown-top w-full dropdown-end sm:dropdown-right">
-            <label tabIndex={0} className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" title="Pilih Tema">
+            <label tabIndex={0} className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" title={t('app.tooltip_theme')}>
               {theme === 'light' ? '☀️' : theme === 'dark' ? '🌙' : '🏢'}
             </label>
             <ul tabIndex={0} className="dropdown-content menu bg-base-200 rounded-box w-36 p-2 shadow-lg mb-2 z-50">
@@ -523,11 +525,11 @@ function App() {
           <button 
             className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" 
             onClick={toggleMute} 
-            title={isMuted ? "Bunyikan Notifikasi" : "Bisukan Notifikasi"}
+            title={isMuted ? t('app.tooltip_unmute') : t('app.tooltip_mute')}
           >
             {isMuted ? '🔕' : '🔔'}
           </button>
-          <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title="Logout">🚪</button>
+          <button className="btn btn-square btn-ghost hover:text-white w-full rounded-xl" onClick={handleLogout} title={t('app.tooltip_logout')}>🚪</button>
         </div>
       </div>
 
@@ -594,15 +596,15 @@ function App() {
                     ) : (
                       <div className="flex-1 flex flex-col items-center justify-center bg-base-200/30 text-base-content/40">
                         <span className="text-6xl mb-4">⏳</span>
-                        <h2 className="text-xl font-bold">Memuat percakapan...</h2>
+                        <h2 className="text-xl font-bold">{t('app.loading_conversation')}</h2>
                       </div>
                     )
                   } />
                   <Route path="" element={
                     <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-base-200/30 text-base-content/40">
                       <span className="text-6xl mb-4">📥</span>
-                      <h2 className="text-xl font-bold">Pilih percakapan untuk memulai</h2>
-                      <p className="text-sm">Silakan pilih salah satu pesan di samping kiri.</p>
+                      <h2 className="text-xl font-bold">{t('app.select_conversation')}</h2>
+                      <p className="text-sm">{t('app.select_conversation_desc')}</p>
                     </div>
                   } />
                 </Routes>

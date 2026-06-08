@@ -11,6 +11,7 @@ import NotificationSettings from './NotificationSettings';
 import { useAuthStore } from '../store/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { useToastStore } from '../store/toastStore';
+import { useTranslation } from 'react-i18next';
 
 interface CannedResponse {
   id: number;
@@ -19,6 +20,7 @@ interface CannedResponse {
 }
 
 const Settings = () => {
+  const { t, i18n } = useTranslation();
   const { token, user } = useAuthStore();
   const { addToast } = useToastStore();
   const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
@@ -28,7 +30,7 @@ const Settings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation' | 'apikeys' | 'teams'>('inboxes');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'labels' | 'canned' | 'templates' | 'inboxes' | 'webhooks' | 'automation' | 'apikeys' | 'teams'>('general');
 
   // Inboxes State
   const [inboxes, setInboxes] = useState<any[]>([]);
@@ -421,7 +423,8 @@ const Settings = () => {
           <p className="text-base-content/60 mt-1">Kelola preferensi dan alat produktivitas agen di sini.</p>
         </div>
 
-        <div className="tabs tabs-boxed bg-base-100 p-1">
+        <div className="tabs tabs-boxed mb-6 bg-base-200 w-full overflow-x-auto flex-nowrap shrink-0 justify-start">
+          <a className={`tab ${activeTab === 'general' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('general')}>{t('settings.general')}</a>
           <a className={`tab ${activeTab === 'users' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('users')}>Pengguna</a>
           <a className={`tab ${activeTab === 'labels' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('labels')}>Label</a>
           <a className={`tab ${activeTab === 'canned' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('canned')}>Canned Responses</a>
@@ -436,6 +439,27 @@ const Settings = () => {
             <a className={`tab ${activeTab === 'teams' ? 'tab-active font-bold text-primary border-b-2 border-primary' : ''}`} onClick={() => setActiveTab('teams')}>Tim/Departemen</a>
           )}
         </div>
+
+        {activeTab === 'general' && (
+          <div className="card bg-base-100 shadow-sm border border-base-200 mb-6">
+            <div className="card-body">
+              <h3 className="card-title text-lg mb-4">{t('settings.language')}</h3>
+              <div className="form-control w-full max-w-xs">
+                <label className="label">
+                  <span className="label-text">Pilih Bahasa / Language</span>
+                </label>
+                <select 
+                  className="select select-bordered" 
+                  value={i18n.language}
+                  onChange={(e) => i18n.changeLanguage(e.target.value)}
+                >
+                  <option value="id">{t('settings.language_id')}</option>
+                  <option value="en">{t('settings.language_en')}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
 
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'labels' && <LabelManagement />}

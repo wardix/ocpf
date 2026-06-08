@@ -1,0 +1,46 @@
+{
+  "app": {
+    "offline_banner": "❌ Tidak ada koneksi internet (Offline). Menunggu jaringan...",
+    "connecting": "⏳ Menghubungkan ke server real-time...",
+    "disconnected": "❌ Terputus dari server. Mencoba menghubungkan kembali...",
+    "tooltip_inbox": "Inbox",
+    "tooltip_contacts": "Buku Telepon (Pelanggan)",
+    "tooltip_broadcast": "Pesan Massal (Broadcast)",
+    "tooltip_analytics": "Laporan & Analitik",
+    "tooltip_reports": "Laporan & Ekspor Data",
+    "tooltip_chatbot": "Chatbot Flow Builder",
+    "tooltip_settings": "Pengaturan",
+    "tooltip_theme": "Pilih Tema",
+    "tooltip_unmute": "Bunyikan Notifikasi",
+    "tooltip_mute": "Bisukan Notifikasi",
+    "tooltip_logout": "Keluar",
+    "status_online": "Online",
+    "status_busy": "Sibuk",
+    "status_offline": "Offline",
+    "loading_conversation": "Memuat percakapan...",
+    "select_conversation": "Pilih percakapan untuk memulai",
+    "select_conversation_desc": "Silakan pilih salah satu pesan di samping kiri."
+  },
+  "settings": {
+    "title": "Pengaturan",
+    "language": "Bahasa",
+    "language_id": "Bahasa Indonesia",
+    "language_en": "English",
+    "account": "Akun",
+    "general": "Umum",
+    "save": "Simpan"
+  },
+  "chat": {
+    "send": "Kirim",
+    "type_message": "Ketik pesan...",
+    "resolve": "Selesaikan",
+    "assign": "Tugaskan",
+    "unassign": "Batal Tugaskan"
+  },
+  "common": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Hapus",
+    "edit": "Ubah"
+  }
+}
