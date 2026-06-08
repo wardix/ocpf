@@ -1,5 +1,5 @@
-import { redis, redisWorker, sql, PUB_SUB_CH, QUEUE_INCOMING } from '../config/redis';
-import { sql as db } from '../config/database';
+import { redis, redisWorker, PUB_SUB_CH, QUEUE_INCOMING } from '../config/redis';
+import { sql } from '../config/database';
 import path from 'path';
 import type { IncomingMessagePayload, SendMessagePayload } from '@omnichannel/shared-types';
 import { RedisQueuePayloadSchema, IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema } from '@omnichannel/shared-types';
@@ -100,7 +100,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     let isNewConversation = false;
     let oooMsgData: any = null;
 
-    const result = await db.begin(async (tx) => {
+    const result = await sql.begin(async (tx) => {
       console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
       console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
 
