@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --watch run index.ts"
+    "dev": "bun --watch run index.ts",
+    "build": "echo 'No build step required for telegram-adapter'",
+    "start": "bun run index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -1,0 +1,72 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: omni
+          POSTGRES_USER: omni
+          POSTGRES_PASSWORD: omni_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Widget
+        run: bun run --cwd apps/widget build
+
+      - name: Build Frontend
+        run: bun run --cwd apps/frontend build
+
+      - name: Initialize Database Schema
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=omni_password psql -h localhost -U omni -d omni -f init.sql
+
+      - name: Run Main API Unit Tests
+        env:
+          DATABASE_URL: postgres://omni:omni_password@localhost:5432/omni
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: rahasia_super_aman_untuk_omnichannel_123
+        run: bun test --cwd apps/main-api

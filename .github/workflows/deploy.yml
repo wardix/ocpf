@@ -1,0 +1,97 @@
+name: CD Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract Metadata (Tags, Labels)
+        id: meta
+        run: |
+          CLEAN_TAG=${GITHUB_REF_NAME#v}
+          echo "tag=${CLEAN_TAG}" >> $GITHUB_OUTPUT
+          echo "owner_lowercase=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          echo "repo_lowercase=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      # 1. Build & Push Main API
+      - name: Build and Push main-api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/main-api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-main-api:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-main-api:latest
+
+      # 2. Build & Push WA Adapter
+      - name: Build and Push wa-adapter
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/wa-adapter/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-wa-adapter:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-wa-adapter:latest
+
+      # 3. Build & Push Telegram Adapter
+      - name: Build and Push telegram-adapter
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/telegram-adapter/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-telegram-adapter:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-telegram-adapter:latest
+
+      # 4. Build & Push Email Adapter
+      - name: Build and Push email-adapter
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/email-adapter/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-email-adapter:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-email-adapter:latest
+
+      # 5. Build & Push Frontend
+      - name: Build and Push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-frontend:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner_lowercase }}/${{ steps.meta.outputs.repo_lowercase }}-frontend:latest
+          build-args: |
+            VITE_API_URL=https://api.omnichannel.local
+            VITE_WS_URL=wss://api.omnichannel.local/ws

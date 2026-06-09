@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npx tsx watch src/index.ts"
+    "dev": "npx tsx watch src/index.ts",
+    "build": "echo 'No build step required for wa-adapter'",
+    "start": "npx tsx src/index.ts"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
