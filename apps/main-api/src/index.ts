@@ -10,7 +10,7 @@ import { startScheduledMessagesWorker } from './workers/scheduled-messages-worke
 import { startExportWorker } from './workers/export-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
-import { redis, redisSub, PUB_SUB_CH } from './config/redis';
+import { redis, redisSub, redisWorker, redisWebhookWorker, PUB_SUB_CH } from './config/redis';
 import { activeWebSockets } from './websocket/handler';
 import { rateLimiter } from './middleware/rate-limiter';
 
@@ -314,3 +314,49 @@ const server = Bun.serve({
 setupWebSocket(server);
 
 console.log(`Server API & WebSocket berjalan di port ${server.port}`);
+
+// =========================================================================
+// GRACEFUL SHUTDOWN HANDLERS
+// =========================================================================
+async function handleShutdown(signal: string) {
+  if ((globalThis as any).isShuttingDown) return;
+  console.log(`\n[SHUTDOWN] Menerima sinyal ${signal}. Menutup proses secara anggun...`);
+  (globalThis as any).isShuttingDown = true;
+
+  try {
+    // 1. Stop Bun Serve HTTP/WS Server
+    server.stop();
+    console.log('[SHUTDOWN] HTTP & WebSocket server dihentikan.');
+
+    // 2. Tutup semua koneksi WebSocket aktif
+    console.log(`[SHUTDOWN] Menutup ${activeWebSockets.size} koneksi WebSocket aktif...`);
+    activeWebSockets.forEach((ws) => {
+      try {
+        ws.close(1012, 'Server is shutting down');
+      } catch (err) {
+        // Abaikan error jika WS sudah tertutup
+      }
+    });
+    activeWebSockets.clear();
+
+    // 3. Tutup koneksi Redis
+    console.log('[SHUTDOWN] Menutup koneksi Redis...');
+    await redis.quit();
+    await redisSub.quit();
+    await redisWorker.quit();
+    await redisWebhookWorker.quit();
+
+    // 4. Tutup pool koneksi database PostgreSQL
+    console.log('[SHUTDOWN] Menutup pool koneksi PostgreSQL...');
+    await sql.end();
+
+    console.log('[SHUTDOWN] Semua layanan main-api terputus dengan bersih. Goodbye! 👋');
+    process.exit(0);
+  } catch (err) {
+    console.error('[SHUTDOWN] Terjadi kesalahan saat menutup layanan main-api:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));

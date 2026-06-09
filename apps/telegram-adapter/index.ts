@@ -52,6 +52,7 @@ interface ChannelInbox {
 
 const activeBots = new Map<number, Bot>(); // inbox_id -> Bot
 const activeWorkers = new Map<number, boolean>(); // inbox_id -> boolean
+const activeRedisWorkers = new Map<number, Redis>(); // inbox_id -> Redis
 
 const QUEUE_INCOMING = 'queue:incoming_messages';
 
@@ -158,6 +159,7 @@ async function startBotForInbox(inboxId: number, token: string) {
 async function startOutgoingWorker(inboxId: number, bot: Bot) {
   const queueName = `queue:outgoing_messages:inbox_${inboxId}`;
   const redisWorker = new Redis({ host: REDIS_HOST, port: REDIS_PORT });
+  activeRedisWorkers.set(inboxId, redisWorker);
 
   logger.info(`[Inbox ${inboxId}] Outgoing worker started listening on ${queueName}`);
 
@@ -204,6 +206,7 @@ async function startOutgoingWorker(inboxId: number, bot: Bot) {
   }
 
   redisWorker.quit();
+  activeRedisWorkers.delete(inboxId);
 }
 
 async function syncChannels() {
@@ -225,6 +228,11 @@ async function syncChannels() {
         bot.stop();
         activeBots.delete(inboxId);
         activeWorkers.set(inboxId, false);
+        const worker = activeRedisWorkers.get(inboxId);
+        if (worker) {
+          worker.quit();
+          activeRedisWorkers.delete(inboxId);
+        }
       }
     }
 
@@ -293,3 +301,50 @@ const healthServer = Bun.serve({
 });
 
 logger.info(`[Telegram Adapter] Health check server running on port ${healthServer.port}`);
+
+// =========================================================================
+// GRACEFUL SHUTDOWN HANDLERS
+// =========================================================================
+let isShuttingDown = false;
+
+async function handleShutdown(signal: string) {
+  if (isShuttingDown) return;
+  logger.info(`[SHUTDOWN] Menerima sinyal ${signal}. Menutup proses secara anggun...`);
+  isShuttingDown = true;
+
+  try {
+    // Tutup health server
+    healthServer.stop();
+    logger.info('[SHUTDOWN] Health check server dihentikan.');
+
+    // Stop bots & workers
+    for (const [inboxId, bot] of activeBots.entries()) {
+      logger.info(`[SHUTDOWN] Menghentikan Bot Telegram untuk Inbox ${inboxId}...`);
+      await bot.stop();
+      activeWorkers.set(inboxId, false);
+      const worker = activeRedisWorkers.get(inboxId);
+      if (worker) {
+        await worker.quit();
+        activeRedisWorkers.delete(inboxId);
+      }
+    }
+
+    // Tutup koneksi Redis
+    logger.info('[SHUTDOWN] Menutup koneksi Redis...');
+    await redis.quit();
+    await redisSub.quit();
+
+    // Tutup koneksi Database
+    logger.info('[SHUTDOWN] Menutup koneksi database...');
+    await sql.end();
+
+    logger.info('[SHUTDOWN] Semua layanan telegram-adapter terputus. Goodbye! 👋');
+    process.exit(0);
+  } catch (err) {
+    logger.error('[SHUTDOWN] Terjadi kesalahan saat menutup layanan telegram-adapter:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));

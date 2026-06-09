@@ -12,7 +12,7 @@ import { logger } from '../utils/monitoring';
 export async function startWorker() {
   logger.info('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
   
-  while (true) {
+  while (!(globalThis as any).isShuttingDown) {
     try {
       const result = await redisWorker.brpop(QUEUE_INCOMING, 0);
         if (result) {
@@ -86,6 +86,9 @@ export async function startWorker() {
           }
       }
     } catch (err) {
+      if ((globalThis as any).isShuttingDown) {
+        break;
+      }
       logger.error({ err }, 'Worker processing error');
       await new Promise(resolve => setTimeout(resolve, 3000));
     }

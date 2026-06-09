@@ -153,7 +153,7 @@ async function runCleanup() {
 
 async function startExportWorker() {
   console.log('[ExportWorker] Starting...');
-  while (true) {
+  while (!(globalThis as any).isShuttingDown) {
     try {
       const result = await redisWorker.brpop('queue:export_jobs', 5);
       if (result) {
@@ -162,6 +162,9 @@ async function startExportWorker() {
       }
       await runCleanup();
     } catch (err) {
+      if ((globalThis as any).isShuttingDown) {
+        break;
+      }
       console.error('[ExportWorker] Error:', err);
       await new Promise(r => setTimeout(r, 2000));
     }
