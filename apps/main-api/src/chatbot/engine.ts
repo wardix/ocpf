@@ -85,7 +85,7 @@ export async function evaluateChatbot(
 
     const interpolateText = (text: string) => {
       let parsed = text.replace(/{{user_input}}/g, userText);
-      parsed = parsed.replace(/{{phone_number}}/g, sourceJid.split('@')[0]);
+      parsed = parsed.replace(/{{phone_number}}/g, sourceJid.split('@')[0] || '');
       parsed = parsed.replace(/{{contact_name}}/g, displayName);
       
       const memMatches = parsed.match(/{{([a-zA-Z0-9_.]+?)}}/g);

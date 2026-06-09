@@ -268,7 +268,7 @@ inboxesRoutes.put('/:inbox_id/business-hours', zValidator('json', updateBusiness
       schedules 
     } = c.req.valid('json');
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       // 1. Upsert settings
       const [updatedSettings] = await tx`
         INSERT INTO inbox_settings (
@@ -352,7 +352,7 @@ const updateInboxSchema = z.object({
   description: z.string().max(1000).optional().nullable(),
   greeting_message: z.string().max(2000).optional().nullable(),
   is_active: z.boolean().optional(),
-  widget_config: z.record(z.any()).optional().nullable()
+  widget_config: z.record(z.string(), z.any()).optional().nullable()
 });
 
 // GET /api/inboxes (Daftar inbox, filtered by user access for agents)
@@ -421,7 +421,7 @@ inboxesRoutes.post('/', zValidator('json', createInboxSchema), async (c) => {
       channelId = Number(newChannel.id);
     }
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       // Create inbox
       const [newInbox] = await tx`
         INSERT INTO inboxes (account_id, channel_id, name, description, greeting_message, is_active)

@@ -5,7 +5,7 @@ async function processScheduledMessages() {
   try {
     // We use a transaction and FOR UPDATE SKIP LOCKED to prevent multiple workers 
     // from processing the same scheduled messages concurrently.
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: any) => {
       const messages = await tx`
         SELECT 
           sm.id, sm.account_id, sm.conversation_id, sm.ticket_id, sm.content, sm.media,

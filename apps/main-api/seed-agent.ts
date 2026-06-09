@@ -1,3 +1,4 @@
+// @ts-nocheck
 import postgres from 'postgres';
 import { config } from 'dotenv';
 import path from 'path';

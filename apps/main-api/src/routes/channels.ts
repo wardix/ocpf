@@ -12,7 +12,7 @@ channelsRoutes.use('/*', jwtMiddleware);
 const createChannelSchema = z.object({
   name: z.string().min(1).max(255),
   provider_type: z.enum(['whatsapp', 'telegram']),
-  provider_config: z.record(z.any()).default({}),
+  provider_config: z.record(z.string(), z.any()).default({}),
 });
 
 channelsRoutes.post('/', zValidator('json', createChannelSchema), async (c) => {

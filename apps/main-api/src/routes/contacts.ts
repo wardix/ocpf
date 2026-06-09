@@ -137,7 +137,7 @@ contactsRoutes.post('/merge', zValidator('json', mergeContactsSchema, (result, c
       return c.json({ error: 'Salah satu atau kedua kontak tidak ditemukan' }, 404);
     }
 
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: any) => {
       // 1. Move conversations
       const resultConvs = await tx`
         UPDATE conversations 

@@ -21,7 +21,7 @@ const aiConfigSchema = z.object({
 });
 
 const aiRequestSchema = z.object({
-  conversation_id: z.number({ required_error: 'conversation_id wajib diisi' }).int().positive()
+  conversation_id: z.number({ message: 'conversation_id wajib diisi' }).int().positive()
 });
 
 
@@ -36,7 +36,7 @@ async function getConversationContext(conversationId: number, accountId: number,
   `;
 
   // Return formatted chronologically
-  return messages.reverse().map(m => {
+  return messages.reverse().map((m: any) => {
     const role = m.sender_type === 'Contact' ? 'Customer' : m.sender_type;
     return `[${role}] ${m.content}`;
   }).join('\n');
@@ -93,7 +93,7 @@ aiRoutes.get('/settings', async (c) => {
 });
 
 // PUT /api/settings/ai - Save/update account AI configuration (Admin only)
-aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c) => {
+aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c: any) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
@@ -147,7 +147,7 @@ aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c) => {
 });
 
 // POST /api/ai/suggest - Generate 3 quick reply suggestions
-aiRoutes.post('/suggest', zValidator('json', aiRequestSchema, (result, c) => {
+aiRoutes.post('/suggest', zValidator('json', aiRequestSchema, (result, c: any) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
@@ -188,7 +188,7 @@ Do NOT wrap the response in markdown blocks or write any explanation.`;
 });
 
 // POST /api/ai/summarize - Summarize long conversation
-aiRoutes.post('/summarize', zValidator('json', aiRequestSchema, (result, c) => {
+aiRoutes.post('/summarize', zValidator('json', aiRequestSchema, (result, c: any) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
@@ -227,7 +227,7 @@ Return ONLY the JSON. Do NOT write markdown, explanations, or wrap output in cod
 });
 
 // POST /api/ai/categorize - Automatically categorize conversation using active labels
-aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c) => {
+aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c: any) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
@@ -249,7 +249,7 @@ aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c) => 
       return c.json({ success: true, data: [], message: 'Tidak ada label terkonfigurasi untuk pencocokan.' });
     }
 
-    const labelsList = labels.map(l => `"${l.title}"`).join(', ');
+    const labelsList = labels.map((l: any) => `"${l.title}"`).join(', ');
     const context = await getConversationContext(conversation_id, accountId, 10);
 
     const systemPrompt = `Anda adalah sistem kategorisasi tiket otomatis.
@@ -268,7 +268,7 @@ Return ONLY the JSON. Do NOT write markdown code blocks or explanations.`;
       // Map suggested label titles back to IDs
       const mappedSuggestions = (Array.isArray(suggestions) ? suggestions : [])
         .map((s: any) => {
-          const match = labels.find(l => l.title.toLowerCase() === s.label.toLowerCase());
+          const match = labels.find((l: any) => l.title.toLowerCase() === s.label.toLowerCase());
           return match ? { id: Number(match.id), title: match.title, confidence: s.confidence } : null;
         })
         .filter(Boolean);

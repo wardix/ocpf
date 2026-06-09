@@ -24,7 +24,7 @@ export function startCSATWorker() {
           await redis.zrem('queue:csat_surveys', jobString);
 
           // Gunakan transaksi agar penandaan dan pengiriman konsisten
-          await sql.begin(async (tx) => {
+          await sql.begin(async (tx: any) => {
             // Cek status tiket terakhir
             const [ticket] = await tx`
               SELECT id, status, csat_survey_sent 

@@ -102,7 +102,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     let isNewConversation = false;
     let oooMsgData: any = null;
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       logger.debug({ wa_message_id: data.wa_message_id, is_host_echo: data.is_host_echo }, 'Memproses pesan masuk');
 
       const INBOX_ID = data.inbox_id;
@@ -144,7 +144,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 
     if (!contact) {
       isNewContact = true;
-      const cleanPhone = data.jid.split('@')[0];
+      const cleanPhone = (data.source_jid || '').split('@')[0] || '';
       [contact] = await tx`
         INSERT INTO contacts (account_id, name, phone_number)
         VALUES (${ACCOUNT_ID}, ${displayName || cleanPhone}, ${cleanPhone})

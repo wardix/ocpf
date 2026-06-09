@@ -74,7 +74,7 @@ webhooksRoutes.post('/', zValidator('json', webhookSchema, (result, c) => {
     const { url, events, active, description } = c.req.valid('json');
 
     // Validate events list
-    const invalidEvents = events.filter(e => !allowedEvents.includes(e));
+    const invalidEvents = events.filter((e: any) => !allowedEvents.includes(e));
     if (invalidEvents.length > 0) {
       return c.json({ error: `Event berikut tidak didukung: ${invalidEvents.join(', ')}` }, 400);
     }
@@ -112,7 +112,7 @@ webhooksRoutes.put('/:id', zValidator('json', webhookSchema, (result, c) => {
     const { url, events, active, description } = c.req.valid('json');
 
     // Validate events list
-    const invalidEvents = events.filter(e => !allowedEvents.includes(e));
+    const invalidEvents = events.filter((e: any) => !allowedEvents.includes(e));
     if (invalidEvents.length > 0) {
       return c.json({ error: `Event berikut tidak didukung: ${invalidEvents.join(', ')}` }, 400);
     }

@@ -9,7 +9,6 @@ import { startIdleTracker } from './workers/idle-tracker';
 import { startScheduledMessagesWorker } from './workers/scheduled-messages-worker';
 import { startExportWorker } from './workers/export-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
-import { PORT } from './config/database';
 import { redis, redisSub, redisWorker, redisWebhookWorker, PUB_SUB_CH } from './config/redis';
 import { activeWebSockets } from './websocket/handler';
 import { rateLimiter } from './middleware/rate-limiter';
@@ -259,7 +258,7 @@ const server = Bun.serve({
         const { JWT_SECRET } = await import('./middleware/auth');
         const payload = await verify(token, JWT_SECRET, 'HS256') as any;
         
-        const upgradeSuccess = server.upgrade(req, {
+        const upgradeSuccess = (server as any).upgrade(req, {
           data: {
             accountId: payload.account_id, 
             userId: payload.id,
@@ -287,7 +286,7 @@ const server = Bun.serve({
         `;
         if (!session) return new Response('Unauthorized: Invalid token', { status: 401 });
 
-        const upgradeSuccess = server.upgrade(req, {
+        const upgradeSuccess = (server as any).upgrade(req, {
           data: {
             accountId: Number(session.account_id),
             inboxId: Number(session.inbox_id),

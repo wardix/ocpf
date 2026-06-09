@@ -90,11 +90,11 @@ export async function isWithinBusinessHours(inboxId: number, queryContext = sql)
     return { isOpen: false, oooMessage };
   }
 
-  const [openH, openM, openS] = openTimeStr.split(':').map(Number);
-  const [closeH, closeM, closeS] = closeTimeStr.split(':').map(Number);
+  const [openH = 0, openM = 0, openS = 0] = openTimeStr.split(':').map(Number);
+  const [closeH = 0, closeM = 0, closeS = 0] = closeTimeStr.split(':').map(Number);
 
-  const openSeconds = openH * 3600 + openM * 60 + (openS || 0);
-  const closeSeconds = closeH * 3600 + closeM * 60 + (closeS || 0);
+  const openSeconds = openH * 3600 + openM * 60 + openS;
+  const closeSeconds = closeH * 3600 + closeM * 60 + closeS;
 
   // standard comparison
   const isOpen = currentSeconds >= openSeconds && currentSeconds <= closeSeconds;
