@@ -489,6 +489,7 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
     if (!jwtPayload) return c.json({ error: 'Unauthorized' }, 401);
     const actorId = jwtPayload.id;
     const actorName = jwtPayload.name;
+    const accountId = getAccountId(c);
     const { assignee_id: targetAgentId, team_id: targetTeamId } = c.req.valid('json');
 
     // Jika assignee_id diberikan, hanya admin yang boleh
@@ -501,6 +502,28 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
     const assigneeId = targetAgentId !== undefined ? targetAgentId : actorId;
 
     const ticket = await sql.begin(async (tx: postgres.Sql) => {
+      // 1. SELECT ... FOR UPDATE untuk mencegah race condition
+      const [lockedTicket] = await tx`
+        SELECT id, assignee_id, team_id, account_id, conversation_id
+        FROM tickets
+        WHERE conversation_id = ${conversationId}
+          AND status != 'resolved'
+          AND account_id = ${accountId}
+        FOR UPDATE;
+      `;
+
+      if (!lockedTicket) {
+        throw new Error('NOT_FOUND');
+      }
+
+      // Check jika self-assign dan sudah diambil orang lain
+      const isSelfAssign = targetTeamId === undefined && (targetAgentId === undefined || targetAgentId === actorId);
+      if (isSelfAssign) {
+        if (lockedTicket.assignee_id !== null && lockedTicket.assignee_id !== actorId) {
+          throw new Error('ALREADY_ASSIGNED');
+        }
+      }
+
       let updatedTicket;
       
       if (targetTeamId !== undefined) {
@@ -511,29 +534,20 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
              team_id = ${targetTeamId},
              assignee_id = ${targetAgentId !== undefined ? targetAgentId : null},
              updated_at = NOW() 
-           WHERE conversation_id = ${conversationId} AND status != 'resolved'
+           WHERE id = ${lockedTicket.id} AND account_id = ${accountId}
            RETURNING *;
          `;
-      } else if (targetAgentId) {
-        // Admin reassign - override existing assignment
-        [updatedTicket] = await tx`
-          UPDATE tickets 
-          SET assignee_id = ${assigneeId}, updated_at = NOW() 
-          WHERE conversation_id = ${conversationId} AND status != 'resolved'
-          RETURNING *;
-        `;
       } else {
-        // Self-assign - hanya jika belum diambil orang lain
-        [updatedTicket] = await tx`
-          UPDATE tickets 
-          SET assignee_id = ${assigneeId}, updated_at = NOW() 
-          WHERE conversation_id = ${conversationId} AND status != 'resolved' AND assignee_id IS NULL
-          RETURNING *;
-        `;
+         [updatedTicket] = await tx`
+           UPDATE tickets 
+           SET assignee_id = ${assigneeId}, updated_at = NOW() 
+           WHERE id = ${lockedTicket.id} AND account_id = ${accountId}
+           RETURNING *;
+         `;
       }
 
       if (!updatedTicket) {
-        throw new Error(targetAgentId ? 'NOT_FOUND' : 'ALREADY_ASSIGNED');
+        throw new Error('NOT_FOUND');
       }
 
       // Cari nama target agent
@@ -542,7 +556,7 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
 
       let systemText = '';
       if (targetTeamId !== undefined && targetTeamId !== null) {
-        const [targetTeam] = await tx`SELECT name FROM teams WHERE id = ${targetTeamId}`;
+        const [targetTeam] = await tx`SELECT name FROM teams WHERE id = ${targetTeamId} AND account_id = ${accountId}`;
         const teamName = targetTeam?.name || 'Unknown Team';
         systemText = `Tiket #TKT-${String(updatedTicket.id).padStart(4, '0')} di-assign ke tim ${teamName} oleh ${actorName}`;
         if (targetAgentId) systemText += ` (Agen: ${targetName})`;
@@ -581,13 +595,13 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
 
     return c.json({ success: true, data: ticket });
   } catch (error) {
-    console.error('Error assign ticket:', error);
     const errorMessage = error instanceof Error ? error.message : '';
     if (errorMessage === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan' }, 404);
     if (errorMessage === 'ALREADY_ASSIGNED') {
       // Return custom message untuk self-assign jika sudah diambil
       return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     }
+    console.error('Error assign ticket:', error);
     return c.json({ success: false, error: 'Gagal melakukan assignment tiket' }, 500);
   }
 });
