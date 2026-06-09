@@ -22,6 +22,15 @@ const importSchema = z.object({
   chatbot_json: z.record(z.any())
 });
 
+const activateSchema = z.object({
+  is_active: z.boolean({ required_error: 'is_active wajib diisi' })
+});
+
+const rollbackSchema = z.object({
+  version: z.number({ required_error: 'version wajib diisi' }).int().positive()
+});
+
+
 // GET /api/chatbot/configs - List configs
 chatbotRoutes.get('/configs', async (c) => {
   try {
@@ -167,14 +176,15 @@ chatbotRoutes.delete('/configs/:id', async (c) => {
 });
 
 // POST /api/chatbot/configs/:id/activate - Toggle activation status
-chatbotRoutes.post('/configs/:id/activate', async (c) => {
+chatbotRoutes.post('/configs/:id/activate', zValidator('json', activateSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'ID tidak valid' }, 400);
 
   try {
     const accountId = getAccountId(c);
-    const body = await c.req.json();
-    const { is_active } = body;
+    const { is_active } = c.req.valid('json');
 
     const [existing] = await sql`
       SELECT id, inbox_id FROM chatbot_configs WHERE id = ${id} AND account_id = ${accountId} LIMIT 1
@@ -234,14 +244,15 @@ chatbotRoutes.get('/configs/:id/versions', async (c) => {
 });
 
 // POST /api/chatbot/configs/:id/rollback - Rollback to a specific version
-chatbotRoutes.post('/configs/:id/rollback', async (c) => {
+chatbotRoutes.post('/configs/:id/rollback', zValidator('json', rollbackSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'ID tidak valid' }, 400);
 
   try {
     const accountId = getAccountId(c);
-    const { version } = await c.req.json();
-    if (!version) return c.json({ error: 'Versi diperlukan untuk melakukan rollback' }, 400);
+    const { version } = c.req.valid('json');
 
     const [existing] = await sql`
       SELECT id, inbox_id, version FROM chatbot_configs WHERE id = ${id} AND account_id = ${accountId} LIMIT 1
