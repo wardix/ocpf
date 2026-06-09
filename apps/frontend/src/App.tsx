@@ -3,14 +3,21 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import ContactInfo from './components/ContactInfo'
-import Login from './components/Login'
-import Settings from './components/Settings'
-import Analytics from './components/Analytics'
-import ReportsDashboard from './components/ReportsDashboard'
-import Contacts from './components/Contacts'
-import Broadcast from './components/Broadcast'
-import ChatbotBuilder from './components/ChatbotBuilder'
 import { ToastContainer } from './components/ToastContainer'
+
+const Login = React.lazy(() => import('./components/Login'))
+const Settings = React.lazy(() => import('./components/Settings'))
+const Analytics = React.lazy(() => import('./components/Analytics'))
+const ReportsDashboard = React.lazy(() => import('./components/ReportsDashboard'))
+const Contacts = React.lazy(() => import('./components/Contacts'))
+const Broadcast = React.lazy(() => import('./components/Broadcast'))
+const ChatbotBuilder = React.lazy(() => import('./components/ChatbotBuilder'))
+
+const Loading = () => (
+  <div className="flex items-center justify-center w-full h-full min-h-[400px] flex-1">
+    <span className="loading loading-spinner loading-lg text-primary"></span>
+  </div>
+);
 
 import { useAuthStore } from './store/authStore'
 import { useUiStore } from './store/uiStore'
@@ -414,7 +421,11 @@ function App() {
   }, [token]);
 
   if (!token) {
-    return <Login onLoginSuccess={login} />;
+    return (
+      <React.Suspense fallback={<Loading />}>
+        <Login onLoginSuccess={login} />
+      </React.Suspense>
+    );
   }
 
   return (
@@ -539,7 +550,8 @@ function App() {
       </div>
 
       <div className="flex-1 flex overflow-hidden mb-[3.25rem] md:mb-0">
-        <Routes>
+        <React.Suspense fallback={<Loading />}>
+          <Routes>
           <Route path="/" element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox/*" element={
             <>
@@ -624,7 +636,8 @@ function App() {
           {user?.role === 'administrator' && (
             <Route path="/chatbot" element={<div className="flex-1 h-full w-full overflow-y-auto"><ChatbotBuilder /></div>} />
           )}
-        </Routes>
+          </Routes>
+        </React.Suspense>
       </div>
 
       <BottomNav />
