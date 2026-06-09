@@ -223,6 +223,18 @@ conversationsRoutes.get('/:id/messages', async (c) => {
 conversationsRoutes.get('/:id/viewers', async (c) => {
   const conversationId = c.req.param('id');
   try {
+    const accountId = getAccountId(c);
+    
+    // Verifikasi kepemilikan conversation
+    const [conversation] = await sql`
+      SELECT id FROM conversations 
+      WHERE id = ${conversationId} AND account_id = ${accountId}
+      LIMIT 1
+    `;
+    if (!conversation) {
+      return c.json({ error: 'Kontak atau percakapan tidak ditemukan' }, 404);
+    }
+
     const { redis } = await import('../config/redis');
     const key = `viewing:conversation:${conversationId}`;
     
