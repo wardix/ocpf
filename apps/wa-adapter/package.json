@@ -13,6 +13,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "ioredis": "^5.3.0",
     "pino": "^10.3.1",
+    "@sentry/node": "^8.9.0",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {

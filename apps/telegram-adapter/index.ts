@@ -1,3 +1,34 @@
+import * as Sentry from '@sentry/bun';
+import pino from 'pino';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 1.0,
+    environment: process.env.NODE_ENV || 'development'
+  });
+  console.log('[Telegram Adapter] Sentry initialized');
+}
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  timestamp: pino.stdTimeFunctions.isoTime
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason);
+  }
+  logger.error({ msg: 'Unhandled Rejection', error: reason });
+});
+
+process.on('uncaughtException', (error) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(error);
+  }
+  logger.error({ msg: 'Uncaught Exception', error: error.message || error });
+});
+
 import { Bot, InputFile } from 'grammy';
 import Redis from 'ioredis';
 import postgres from 'postgres';
@@ -27,13 +58,13 @@ const QUEUE_INCOMING = 'queue:incoming_messages';
 async function startBotForInbox(inboxId: number, token: string) {
   if (activeBots.has(inboxId)) return;
 
-  console.log(`[Inbox ${inboxId}] Starting Telegram Bot...`);
+  logger.info(`[Inbox ${inboxId}] Starting Telegram Bot...`);
   const bot = new Bot(token);
   activeBots.set(inboxId, bot);
 
   // Error handling
   bot.catch((err) => {
-    console.error(`[Inbox ${inboxId}] Bot error:`, err);
+    logger.error({ msg: `[Inbox ${inboxId}] Bot error`, error: err });
   });
 
   // Handle incoming messages
@@ -60,7 +91,7 @@ async function startBotForInbox(inboxId: number, token: string) {
           filename: 'photo.jpg'
         };
       } catch (err) {
-        console.error('Failed to download telegram photo:', err);
+        logger.error({ msg: 'Failed to download telegram photo', error: err });
       }
     } else if (msg.document) {
       messageType = 'document';
@@ -76,7 +107,7 @@ async function startBotForInbox(inboxId: number, token: string) {
           filename: msg.document.file_name || 'document.bin'
         };
       } catch (err) {
-        console.error('Failed to download telegram document:', err);
+        logger.error({ msg: 'Failed to download telegram document', error: err });
       }
     } else if (msg.video) {
       messageType = 'video';
@@ -128,7 +159,7 @@ async function startOutgoingWorker(inboxId: number, bot: Bot) {
   const queueName = `queue:outgoing_messages:inbox_${inboxId}`;
   const redisWorker = new Redis({ host: REDIS_HOST, port: REDIS_PORT });
 
-  console.log(`[Inbox ${inboxId}] Outgoing worker started listening on ${queueName}`);
+  logger.info(`[Inbox ${inboxId}] Outgoing worker started listening on ${queueName}`);
 
   while (activeWorkers.get(inboxId)) {
     try {
@@ -168,7 +199,7 @@ async function startOutgoingWorker(inboxId: number, bot: Bot) {
         }));
       }
     } catch (err) {
-      console.error(`[Inbox ${inboxId}] Error sending outgoing message:`, err);
+      logger.error({ msg: `[Inbox ${inboxId}] Error sending outgoing message`, error: err });
     }
   }
 
@@ -176,7 +207,7 @@ async function startOutgoingWorker(inboxId: number, bot: Bot) {
 }
 
 async function syncChannels() {
-  console.log('Syncing Telegram channels...');
+  logger.info('Syncing Telegram channels...');
   try {
     const channels = await sql`
       SELECT ch.id as channel_id, ch.provider_config->>'token' as token, i.id as inbox_id
@@ -190,7 +221,7 @@ async function syncChannels() {
     // Stop bots for deleted/inactive inboxes
     for (const [inboxId, bot] of activeBots.entries()) {
       if (!activeInboxIds.has(inboxId)) {
-        console.log(`[Inbox ${inboxId}] Stopping Telegram Bot...`);
+        logger.info(`[Inbox ${inboxId}] Stopping Telegram Bot...`);
         bot.stop();
         activeBots.delete(inboxId);
         activeWorkers.set(inboxId, false);
@@ -204,7 +235,7 @@ async function syncChannels() {
       }
     }
   } catch (err) {
-    console.error('Failed to sync channels:', err);
+    logger.error({ msg: 'Failed to sync channels', error: err });
   }
 }
 
@@ -219,4 +250,4 @@ redisSub.on('message', (channel, message) => {
 // Initial Sync
 syncChannels();
 
-console.log('Telegram Adapter started. Waiting for channels...');
+logger.info('Telegram Adapter started. Waiting for channels...');

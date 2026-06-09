@@ -1,4 +1,28 @@
 // apps/wa-adapter/src/index.js
+import * as Sentry from '@sentry/node';
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    tracesSampleRate: 1.0,
+    environment: process.env.NODE_ENV || 'development'
+  });
+  console.log('[WA Adapter] Sentry initialized');
+}
+
+process.on('unhandledRejection', (reason) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(reason);
+  }
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(error);
+  }
+  console.error('Uncaught Exception:', error);
+});
 import { 
   default as makeWASocket, 
   DisconnectReason, 

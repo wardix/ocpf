@@ -41,7 +41,22 @@ import { channelsRoutes } from './routes/channels';
 import { teamsRoutes } from './routes/teams';
 import { notificationsRoutes } from './routes/notifications';
 
+import { monitorMiddleware, registry } from './utils/monitoring';
+import * as Sentry from '@sentry/bun';
+
 const app = new Hono();
+
+// Capture uncaught exceptions using Sentry
+app.onError((err, c) => {
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(err);
+  }
+  console.error('[Hono Error Handler]', err);
+  return c.json({ error: 'Internal Server Error' }, 500);
+});
+
+// Register Prometheus and Structured Logging Middleware
+app.use('*', monitorMiddleware);
 
 // Setup CORS Configuration
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
@@ -103,6 +118,12 @@ app.use('/widget.js', serveStatic({ path: './public/widget.js' }));
 
 // Health Check
 app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'));
+
+// Prometheus Metrics Endpoint
+app.get('/metrics', async (c) => {
+  c.header('Content-Type', registry.contentType);
+  return c.text(await registry.metrics());
+});
 
 // Register Routes
 app.route('/api/auth', authRoutes);

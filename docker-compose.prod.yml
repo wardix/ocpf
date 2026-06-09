@@ -46,3 +46,12 @@ services:
         - VITE_API_URL=${VITE_API_URL:-https://api.yourdomain.com}
         - VITE_WS_URL=${VITE_WS_URL:-wss://api.yourdomain.com/ws}
     restart: always
+
+  prometheus:
+    restart: always
+    ports: []  # Do not expose prometheus admin port in production
+
+  grafana:
+    restart: always
+    ports:
+      - "3000:3000"
