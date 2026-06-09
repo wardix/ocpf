@@ -251,3 +251,45 @@ redisSub.on('message', (channel, message) => {
 syncChannels();
 
 logger.info('Telegram Adapter started. Waiting for channels...');
+
+// =========================================================================
+// HEALTH CHECK SERVER
+// =========================================================================
+const HEALTH_PORT = Number(process.env.TELEGRAM_ADAPTER_PORT || process.env.PORT) || 8081;
+
+const healthServer = Bun.serve({
+  port: HEALTH_PORT,
+  async fetch(req) {
+    const url = new URL(req.url);
+    if ((url.pathname === '/health' || url.pathname === '/healthz') && req.method === 'GET') {
+      let dbStatus = 'ok';
+      let redisStatus = 'ok';
+
+      try {
+        await sql`SELECT 1`;
+      } catch (err) {
+        dbStatus = 'fail';
+      }
+
+      try {
+        await redis.ping();
+      } catch (err) {
+        redisStatus = 'fail';
+      }
+
+      const isOk = dbStatus === 'ok' && redisStatus === 'ok';
+
+      return Response.json({
+        status: isOk ? 'ok' : 'fail',
+        db: dbStatus,
+        redis: redisStatus,
+        uptime: process.uptime()
+      }, {
+        status: isOk ? 200 : 500
+      });
+    }
+    return new Response('Not Found', { status: 404 });
+  }
+});
+
+logger.info(`[Telegram Adapter] Health check server running on port ${healthServer.port}`);

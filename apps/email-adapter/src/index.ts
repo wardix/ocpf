@@ -1,4 +1,6 @@
 import * as Sentry from '@sentry/node';
+import http from 'http';
+
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -217,3 +219,37 @@ if (EMAIL_INBOXES.length > 0) {
 } else {
   logger.info('No EMAIL_INBOXES defined. Email adapter is idle.');
 }
+
+// =========================================================================
+// HEALTH CHECK SERVER
+// =========================================================================
+const HEALTH_PORT = Number(process.env.EMAIL_ADAPTER_PORT || process.env.PORT) || 8082;
+
+const healthServer = http.createServer(async (req, res) => {
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  if ((url.pathname === '/health' || url.pathname === '/healthz') && req.method === 'GET') {
+    let redisStatus = 'ok';
+    try {
+      await redis.ping();
+    } catch (err) {
+      redisStatus = 'fail';
+    }
+
+    const isOk = redisStatus === 'ok';
+
+    res.writeHead(isOk ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: isOk ? 'ok' : 'fail',
+      db: 'n/a',
+      redis: redisStatus,
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
+healthServer.listen(HEALTH_PORT, () => {
+  logger.info(`[Email Adapter] Health check server running on port ${HEALTH_PORT}`);
+});
