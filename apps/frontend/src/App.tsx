@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react'
+import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
@@ -64,6 +64,11 @@ function App() {
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
   const { t } = useTranslation();
+
+  const selectedConvRef = useRef(selectedConv);
+  useEffect(() => {
+    selectedConvRef.current = selectedConv;
+  }, [selectedConv]);
 
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -239,8 +244,8 @@ function App() {
       ws.onopen = () => {
         setWsStatus('open');
         setWsInstance(ws);
-        if (reconnectAttempts > 0 && selectedConv) {
-          fetchMessages(selectedConv.id);
+        if (reconnectAttempts > 0 && selectedConvRef.current) {
+          fetchMessages(selectedConvRef.current.id);
         }
         reconnectAttempts = 0;
       };
@@ -258,7 +263,7 @@ function App() {
             if (newMessage.sender_type === 'Contact') {
               playNotificationSound();
             }
-            if (selectedConv && newMessage.conversation_id === selectedConv.id) {
+            if (selectedConvRef.current && newMessage.conversation_id === selectedConvRef.current.id) {
               setMessages((prev: any) => [...prev, newMessage]);
             }
           } else if (payload.event === 'notification.new') {
@@ -266,14 +271,14 @@ function App() {
             playNotificationSound();
           } else if (payload.event === 'message.status_changed') {
             const updatedMessage = payload.data;
-            if (selectedConv && updatedMessage.conversation_id === selectedConv.id) {
+            if (selectedConvRef.current && updatedMessage.conversation_id === selectedConvRef.current.id) {
               setMessages((prev: any) => prev.map((msg: any) => 
                 msg.id === updatedMessage.id ? { ...msg, status: updatedMessage.status } : msg
               ));
             }
           } else if (payload.event === 'typing.update') {
             const typingData = payload.data;
-            if (selectedConv && typingData.conversation_id === selectedConv.id) {
+            if (selectedConvRef.current && typingData.conversation_id === selectedConvRef.current.id) {
               setIsContactTyping(typingData.is_typing);
             }
           } else if (payload.event === 'agent.availability_changed') {
@@ -317,7 +322,7 @@ function App() {
         ws.close();
       }
     };
-  }, [selectedConv?.id, token, playNotificationSound]); 
+  }, [token, playNotificationSound]); 
 
   useEffect(() => {
     let typingTimer: ReturnType<typeof setTimeout>;
