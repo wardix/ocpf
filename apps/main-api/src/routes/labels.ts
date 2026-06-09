@@ -37,7 +37,7 @@ labelsRoutes.post('/', zValidator('json', labelSchema, (result, c) => {
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
@@ -69,7 +69,7 @@ labelsRoutes.patch('/:id', zValidator('json', labelSchema, (result, c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
@@ -102,7 +102,7 @@ labelsRoutes.delete('/:id', async (c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);

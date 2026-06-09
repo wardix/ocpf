@@ -1,8 +1,16 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { authMiddleware, getAccountId } from '../middleware/auth';
+
+export interface BusinessHourRow {
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+  is_closed: boolean;
+}
 
 export const inboxesRoutes = new Hono();
 
@@ -67,7 +75,7 @@ inboxesRoutes.put('/:inbox_id/settings', zValidator('json', updateSettingsSchema
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     // Proteksi role administrator
     if (jwtPayload?.role !== 'administrator') {
@@ -179,7 +187,7 @@ inboxesRoutes.get('/:inbox_id/business-hours', async (c) => {
     }));
 
     const mergedSchedules = defaultSchedules.map(def => {
-      const found = schedules.find((s: any) => s.day_of_week === def.day_of_week);
+      const found = (schedules as unknown as BusinessHourRow[]).find((s) => s.day_of_week === def.day_of_week);
       return found ? {
         day_of_week: found.day_of_week,
         open_time: found.open_time,
@@ -247,7 +255,7 @@ inboxesRoutes.put('/:inbox_id/business-hours', zValidator('json', updateBusiness
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
@@ -268,7 +276,7 @@ inboxesRoutes.put('/:inbox_id/business-hours', zValidator('json', updateBusiness
       schedules 
     } = c.req.valid('json');
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       // 1. Upsert settings
       const [updatedSettings] = await tx`
         INSERT INTO inbox_settings (
@@ -318,7 +326,7 @@ inboxesRoutes.put('/:inbox_id/business-hours', zValidator('json', updateBusiness
         business_hours_enabled: !!result.settings.business_hours_enabled,
         timezone: result.settings.timezone,
         out_of_office_message: result.settings.out_of_office_message,
-        schedules: result.schedules.map((s: any) => ({
+        schedules: (result.schedules as BusinessHourRow[]).map((s) => ({
           day_of_week: s.day_of_week,
           open_time: s.open_time,
           close_time: s.close_time,
@@ -359,7 +367,7 @@ const updateInboxSchema = z.object({
 inboxesRoutes.get('/', async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const userId = jwtPayload?.id;
 
     let inboxes;
@@ -397,10 +405,13 @@ inboxesRoutes.get('/', async (c) => {
 inboxesRoutes.post('/', zValidator('json', createInboxSchema), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
-    const userId = jwtPayload?.id;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    const userId = jwtPayload.id;
 
-    if (jwtPayload?.role !== 'administrator') {
+    if (jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
@@ -421,13 +432,17 @@ inboxesRoutes.post('/', zValidator('json', createInboxSchema), async (c) => {
       channelId = Number(newChannel.id);
     }
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       // Create inbox
       const [newInbox] = await tx`
         INSERT INTO inboxes (account_id, channel_id, name, description, greeting_message, is_active)
         VALUES (${accountId}, ${channelId}, ${name}, ${description || null}, ${greeting_message || null}, true)
         RETURNING *
       `;
+
+      if (!newInbox) {
+        throw new Error('FAILED_TO_CREATE_INBOX');
+      }
 
       // Create settings
       const defaultCsatMessage = 'Terima kasih telah menghubungi kami! Bagaimana penilaian Anda terhadap layanan kami? Reply 1-5 (1=Sangat Buruk, 5=Sangat Baik)';
@@ -468,7 +483,7 @@ inboxesRoutes.put('/:id', zValidator('json', updateInboxSchema, (result, c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
@@ -506,7 +521,7 @@ inboxesRoutes.delete('/:id', async (c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak' }, 403);
@@ -572,7 +587,7 @@ inboxesRoutes.post('/:id/members', zValidator('json', addMemberSchema, (result, 
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak' }, 403);
@@ -612,7 +627,7 @@ inboxesRoutes.delete('/:id/members/:user_id', async (c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
 
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak' }, 403);

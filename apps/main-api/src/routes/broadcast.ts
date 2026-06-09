@@ -21,7 +21,7 @@ const broadcastSchema = z.object({
 const broadcastRateLimiter = rateLimiter({
   windowMs: 60 * 1000,
   max: 1,
-  keyGenerator: (c) => `broadcast:${(c.get('jwtPayload') as any)?.id || 'unknown'}`
+  keyGenerator: (c) => `broadcast:${c.get('jwtPayload')?.id || 'unknown'}`
 });
 
 app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result, c) => {
@@ -30,8 +30,8 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
   }
 }), async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
-    if (jwtPayload?.role !== 'administrator') {
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload || jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
     const ACCOUNT_ID = getAccountId(c);

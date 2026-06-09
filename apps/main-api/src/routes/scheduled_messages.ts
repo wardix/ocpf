@@ -21,7 +21,7 @@ const createScheduleSchema = z.object({
 // Create Schedule
 scheduledMessagesRoutes.post('/', async (c) => {
   const accountId = getAccountId(c);
-  const userId = (c.get('jwtPayload') as any)?.id;
+  const userId = c.get('jwtPayload')?.id;
 
   try {
     const body = await c.req.json();
@@ -50,8 +50,9 @@ scheduledMessagesRoutes.post('/', async (c) => {
     }));
 
     return c.json({ success: true, data: schedule });
-  } catch (error: any) {
-    return c.json({ error: error.message || 'Error scheduling message' }, 400);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Error scheduling message' }, 400);
   }
 });
 
@@ -70,7 +71,7 @@ scheduledMessagesRoutes.get('/:conversationId', async (c) => {
       ORDER BY scheduled_at ASC
     `;
     return c.json({ success: true, data: schedules });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Failed to fetch schedules' }, 500);
   }
 });

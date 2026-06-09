@@ -56,8 +56,9 @@ apiKeysRoutes.post('/', async (c) => {
         plaintext_key: key // ONLY SHOWN ONCE
       } 
     }, 201);
-  } catch (error: any) {
-    return c.json({ error: error.message || 'Gagal membuat API Key' }, 400);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Gagal membuat API Key' }, 400);
   }
 });
 
@@ -74,7 +75,7 @@ apiKeysRoutes.get('/', async (c) => {
     `;
     
     return c.json({ success: true, data: keys });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Gagal memuat API Keys' }, 500);
   }
 });
@@ -91,7 +92,7 @@ apiKeysRoutes.delete('/:id', async (c) => {
       WHERE id = ${id} AND account_id = ${accountId}
     `;
     return c.json({ success: true });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Gagal mencabut API Key' }, 500);
   }
 });

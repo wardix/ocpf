@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
@@ -6,6 +7,7 @@ import { redis, PUB_SUB_CH } from '../config/redis';
 import { authMiddleware, getAccountId } from '../middleware/auth';
 import { dispatchWebhook } from '../utils/webhooks';
 import { rateLimiter } from '../middleware/rate-limiter';
+import crypto from 'crypto';
 import path from 'path';
 import type { SendMessagePayload } from '@omnichannel/shared-types';
 
@@ -36,7 +38,7 @@ const sendMessageSchema = z.object({
 const sendMessageRateLimiter = rateLimiter({
   windowMs: 60 * 1000,
   max: 30,
-  keyGenerator: (c) => `message_send:${(c.get('jwtPayload') as any)?.id || 'unknown'}`
+  keyGenerator: (c) => `message_send:${c.get('jwtPayload')?.id || 'unknown'}`
 });
 
 messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMessageSchema, (result, c) => {
@@ -47,7 +49,8 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
   const tStart = Date.now();
   console.log(`\n[DEBUG-LATENCY] (${tStart}) API menerima request POST kirim pesan.`);
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) return c.json({ error: 'Unauthorized' }, 401);
     const agentId = jwtPayload.id;
     const accountId = getAccountId(c);
 
@@ -72,7 +75,13 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const tDbStart = Date.now();
     let attachmentData = null;
 
-    const msg = await sql.begin(async (tx: any) => {
+    interface ThreadedMessage {
+      id: string;
+      _in_reply_to?: string | null;
+      _references?: string | null;
+    }
+
+    const msg = await sql.begin(async (tx: postgres.Sql) => {
       const [insertedMsg] = await tx`
         INSERT INTO messages (
           account_id, conversation_id, ticket_id, sender_type, sender_id, 
@@ -83,6 +92,10 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
         )
         RETURNING *;
       `;
+
+      if (!insertedMsg) {
+        throw new Error('FAILED_TO_CREATE_MESSAGE');
+      }
 
       let in_reply_to = undefined;
       let references = undefined;
@@ -122,8 +135,9 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       }
       
       // Inject thread info for redis payload building later
-      (insertedMsg as any)._in_reply_to = in_reply_to;
-      (insertedMsg as any)._references = references;
+      const threadedMsg = insertedMsg as unknown as ThreadedMessage;
+      threadedMsg._in_reply_to = in_reply_to;
+      threadedMsg._references = references;
 
       
       if (media) {
@@ -154,9 +168,10 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
             RETURNING *;
           `;
           attachmentData = attachment;
-        } catch (err: any) {
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
           console.error('Gagal memproses lampiran media yang dikirim:', err);
-          throw new Error('ATTACHMENT_FAILED: ' + err.message); // Akan mentrigger rollback tx
+          throw new Error('ATTACHMENT_FAILED: ' + errorMessage); // Akan mentrigger rollback tx
         }
       }
       return insertedMsg;
@@ -179,8 +194,8 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
              subject: email_metadata?.subject,
              cc_addresses: email_metadata?.cc_addresses,
              bcc_addresses: email_metadata?.bcc_addresses,
-             in_reply_to: (msg as any)._in_reply_to,
-             references: (msg as any)._references
+             in_reply_to: (msg as unknown as ThreadedMessage)._in_reply_to ?? undefined,
+             references: (msg as unknown as ThreadedMessage)._references ?? undefined
           } : undefined
         }
       };
@@ -204,15 +219,19 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     }));
 
     if (is_private && content) {
+      interface UserRow {
+        id: string;
+        name: string;
+      }
       const users = await sql`SELECT id, name FROM users WHERE account_id = ${accountId}`;
-      const mentionedUsers = users.filter((u: any) => content.includes(`@${u.name}`));
+      const mentionedUsers = (users as unknown as UserRow[]).filter((u) => content.includes(`@${u.name}`));
       if (mentionedUsers.length > 0) {
         const { createNotification } = await import('../utils/notifications');
         const senderName = jwtPayload.name || 'Seseorang';
         for (const u of mentionedUsers) {
-          if (u.id !== agentId) {
+          if (Number(u.id) !== agentId) {
             await createNotification({
-              userId: u.id,
+              userId: Number(u.id),
               accountId,
               type: 'mentioned_in_note',
               title: 'Anda di-mention dalam Private Note',

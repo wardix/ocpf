@@ -66,15 +66,15 @@ webhooksRoutes.post('/', zValidator('json', webhookSchema, (result, c) => {
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
-    if (jwtPayload?.role !== 'administrator') {
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload || jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
     const { url, events, active, description } = c.req.valid('json');
 
     // Validate events list
-    const invalidEvents = events.filter((e: any) => !allowedEvents.includes(e));
+    const invalidEvents = events.filter((e: string) => !allowedEvents.includes(e));
     if (invalidEvents.length > 0) {
       return c.json({ error: `Event berikut tidak didukung: ${invalidEvents.join(', ')}` }, 400);
     }
@@ -104,15 +104,15 @@ webhooksRoutes.put('/:id', zValidator('json', webhookSchema, (result, c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
-    if (jwtPayload?.role !== 'administrator') {
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload || jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
     const { url, events, active, description } = c.req.valid('json');
 
     // Validate events list
-    const invalidEvents = events.filter((e: any) => !allowedEvents.includes(e));
+    const invalidEvents = events.filter((e: string) => !allowedEvents.includes(e));
     if (invalidEvents.length > 0) {
       return c.json({ error: `Event berikut tidak didukung: ${invalidEvents.join(', ')}` }, 400);
     }
@@ -144,8 +144,8 @@ webhooksRoutes.delete('/:id', async (c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
-    if (jwtPayload?.role !== 'administrator') {
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload || jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
@@ -171,8 +171,8 @@ webhooksRoutes.post('/:id/test', async (c) => {
 
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
-    if (jwtPayload?.role !== 'administrator') {
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload || jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 

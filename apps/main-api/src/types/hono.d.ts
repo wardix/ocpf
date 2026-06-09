@@ -1,13 +1,22 @@
 import 'hono';
 
 declare module 'hono' {
+  export interface JWTPayload {
+    id: number;
+    name: string;
+    account_id: number;
+    role: string;
+    email?: string;
+    exp?: number;
+  }
+
   interface ContextVariableMap {
     account_id?: number;
     user_id?: number;
     user_role?: string;
     auth_method?: string;
     permissions?: string[];
-    jwtPayload?: any;
+    jwtPayload?: JWTPayload;
     requestId?: string;
     logger?: any;
   }

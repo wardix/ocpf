@@ -37,7 +37,7 @@ export const authMiddleware = async (c: Context, next: Next) => {
 
   // Fallback to JWT
   await jwtMiddleware(c, async () => {
-    const payload = c.get('jwtPayload') as any;
+    const payload = c.get('jwtPayload');
     if (payload && payload.account_id) {
       c.set('account_id', payload.account_id);
       c.set('user_id', payload.id);

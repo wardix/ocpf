@@ -19,7 +19,7 @@ const createExportSchema = z.object({
 // Enqueue export job
 exportsRoutes.post('/', async (c) => {
   const accountId = getAccountId(c);
-  const userId = (c.get('jwtPayload') as any)?.id;
+  const userId = c.get('jwtPayload')?.id;
 
   try {
     const body = await c.req.json();
@@ -37,8 +37,9 @@ exportsRoutes.post('/', async (c) => {
     await redis.lpush('queue:export_jobs', JSON.stringify({ jobId: job.id, accountId }));
 
     return c.json({ success: true, data: job }, 202);
-  } catch (error: any) {
-    return c.json({ error: error.message || 'Gagal membuat job export' }, 400);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Gagal membuat job export' }, 400);
   }
 });
 
@@ -56,7 +57,7 @@ exportsRoutes.get('/', async (c) => {
     `;
     
     return c.json({ success: true, data: jobs });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Gagal memuat history export' }, 500);
   }
 });
@@ -86,14 +87,14 @@ exportsRoutes.get('/:id/download', async (c) => {
       return c.json({ error: 'File tidak ditemukan di server' }, 404);
     }
 
-    const fileStream = fs.createReadStream(absolutePath);
+    const file = Bun.file(absolutePath);
     const fileName = path.basename(absolutePath);
     const ext = path.extname(absolutePath);
     const contentType = ext === '.xlsx' 
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
       : 'text/csv';
 
-    return new Response(fileStream as any, {
+    return new Response(file, {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': `attachment; filename="${fileName}"`

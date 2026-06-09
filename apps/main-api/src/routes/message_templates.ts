@@ -53,7 +53,7 @@ messageTemplatesRoutes.get('/', async (c) => {
     }
     
     return c.json({ success: true, data: templates });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Gagal memuat template' }, 500);
   }
 });
@@ -79,7 +79,7 @@ messageTemplatesRoutes.get('/:id', async (c) => {
 // Create template
 messageTemplatesRoutes.post('/', async (c) => {
   const accountId = getAccountId(c);
-  const userId = (c.get('jwtPayload') as any)?.id;
+  const userId = c.get('jwtPayload')?.id;
 
   try {
     const body = await c.req.json();
@@ -96,9 +96,11 @@ messageTemplatesRoutes.post('/', async (c) => {
     `;
     
     return c.json({ success: true, data: template });
-  } catch (error: any) {
-    if (error.code === '23505') return c.json({ error: 'Nama template sudah digunakan' }, 400);
-    return c.json({ error: error.message || 'Gagal membuat template' }, 400);
+  } catch (error) {
+    const pgErr = error as { code?: string };
+    if (pgErr.code === '23505') return c.json({ error: 'Nama template sudah digunakan' }, 400);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Gagal membuat template' }, 400);
   }
 });
 
@@ -126,9 +128,11 @@ messageTemplatesRoutes.put('/:id', async (c) => {
     
     if (!template) return c.json({ error: 'Template tidak ditemukan' }, 404);
     return c.json({ success: true, data: template });
-  } catch (error: any) {
-    if (error.code === '23505') return c.json({ error: 'Nama template sudah digunakan' }, 400);
-    return c.json({ error: error.message || 'Gagal mengubah template' }, 400);
+  } catch (error) {
+    const pgErr = error as { code?: string };
+    if (pgErr.code === '23505') return c.json({ error: 'Nama template sudah digunakan' }, 400);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Gagal mengubah template' }, 400);
   }
 });
 
@@ -172,7 +176,7 @@ messageTemplatesRoutes.post('/:id/resolve', async (c) => {
     `;
     if (!template) return c.json({ error: 'Template tidak ditemukan' }, 404);
 
-    let contactData: Record<string, any> = {};
+    let contactData: Record<string, string> = {};
     if (validated.conversation_id) {
       const [contact] = await sql`
         SELECT con.* 
@@ -215,7 +219,8 @@ messageTemplatesRoutes.post('/:id/resolve', async (c) => {
         original_template: template
       } 
     });
-  } catch (error: any) {
-    return c.json({ error: error.message || 'Gagal meresolve template' }, 400);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return c.json({ error: errorMessage || 'Gagal meresolve template' }, 400);
   }
 });

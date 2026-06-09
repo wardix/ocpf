@@ -56,16 +56,18 @@ automationRoutes.post('/', zValidator('json', ruleSchema, (result, c) => {
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const userId = jwtPayload?.id;
 
     const { name, description, trigger_type, trigger_config, actions, is_active, priority } = c.req.valid('json');
+
+    type AutomationAction = z.infer<typeof actionSchema>;
 
     const [rule] = await sql`
       INSERT INTO automation_rules (
         account_id, name, description, trigger_type, trigger_config, actions, is_active, priority, created_by
       ) VALUES (
-        ${accountId}, ${name}, ${description || ''}, ${trigger_type}, ${sql.json(trigger_config)}, ${actions.map((a: any) => JSON.stringify(a))}::jsonb[], ${is_active}, ${priority}, ${userId}
+        ${accountId}, ${name}, ${description || ''}, ${trigger_type}, ${sql.json(trigger_config)}, ${actions.map((a: AutomationAction) => JSON.stringify(a))}::jsonb[], ${is_active}, ${priority}, ${userId || null}
       )
       RETURNING *
     `;
@@ -87,6 +89,8 @@ automationRoutes.put('/:id', zValidator('json', ruleSchema, (result, c) => {
 
     const { name, description, trigger_type, trigger_config, actions, is_active, priority } = c.req.valid('json');
 
+    type AutomationAction = z.infer<typeof actionSchema>;
+
     const [rule] = await sql`
       UPDATE automation_rules
       SET 
@@ -94,7 +98,7 @@ automationRoutes.put('/:id', zValidator('json', ruleSchema, (result, c) => {
         description = ${description || ''},
         trigger_type = ${trigger_type},
         trigger_config = ${sql.json(trigger_config)},
-        actions = ${actions.map((a: any) => JSON.stringify(a))}::jsonb[],
+        actions = ${actions.map((a: AutomationAction) => JSON.stringify(a))}::jsonb[],
         is_active = ${is_active},
         priority = ${priority},
         updated_at = NOW()

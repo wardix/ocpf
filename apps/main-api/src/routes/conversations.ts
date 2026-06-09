@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
@@ -17,7 +18,7 @@ conversationsRoutes.get('/', async (c) => {
     const inboxIdQuery = c.req.query('inbox_id');
     const inboxId = inboxIdQuery ? parseInt(inboxIdQuery, 10) : null;
     
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const currentAgentId = jwtPayload?.id;
     const accountId = getAccountId(c);
 
@@ -118,6 +119,9 @@ conversationsRoutes.get('/info/:id', async (c) => {
   const ticketId = c.req.param('id');
   try {
     const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     const [ticketInfo] = await sql`
       SELECT 
         t.id, 
@@ -148,6 +152,9 @@ conversationsRoutes.get('/by-phone/:phone', async (c) => {
   const phone = c.req.param('phone');
   try {
     const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     const [ticketInfo] = await sql`
       SELECT 
         t.id, 
@@ -371,6 +378,9 @@ conversationsRoutes.patch('/:id/status', zValidator('json', updateStatusSchema, 
 
   try {
     const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
     const { status } = c.req.valid('json');
@@ -475,7 +485,8 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
   if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
 
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) return c.json({ error: 'Unauthorized' }, 401);
     const actorId = jwtPayload.id;
     const actorName = jwtPayload.name;
     const { assignee_id: targetAgentId, team_id: targetTeamId } = c.req.valid('json');
@@ -489,7 +500,7 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
 
     const assigneeId = targetAgentId !== undefined ? targetAgentId : actorId;
 
-    const ticket = await sql.begin(async (tx: any) => {
+    const ticket = await sql.begin(async (tx: postgres.Sql) => {
       let updatedTicket;
       
       if (targetTeamId !== undefined) {
@@ -569,10 +580,11 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
     }
 
     return c.json({ success: true, data: ticket });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error assign ticket:', error);
-    if (error.message === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan' }, 404);
-    if (error.message === 'ALREADY_ASSIGNED') {
+    const errorMessage = error instanceof Error ? error.message : '';
+    if (errorMessage === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan' }, 404);
+    if (errorMessage === 'ALREADY_ASSIGNED') {
       // Return custom message untuk self-assign jika sudah diambil
       return c.json({ error: 'Tiket sudah diambil agen lain' }, 400);
     }
@@ -591,14 +603,17 @@ conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (resul
   if (isNaN(conversationId)) return c.json({ error: 'ID tidak valid' }, 400);
 
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     const { snoozed_until } = c.req.valid('json');
 
     if (new Date(snoozed_until) <= new Date()) {
       return c.json({ error: 'Waktu snooze harus di masa depan' }, 400);
     }
 
-    const ticket = await sql.begin(async (tx: any) => {
+    const ticket = await sql.begin(async (tx: postgres.Sql) => {
       const [currentTicket] = await tx`
         SELECT status FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved' LIMIT 1
       `;
@@ -650,9 +665,10 @@ conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (resul
     });
 
     return c.json({ success: true, data: ticket });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error snooze ticket:', error);
-    if (error.message === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan atau sudah ditutup' }, 404);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage === 'NOT_FOUND') return c.json({ error: 'Tiket tidak ditemukan atau sudah ditutup' }, 404);
     return c.json({ success: false, error: 'Gagal snooze tiket' }, 500);
   }
 });
@@ -663,10 +679,11 @@ conversationsRoutes.patch('/:id/unassign', async (c) => {
 
   try {
     const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) return c.json({ error: 'Unauthorized' }, 401);
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
 
-    const ticket = await sql.begin(async (tx: any) => {
+    const ticket = await sql.begin(async (tx: postgres.Sql) => {
       const [updatedTicket] = await tx`
         UPDATE tickets 
         SET assignee_id = NULL, updated_at = NOW() 
@@ -694,9 +711,10 @@ conversationsRoutes.patch('/:id/unassign', async (c) => {
     });
 
     return c.json({ success: true, data: ticket });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error unassign ticket:', error);
-    if (error.message === 'NOT_FOUND_OR_NOT_OWNED') return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage === 'NOT_FOUND_OR_NOT_OWNED') return c.json({ error: 'Tiket tidak ditemukan atau tidak dipegang oleh Anda' }, 400);
     return c.json({ success: false, error: 'Gagal melepas tiket' }, 500);
   }
 });
@@ -734,7 +752,7 @@ conversationsRoutes.post('/:id/labels', zValidator('json', assignLabelSchema, (r
   try {
     const { label_id } = c.req.valid('json');
 
-    await sql.begin(async (tx: any) => {
+    await sql.begin(async (tx: postgres.Sql) => {
       await tx`
         INSERT INTO conversation_labels (conversation_id, label_id)
         VALUES (${conversationId}, ${label_id})
@@ -761,7 +779,7 @@ conversationsRoutes.post('/:id/labels', zValidator('json', assignLabelSchema, (r
         `;
 
         if (updatedTicket) {
-          const jwtPayload = c.get('jwtPayload') as any;
+          const jwtPayload = c.get('jwtPayload');
           const agentId = jwtPayload?.id;
           
           const [team] = await tx`SELECT name FROM teams WHERE id = ${teamId}`;

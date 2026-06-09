@@ -11,7 +11,10 @@ usersRoutes.use('/*', authMiddleware);
 
 usersRoutes.get('/agents', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     
     // Semua user (admin/agen) bisa memanggil ini untuk keperluan dropdown UI
     const agents = await sql`
@@ -31,7 +34,10 @@ usersRoutes.get('/agents', async (c) => {
 usersRoutes.get('/', async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
-    if (jwtPayload?.role !== 'administrator') {
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 
@@ -57,7 +63,10 @@ usersRoutes.patch('/me/availability', zValidator('json', availabilitySchema, (re
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     const { status } = c.req.valid('json');
 
     const [result] = await sql`
@@ -101,7 +110,10 @@ usersRoutes.post('/', zValidator('json', createUserSchema, (result, c) => {
 }), async (c) => {
   try {
     const jwtPayload = c.get('jwtPayload');
-    if (jwtPayload?.role !== 'administrator') {
+    if (!jwtPayload) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+    if (jwtPayload.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
 

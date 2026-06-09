@@ -8,7 +8,7 @@ analyticsRoutes.use('/*', authMiddleware);
 
 analyticsRoutes.get('/', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -73,7 +73,7 @@ analyticsRoutes.get('/', async (c) => {
 // GET /api/analytics/csat
 analyticsRoutes.get('/csat', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -109,14 +109,18 @@ analyticsRoutes.get('/csat', async (c) => {
     `;
 
     // Make sure we have entries for 1-5 even if count is 0
+    interface CSATRatingDistributionRow {
+      rating: number;
+      count: number;
+    }
     const distributionMap: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    distribution.forEach((row: any) => {
+    (distribution as unknown as CSATRatingDistributionRow[]).forEach((row) => {
       distributionMap[row.rating] = row.count;
     });
 
     const formattedDistribution = Object.keys(distributionMap).map(key => ({
       rating: parseInt(key, 10),
-      count: distributionMap[parseInt(key, 10)]
+      count: distributionMap[parseInt(key, 10)] || 0
     })).sort((a, b) => b.rating - a.rating);
 
     // 3. Per-Agent Breakdown
@@ -165,7 +169,7 @@ analyticsRoutes.get('/csat', async (c) => {
 // GET /api/analytics/csat/ratings
 analyticsRoutes.get('/csat/ratings', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -222,7 +226,7 @@ analyticsRoutes.get('/csat/ratings', async (c) => {
 // GET /api/analytics/overview
 analyticsRoutes.get('/overview', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -303,7 +307,7 @@ analyticsRoutes.get('/overview', async (c) => {
 // GET /api/analytics/volume
 analyticsRoutes.get('/volume', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -335,7 +339,11 @@ analyticsRoutes.get('/volume', async (c) => {
       ORDER BY period ASC
     `;
 
-    const formatted = volumeData.map((row: any) => ({
+    interface VolumeDataRow {
+      period: Date | string;
+      count: number;
+    }
+    const formatted = (volumeData as unknown as VolumeDataRow[]).map((row) => ({
       period: new Date(row.period).toISOString(),
       count: row.count
     }));
@@ -353,7 +361,7 @@ analyticsRoutes.get('/volume', async (c) => {
 // GET /api/analytics/agents
 analyticsRoutes.get('/agents', async (c) => {
   try {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
@@ -110,7 +111,7 @@ contactsRoutes.post('/merge', zValidator('json', mergeContactsSchema, (result, c
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const userId = jwtPayload?.id;
 
     if (!userId) {
@@ -137,7 +138,7 @@ contactsRoutes.post('/merge', zValidator('json', mergeContactsSchema, (result, c
       return c.json({ error: 'Salah satu atau kedua kontak tidak ditemukan' }, 404);
     }
 
-    await sql.begin(async (tx: any) => {
+    await sql.begin(async (tx: postgres.Sql) => {
       // 1. Move conversations
       const resultConvs = await tx`
         UPDATE conversations 
@@ -158,8 +159,9 @@ contactsRoutes.post('/merge', zValidator('json', mergeContactsSchema, (result, c
             SET contact_id = ${primary_id} 
             WHERE id = ${inbox.id}
           `;
-        } catch (err: any) {
-          if (err.code === '23505') { // unique key violation
+        } catch (err) {
+          const pgErr = err as { code?: string };
+          if (pgErr.code === '23505') { // unique key violation
             await tx`DELETE FROM contact_inboxes WHERE id = ${inbox.id}`;
           } else {
             throw err;

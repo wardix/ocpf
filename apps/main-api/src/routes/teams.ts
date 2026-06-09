@@ -15,7 +15,7 @@ const createTeamSchema = z.object({
 
 teamsRoutes.post('/', zValidator('json', createTeamSchema), async (c) => {
   const accountId = getAccountId(c);
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -30,8 +30,9 @@ teamsRoutes.post('/', zValidator('json', createTeamSchema), async (c) => {
       RETURNING *
     `;
     return c.json({ success: true, data: newTeam }, 201);
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error) {
+    const pgErr = error as { code?: string };
+    if (pgErr.code === '23505') {
       return c.json({ error: 'Nama tim sudah digunakan' }, 400);
     }
     console.error('Error creating team:', error);
@@ -73,7 +74,7 @@ teamsRoutes.get('/', async (c) => {
 teamsRoutes.put('/:id', zValidator('json', createTeamSchema), async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('id');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -90,8 +91,9 @@ teamsRoutes.put('/:id', zValidator('json', createTeamSchema), async (c) => {
     `;
     if (!updatedTeam) return c.json({ error: 'Tim tidak ditemukan' }, 404);
     return c.json({ success: true, data: updatedTeam });
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error) {
+    const pgErr = error as { code?: string };
+    if (pgErr.code === '23505') {
       return c.json({ error: 'Nama tim sudah digunakan' }, 400);
     }
     return c.json({ error: 'Gagal memperbarui tim' }, 500);
@@ -101,7 +103,7 @@ teamsRoutes.put('/:id', zValidator('json', createTeamSchema), async (c) => {
 teamsRoutes.delete('/:id', async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('id');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -126,7 +128,7 @@ const memberSchema = z.object({
 teamsRoutes.post('/:id/members', zValidator('json', memberSchema), async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('id');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -146,7 +148,7 @@ teamsRoutes.post('/:id/members', zValidator('json', memberSchema), async (c) => 
       RETURNING *
     `;
     return c.json({ success: true, data: newMember });
-  } catch (error: any) {
+  } catch (error) {
     return c.json({ error: 'Gagal menambahkan anggota' }, 500);
   }
 });
@@ -155,7 +157,7 @@ teamsRoutes.delete('/:teamId/members/:userId', async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('teamId');
   const userId = c.req.param('userId');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -182,7 +184,7 @@ const routingSchema = z.object({
 teamsRoutes.post('/:id/routing', zValidator('json', routingSchema), async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('id');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);
@@ -230,7 +232,7 @@ teamsRoutes.delete('/:teamId/routing/:labelId', async (c) => {
   const accountId = getAccountId(c);
   const teamId = c.req.param('teamId');
   const labelId = c.req.param('labelId');
-  const jwtPayload = c.get('jwtPayload') as any;
+  const jwtPayload = c.get('jwtPayload');
 
   if (jwtPayload?.role !== 'administrator') {
     return c.json({ error: 'Membutuhkan akses administrator' }, 403);

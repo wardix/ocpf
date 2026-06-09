@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
@@ -7,14 +8,19 @@ import { dispatchWebhook } from '../utils/webhooks';
 
 export const widgetRoutes = new Hono();
 
+interface WidgetConfig {
+  allowed_domains?: string | null;
+  [key: string]: unknown;
+}
+
 // Helper untuk validasi CORS domain whitelist
-function validateOrigin(c: any, widgetConfig: any): boolean {
+function validateOrigin(c: Context, widgetConfig: WidgetConfig | null | undefined): boolean {
   const origin = c.req.header('origin');
   const referer = c.req.header('referer');
   
   let requestHost: string | null = null;
   if (origin) {
-    requestHost = origin.replace(/^https?:\/\//, '').split(':')[0].toLowerCase();
+    requestHost = origin.replace(/^https?:\/\//, '').split(':')[0]?.toLowerCase() || null;
   } else if (referer) {
     try {
       requestHost = new URL(referer).hostname.toLowerCase();
@@ -171,11 +177,11 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
     const ipAddress = c.req.header('x-forwarded-for') || null;
     const userAgent = c.req.header('user-agent') || null;
 
-    let contactData: any = null;
+    let contactData: postgres.Row | null = null;
     let isNewContact = false;
     let isNewConversation = false;
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       // 5a. Cari/buat kontak
       let contactId: number;
       const [existingContact] = await tx`
@@ -193,6 +199,7 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
           VALUES (${accountId}, ${name}, ${email}, ${virtualPhone})
           RETURNING *
         `;
+        if (!newContact) throw new Error('FAILED_TO_CREATE_CONTACT');
         contactId = Number(newContact.id);
         contactData = newContact;
       }
@@ -204,6 +211,7 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
         VALUES (${accountId}, ${inbox_id}, ${contactId})
         RETURNING id
       `;
+      if (!newConv) throw new Error('FAILED_TO_CREATE_CONVERSATION');
       const conversationId = Number(newConv.id);
 
       // 5c. Buat tiket baru
@@ -212,6 +220,7 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
         VALUES (${accountId}, ${conversationId}, 'open')
         RETURNING id
       `;
+      if (!newTicket) throw new Error('FAILED_TO_CREATE_TICKET');
       const ticketId = Number(newTicket.id);
 
       // 5d. Buat widget session
@@ -225,14 +234,16 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
       `;
 
       // 5e. Masukkan Greeting Message jika terkonfigurasi
-      let welcomeMessages: any[] = [];
+      let welcomeMessages: postgres.Row[] = [];
       if (inbox.greeting_message) {
         const [greetMsg] = await tx`
           INSERT INTO messages (conversation_id, ticket_id, account_id, sender_type, content)
           VALUES (${conversationId}, ${ticketId}, ${accountId}, 'System', ${inbox.greeting_message})
           RETURNING *
         `;
-        welcomeMessages.push(greetMsg);
+        if (greetMsg) {
+          welcomeMessages.push(greetMsg);
+        }
       }
 
       return { contactId, conversationId, welcomeMessages };

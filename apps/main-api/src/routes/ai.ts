@@ -25,6 +25,12 @@ const aiRequestSchema = z.object({
 });
 
 
+interface ConversationMessage {
+  sender_type: string;
+  content: string | null;
+  created_at: Date;
+}
+
 // Helper: Format message history for prompt context
 async function getConversationContext(conversationId: number, accountId: number, limit = 20) {
   const messages = await sql`
@@ -36,9 +42,9 @@ async function getConversationContext(conversationId: number, accountId: number,
   `;
 
   // Return formatted chronologically
-  return messages.reverse().map((m: any) => {
+  return (messages as unknown as ConversationMessage[]).reverse().map((m) => {
     const role = m.sender_type === 'Contact' ? 'Customer' : m.sender_type;
-    return `[${role}] ${m.content}`;
+    return `[${role}] ${m.content || ''}`;
   }).join('\n');
 }
 
@@ -46,7 +52,7 @@ async function getConversationContext(conversationId: number, accountId: number,
 aiRoutes.get('/settings', async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak. Membutuhkan hak akses administrator.' }, 403);
     }
@@ -93,12 +99,12 @@ aiRoutes.get('/settings', async (c) => {
 });
 
 // PUT /api/settings/ai - Save/update account AI configuration (Admin only)
-aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c: any) => {
+aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     if (jwtPayload?.role !== 'administrator') {
       return c.json({ error: 'Akses ditolak' }, 403);
     }
@@ -147,12 +153,12 @@ aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c: any) =>
 });
 
 // POST /api/ai/suggest - Generate 3 quick reply suggestions
-aiRoutes.post('/suggest', zValidator('json', aiRequestSchema, (result, c: any) => {
+aiRoutes.post('/suggest', zValidator('json', aiRequestSchema, (result, c) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const { conversation_id } = c.req.valid('json');
 
     // Verify conversation ownership
@@ -172,14 +178,15 @@ Do NOT wrap the response in markdown blocks or write any explanation.`;
     const promptText = `Berikut adalah riwayat percakapan terakhir:\n\n${context}\n\nBerikan 3 alternatif respon balasan cepat.`;
 
     try {
-      const response = await callAI(accountId, jwtPayload.id, 'smart_reply', promptText, systemPrompt);
+      const response = await callAI(accountId, jwtPayload?.id ?? null, 'smart_reply', promptText, systemPrompt);
       const suggestions = parseJSONResponse(response);
       return c.json({ success: true, data: Array.isArray(suggestions) ? suggestions : [] });
-    } catch (aiErr: any) {
-      if (aiErr.message === 'AI_RATE_LIMIT_EXCEEDED') {
+    } catch (aiErr) {
+      const errorMessage = aiErr instanceof Error ? aiErr.message : String(aiErr);
+      if (errorMessage === 'AI_RATE_LIMIT_EXCEEDED') {
         return c.json({ error: 'Batas kuota penggunaan AI (50 panggilan per jam) telah tercapai.' }, 429);
       }
-      return c.json({ error: aiErr.message || 'Gagal menghasilkan saran AI' }, 400);
+      return c.json({ error: errorMessage || 'Gagal menghasilkan saran AI' }, 400);
     }
   } catch (error) {
     console.error('Error in smart reply suggestion:', error);
@@ -188,12 +195,12 @@ Do NOT wrap the response in markdown blocks or write any explanation.`;
 });
 
 // POST /api/ai/summarize - Summarize long conversation
-aiRoutes.post('/summarize', zValidator('json', aiRequestSchema, (result, c: any) => {
+aiRoutes.post('/summarize', zValidator('json', aiRequestSchema, (result, c) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const { conversation_id } = c.req.valid('json');
 
     const [conv] = await sql`
@@ -211,14 +218,15 @@ Return ONLY the JSON. Do NOT write markdown, explanations, or wrap output in cod
     const promptText = `Rangkum riwayat percakapan berikut:\n\n${context}`;
 
     try {
-      const response = await callAI(accountId, jwtPayload.id, 'summarize', promptText, systemPrompt);
+      const response = await callAI(accountId, jwtPayload?.id ?? null, 'summarize', promptText, systemPrompt);
       const summaryObj = parseJSONResponse(response);
       return c.json({ success: true, data: summaryObj });
-    } catch (aiErr: any) {
-      if (aiErr.message === 'AI_RATE_LIMIT_EXCEEDED') {
+    } catch (aiErr) {
+      const errorMessage = aiErr instanceof Error ? aiErr.message : String(aiErr);
+      if (errorMessage === 'AI_RATE_LIMIT_EXCEEDED') {
         return c.json({ error: 'Batas kuota penggunaan AI (50 panggilan per jam) telah tercapai.' }, 429);
       }
-      return c.json({ error: aiErr.message || 'Gagal membuat rangkuman' }, 400);
+      return c.json({ error: errorMessage || 'Gagal membuat rangkuman' }, 400);
     }
   } catch (error) {
     console.error('Error in summarization:', error);
@@ -227,12 +235,12 @@ Return ONLY the JSON. Do NOT write markdown, explanations, or wrap output in cod
 });
 
 // POST /api/ai/categorize - Automatically categorize conversation using active labels
-aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c: any) => {
+aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c) => {
   if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
 }), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload');
     const { conversation_id } = c.req.valid('json');
 
     const [conv] = await sql`
@@ -241,15 +249,19 @@ aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c: any
     if (!conv) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
 
     // Fetch available labels for this account
+    interface LabelRow {
+      id: string;
+      title: string;
+    }
     const labels = await sql`
       SELECT id, title FROM labels WHERE account_id = ${accountId}
-    `;
+    ` as unknown as LabelRow[];
 
     if (labels.length === 0) {
       return c.json({ success: true, data: [], message: 'Tidak ada label terkonfigurasi untuk pencocokan.' });
     }
 
-    const labelsList = labels.map((l: any) => `"${l.title}"`).join(', ');
+    const labelsList = labels.map((l) => `"${l.title}"`).join(', ');
     const context = await getConversationContext(conversation_id, accountId, 10);
 
     const systemPrompt = `Anda adalah sistem kategorisasi tiket otomatis.
@@ -261,24 +273,30 @@ Return ONLY the JSON. Do NOT write markdown code blocks or explanations.`;
 
     const promptText = `Rekomendasikan label yang cocok untuk riwayat percakapan berikut:\n\n${context}`;
 
+    interface AISuggestion {
+      label: string;
+      confidence: number;
+    }
+
     try {
-      const response = await callAI(accountId, jwtPayload.id, 'auto_categorize', promptText, systemPrompt);
+      const response = await callAI(accountId, jwtPayload?.id ?? null, 'auto_categorize', promptText, systemPrompt);
       const suggestions = parseJSONResponse(response);
       
       // Map suggested label titles back to IDs
-      const mappedSuggestions = (Array.isArray(suggestions) ? suggestions : [])
-        .map((s: any) => {
-          const match = labels.find((l: any) => l.title.toLowerCase() === s.label.toLowerCase());
+      const mappedSuggestions = (Array.isArray(suggestions) ? suggestions : [] as AISuggestion[])
+        .map((s) => {
+          const match = labels.find((l) => l.title.toLowerCase() === s.label.toLowerCase());
           return match ? { id: Number(match.id), title: match.title, confidence: s.confidence } : null;
         })
         .filter(Boolean);
 
       return c.json({ success: true, data: mappedSuggestions });
-    } catch (aiErr: any) {
-      if (aiErr.message === 'AI_RATE_LIMIT_EXCEEDED') {
+    } catch (aiErr) {
+      const errorMessage = aiErr instanceof Error ? aiErr.message : String(aiErr);
+      if (errorMessage === 'AI_RATE_LIMIT_EXCEEDED') {
         return c.json({ error: 'Batas kuota penggunaan AI (50 panggilan per jam) telah tercapai.' }, 429);
       }
-      return c.json({ error: aiErr.message || 'Gagal merekomendasikan kategori' }, 400);
+      return c.json({ error: errorMessage || 'Gagal merekomendasikan kategori' }, 400);
     }
   } catch (error) {
     console.error('Error in auto-categorization:', error);

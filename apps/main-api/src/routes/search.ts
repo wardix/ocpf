@@ -1,9 +1,16 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { sql } from '../config/database';
 import { authMiddleware, getAccountId } from '../middleware/auth';
 
 export const searchRoutes = new Hono();
 searchRoutes.use('/*', authMiddleware);
+
+interface SearchResults {
+  contacts?: { total: number; data: postgres.RowList<postgres.Row[]> };
+  messages?: { total: number; data: postgres.RowList<postgres.Row[]> };
+  conversations?: { total: number; data: postgres.RowList<postgres.Row[]> };
+}
 
 searchRoutes.get('/', async (c) => {
   try {
@@ -18,7 +25,7 @@ searchRoutes.get('/', async (c) => {
       return c.json({ error: 'Query minimal 2 karakter' }, 400);
     }
 
-    const results: any = {};
+    const results: SearchResults = {};
 
     // Search Contacts
     if (type === 'all' || type === 'contacts') {

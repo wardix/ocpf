@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import postgres from 'postgres';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
@@ -78,12 +79,16 @@ chatbotRoutes.post('/configs', zValidator('json', chatbotConfigSchema, (result, 
     const accountId = getAccountId(c);
     const { name, inbox_id, config, editor_metadata } = c.req.valid('json');
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       const [newConfig] = await tx`
         INSERT INTO chatbot_configs (account_id, inbox_id, name, config, editor_metadata, version)
         VALUES (${accountId}, ${inbox_id || null}, ${name}, ${config}, ${editor_metadata || {}}, 1)
         RETURNING *
       `;
+
+      if (!newConfig) {
+        throw new Error('FAILED_TO_CREATE_CONFIG');
+      }
 
       await tx`
         INSERT INTO chatbot_config_versions (chatbot_config_id, version, config, editor_metadata)
@@ -120,7 +125,7 @@ chatbotRoutes.put('/configs/:id', zValidator('json', chatbotConfigSchema, (resul
     const oldInboxId = existing.inbox_id;
     const nextVersion = Number(existing.version) + 1;
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       const [updatedConfig] = await tx`
         UPDATE chatbot_configs
         SET name = ${name},
@@ -132,6 +137,10 @@ chatbotRoutes.put('/configs/:id', zValidator('json', chatbotConfigSchema, (resul
         WHERE id = ${id} AND account_id = ${accountId}
         RETURNING *
       `;
+
+      if (!updatedConfig) {
+        throw new Error('FAILED_TO_UPDATE_CONFIG');
+      }
 
       await tx`
         INSERT INTO chatbot_config_versions (chatbot_config_id, version, config, editor_metadata)
@@ -193,7 +202,7 @@ chatbotRoutes.post('/configs/:id/activate', zValidator('json', activateSchema, (
 
     const inboxId = existing.inbox_id;
 
-    await sql.begin(async (tx: any) => {
+    await sql.begin(async (tx: postgres.Sql) => {
       if (is_active && inboxId) {
         // Matikan chatbot lain untuk inbox yang sama
         await tx`
@@ -267,7 +276,7 @@ chatbotRoutes.post('/configs/:id/rollback', zValidator('json', rollbackSchema, (
 
     const nextVersion = Number(existing.version) + 1;
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       const [updatedConfig] = await tx`
         UPDATE chatbot_configs
         SET config = ${targetVersion.config},
@@ -303,8 +312,20 @@ chatbotRoutes.post('/configs/import', zValidator('json', importSchema, (result, 
     const { name, inbox_id, chatbot_json } = c.req.valid('json');
 
     // Buat format editor metadata default jika tidak ada
-    const nodes: any[] = [];
-    const edges: any[] = [];
+    interface ChatbotNode {
+      id: string;
+      type: string;
+      position: { x: number; y: number };
+      data: { label: string; state: unknown };
+    }
+    interface ChatbotEdge {
+      id: string;
+      source: string;
+      target: string;
+      type?: string;
+    }
+    const nodes: ChatbotNode[] = [];
+    const edges: ChatbotEdge[] = [];
     
     // Konversi sederhana untuk visual editor
     let yPos = 50;
@@ -322,16 +343,20 @@ chatbotRoutes.post('/configs/import', zValidator('json', importSchema, (result, 
 
     const metadata = { nodes, edges };
 
-    const result = await sql.begin(async (tx: any) => {
+    const result = await sql.begin(async (tx: postgres.Sql) => {
       const [newConfig] = await tx`
         INSERT INTO chatbot_configs (account_id, inbox_id, name, config, editor_metadata, version)
-        VALUES (${accountId}, ${inbox_id || null}, ${name}, ${chatbot_json}, ${metadata}, 1)
+        VALUES (${accountId}, ${inbox_id || null}, ${name}, ${chatbot_json}, ${sql.json(metadata)}, 1)
         RETURNING *
       `;
 
+      if (!newConfig) {
+        throw new Error('FAILED_TO_IMPORT_CONFIG');
+      }
+
       await tx`
         INSERT INTO chatbot_config_versions (chatbot_config_id, version, config, editor_metadata)
-        VALUES (${newConfig.id}, 1, ${chatbot_json}, ${metadata})
+        VALUES (${newConfig.id}, 1, ${chatbot_json}, ${sql.json(metadata)})
       `;
 
       return newConfig;

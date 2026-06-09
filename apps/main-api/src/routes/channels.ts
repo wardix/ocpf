@@ -18,9 +18,9 @@ const createChannelSchema = z.object({
 channelsRoutes.post('/', zValidator('json', createChannelSchema), async (c) => {
   try {
     const accountId = getAccountId(c);
-    const payload = c.get('jwtPayload') as any;
+    const payload = c.get('jwtPayload');
 
-    if (payload?.role !== 'administrator') {
+    if (!payload || payload.role !== 'administrator') {
       return c.json({ error: 'Membutuhkan akses administrator' }, 403);
     }
 
@@ -34,7 +34,7 @@ channelsRoutes.post('/', zValidator('json', createChannelSchema), async (c) => {
       }
       
       const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      const data = await res.json();
+      const data = await res.json() as { ok: boolean };
       if (!data.ok) {
         return c.json({ error: 'Token Telegram tidak valid' }, 400);
       }
@@ -52,7 +52,7 @@ channelsRoutes.post('/', zValidator('json', createChannelSchema), async (c) => {
     }
 
     return c.json({ success: true, data: newChannel }, 201);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating channel:', error);
     return c.json({ error: 'Gagal membuat channel' }, 500);
   }
