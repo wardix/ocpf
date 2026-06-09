@@ -180,10 +180,11 @@ conversationsRoutes.get('/:id/messages', async (c) => {
   const beforeId = c.req.query('before'); 
   const timeTravelTicketId = c.req.query('ticket_id');
   try {
+    const accountId = getAccountId(c);
     let maxMessageId = 999999999; 
     
     if (timeTravelTicketId) {
-      const [ticketMax] = await sql`SELECT MAX(id) as max_id FROM messages WHERE ticket_id = ${timeTravelTicketId}`;
+      const [ticketMax] = await sql`SELECT MAX(id) as max_id FROM messages WHERE ticket_id = ${timeTravelTicketId} AND account_id = ${accountId}`;
       if (ticketMax?.max_id) maxMessageId = ticketMax.max_id;
     }
 
@@ -205,7 +206,7 @@ conversationsRoutes.get('/:id/messages', async (c) => {
         ) as email_metadata
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
-      WHERE m.conversation_id = ${conversationId} 
+      WHERE m.conversation_id = ${conversationId} AND m.account_id = ${accountId}
       AND m.id <= ${maxMessageId}
       AND (${beforeId ? Number(beforeId) : null}::int IS NULL OR m.id < ${beforeId ? Number(beforeId) : null})
       GROUP BY m.id
