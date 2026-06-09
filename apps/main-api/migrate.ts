@@ -1,38 +1,29 @@
-// @ts-nocheck
-import postgres from 'postgres';
-import { config } from 'dotenv';
+import { runner } from 'node-pg-migrate';
 import path from 'path';
 
-// Load .env from apps/main-api
-config({ path: path.resolve(process.cwd(), '.env') });
+const databaseUrl = process.env.DATABASE_URL || 'postgres://omni:3aa53cec161c587e51555bdfa5c56eff@localhost:5432/omni';
 
-const sql = postgres(process.env.DATABASE_URL || 'postgres://postgres:password_anda@localhost:5432/omnichannel');
-
-async function runMigration() {
-  console.log('Menjalankan migrasi database...');
+async function run() {
+  const args = process.argv.slice(2);
+  const direction = (args.includes('down') ? 'down' : 'up') as 'up' | 'down';
+  const fake = args.includes('--fake');
+  
+  console.log(`Running database migrations (${direction})${fake ? ' [FAKE]' : ''}...`);
+  
   try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS conversation_events (
-          id BIGSERIAL PRIMARY KEY,
-          account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE,
-          conversation_id BIGINT REFERENCES conversations(id) ON DELETE CASCADE,
-          actor_type VARCHAR(50), 
-          actor_id BIGINT,        
-          event_type VARCHAR(50), 
-          event_data JSONB,       
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-    
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_conversation_events_conv_id ON conversation_events(conversation_id);
-    `;
-    console.log('Migrasi sukses: Tabel conversation_events berhasil dibuat.');
-  } catch (err) {
-    console.error('Migrasi gagal:', err);
-  } finally {
-    process.exit(0);
+    await runner({
+      databaseUrl,
+      dir: path.resolve(__dirname, 'migrations'),
+      direction,
+      migrationsTable: 'pgmigrations',
+      fake,
+      verbose: true,
+    });
+    console.log('Database migrations completed successfully!');
+  } catch (error) {
+    console.error('Database migrations failed:', error);
+    process.exit(1);
   }
 }
 
-runMigration();
+run();
