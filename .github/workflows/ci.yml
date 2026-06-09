@@ -70,3 +70,6 @@ jobs:
           REDIS_PORT: 6379
           JWT_SECRET: rahasia_super_aman_untuk_omnichannel_123
         run: bun test --cwd apps/main-api
+
+      - name: Run Frontend Unit Tests
+        run: bun run --cwd apps/frontend test
