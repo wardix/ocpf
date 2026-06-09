@@ -73,6 +73,7 @@ function App() {
   const { t } = useTranslation();
 
   const selectedConvRef = useRef(selectedConv);
+  const audioCtxRef = useRef<any>(null);
   useEffect(() => {
     selectedConvRef.current = selectedConv;
   }, [selectedConv]);
@@ -158,9 +159,17 @@ function App() {
   const playNotificationSound = useCallback(() => {
     if (isMuted) return;
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const ctx = new AudioContextClass();
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        audioCtxRef.current = new AudioContextClass();
+      }
+      
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
