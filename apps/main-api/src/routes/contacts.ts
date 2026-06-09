@@ -76,13 +76,13 @@ contactsRoutes.patch('/:id', zValidator('json', updateContactSchema, (result, c)
   }
 
   try {
-    const jwtPayload = c.get('jwtPayload');
+    const accountId = getAccountId(c);
     const { name, email } = c.req.valid('json');
 
     const [updatedContact] = await sql`
       UPDATE contacts 
       SET name = ${name}, email = ${email || null}, updated_at = NOW() 
-      WHERE id = ${contactId} AND account_id = ${jwtPayload.account_id || 1} AND deleted_at IS NULL
+      WHERE id = ${contactId} AND account_id = ${accountId} AND deleted_at IS NULL
       RETURNING *;
     `;
 
