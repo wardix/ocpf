@@ -10,6 +10,9 @@
     "dev:main-api": "bun run --cwd apps/main-api dev",
     "dev:wa-adapter": "bun run --cwd apps/wa-adapter dev",
     "dev:email-adapter": "bun run --cwd apps/email-adapter dev",
-    "dev:telegram-adapter": "bun run --cwd apps/telegram-adapter dev"
+    "dev:telegram-adapter": "bun run --cwd apps/telegram-adapter dev",
+    "test:main-api": "bun test --cwd apps/main-api",
+    "test:frontend": "bun run --cwd apps/frontend test",
+    "test": "bun run test:main-api && bun run test:frontend"
   }
 }
