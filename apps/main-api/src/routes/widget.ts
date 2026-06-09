@@ -38,7 +38,12 @@ function validateOrigin(c: Context, widgetConfig: WidgetConfig | null | undefine
         .filter(Boolean)
     : [];
 
-  if (allowedDomains.length === 0) return true; // Lolos jika admin tidak menyetel whitelist
+  if (allowedDomains.length === 0) {
+    if (process.env.NODE_ENV === 'production') {
+      return false; // Di production mode, allowed_domains wajib disetel demi keamanan
+    }
+    return true; // Lolos jika di development/testing dan admin tidak menyetel whitelist
+  }
 
   return allowedDomains.some(domain => {
     return requestHost === domain || requestHost!.endsWith('.' + domain);
