@@ -7,31 +7,30 @@ import { getActiveChatbotRules, evaluateChatbot } from '../chatbot/engine';
 import { isWithinBusinessHours } from '../config/business-hours';
 import { dispatchWebhook } from '../utils/webhooks';
 import { evaluateAutomationRules } from '../utils/automation';
+import { logger } from '../utils/monitoring';
 
 export async function startWorker() {
-  console.log('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
+  logger.info('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
   
   while (true) {
     try {
       const result = await redisWorker.brpop(QUEUE_INCOMING, 0);
         if (result) {
           const [_, messageStr] = result;
-          console.log('--- DEBUG: Menerima Payload dari Redis ---');
-          console.log(messageStr);
-          console.log('-----------------------------------------');
+          logger.debug({ rawPayload: messageStr }, 'Menerima Payload dari Redis');
 
           let parsedObj: any;
           try {
             parsedObj = JSON.parse(messageStr);
           } catch (e) {
-            console.error('Payload dari Redis bukan JSON valid, diabaikan.');
+            logger.error({ err: e, rawPayload: messageStr }, 'Payload dari Redis bukan JSON valid, diabaikan.');
             continue;
           }
 
           const validationResult = RedisQueuePayloadSchema.safeParse(parsedObj);
           
           if (!validationResult.success) {
-            console.error('Validasi payload Redis gagal. Schema mismatch:', validationResult.error.format());
+            logger.error({ err: validationResult.error.format() }, 'Validasi payload Redis gagal. Schema mismatch');
             continue;
           }
 
@@ -46,7 +45,7 @@ export async function startWorker() {
               }));
               // Trigger automation rules for incoming message
               evaluateAutomationRules(savedMessage.account_id, 'message.incoming', savedMessage)
-                .catch(err => console.error('[Automation Worker] Error executing rules:', err));
+                .catch(err => logger.error({ err }, '[Automation Worker] Error executing rules'));
             }
           } else if (payload.event === 'message.status_update') {
             const { wa_message_id, status, internal_message_id } = payload.data as any;
@@ -87,7 +86,7 @@ export async function startWorker() {
           }
       }
     } catch (err) {
-      console.error('Worker processing error:', err);
+      logger.error({ err }, 'Worker processing error');
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
@@ -101,18 +100,17 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
     let oooMsgData: any = null;
 
     const result = await sql.begin(async (tx) => {
-      console.log(`\n[DEBUG-ECHO] Memproses pesan masuk: ${data.wa_message_id}`);
-      console.log(`[DEBUG-ECHO] is_host_echo bernilai:`, data.is_host_echo);
+      logger.debug({ wa_message_id: data.wa_message_id, is_host_echo: data.is_host_echo }, 'Memproses pesan masuk');
 
       const INBOX_ID = data.inbox_id;
       if (!INBOX_ID) {
-        console.error('Payload incoming message tidak menyertakan inbox_id.');
+        logger.error('Payload incoming message tidak menyertakan inbox_id.');
         return null;
       }
 
       const [inbox] = await tx`SELECT account_id FROM inboxes WHERE id = ${INBOX_ID} LIMIT 1`;
       if (!inbox) {
-        console.error(`Inbox ID ${INBOX_ID} tidak ditemukan di database.`);
+        logger.error({ inboxId: INBOX_ID }, 'Inbox tidak ditemukan di database.');
         return null;
       }
       const ACCOUNT_ID = inbox.account_id;
@@ -348,7 +346,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
             }
           }
         } catch (assignError) {
-          console.error('Gagal menjalankan auto-assignment:', assignError);
+          logger.error({ err: assignError }, 'Gagal menjalankan auto-assignment');
         }
       }
     } else if (ticket && ticket.status !== 'resolved') {
@@ -440,7 +438,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         `;
         attachmentData = attachment;
       } catch (mediaErr) {
-        console.error('Gagal memproses media lampiran:', mediaErr);
+        logger.error({ err: mediaErr }, 'Gagal memproses media lampiran');
       }
     }
 
@@ -484,7 +482,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
           }
         }));
       } catch (oooErr) {
-        console.error('Gagal mengirim/menyimpan pesan OOO:', oooErr);
+        logger.error({ err: oooErr }, 'Gagal mengirim/menyimpan pesan OOO');
       }
     }
 
@@ -511,10 +509,10 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
 
     if (result) {
       if (result.isNewContact && result.contactData) {
-        dispatchWebhook(result.accountId, 'contact.created', result.contactData).catch(e => console.error(e));
+        dispatchWebhook(result.accountId, 'contact.created', result.contactData).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
         // Trigger automation rules for contact created
         evaluateAutomationRules(result.accountId, 'contact.created', result.contactData)
-          .catch(err => console.error('[Automation Worker] Error executing rules:', err));
+          .catch(err => logger.error({ err }, '[Automation Worker] Error executing rules'));
       }
       if (result.isNewConversation) {
         dispatchWebhook(result.accountId, 'conversation.created', {
@@ -522,7 +520,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
           account_id: result.accountId,
           inbox_id: result.inboxId,
           contact_id: result.contactId
-        }).catch(e => console.error(e));
+        }).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
 
         try {
           const { createNotification } = await import('../utils/notifications');
@@ -538,23 +536,23 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
             });
           }
         } catch (err) {
-          console.error('Failed to create new conversation notification', err);
+          logger.error({ err }, 'Failed to create new conversation notification');
         }
       }
       if (!data.is_host_echo) {
-        dispatchWebhook(result.accountId, 'message.incoming', result.msg).catch(e => console.error(e));
+        dispatchWebhook(result.accountId, 'message.incoming', result.msg).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
       } else {
-        dispatchWebhook(result.accountId, 'message.outgoing', result.msg).catch(e => console.error(e));
+        dispatchWebhook(result.accountId, 'message.outgoing', result.msg).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
       }
       if (result.oooMsgData) {
-        dispatchWebhook(result.accountId, 'message.outgoing', result.oooMsgData).catch(e => console.error(e));
+        dispatchWebhook(result.accountId, 'message.outgoing', result.oooMsgData).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
       }
 
       return result.msg;
     }
     return null;
   } catch (error) {
-    console.error("Gagal menyimpan ke database:", error);
+    logger.error({ err: error }, 'Gagal menyimpan ke database');
     return null;
   }
 }

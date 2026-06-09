@@ -2,6 +2,13 @@ import * as Sentry from '@sentry/bun';
 import { Registry, collectDefaultMetrics, Histogram, Counter } from 'prom-client';
 import pino from 'pino';
 import type { Context, Next } from 'hono';
+import crypto from 'crypto';
+
+// 2. Initialize Pino Structured Logger
+export const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  timestamp: pino.stdTimeFunctions.isoTime
+});
 
 // 1. Initialize Sentry
 if (process.env.SENTRY_DSN) {
@@ -10,14 +17,8 @@ if (process.env.SENTRY_DSN) {
     tracesSampleRate: 1.0,
     environment: process.env.NODE_ENV || 'development'
   });
-  console.log('[Monitoring] 🎯 Sentry error tracking initialized');
+  logger.info({ msg: 'Sentry error tracking initialized' });
 }
-
-// 2. Initialize Pino Structured Logger
-export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  timestamp: pino.stdTimeFunctions.isoTime
-});
 
 // 3. Initialize Prometheus Registry
 export const registry = new Registry();
@@ -49,6 +50,18 @@ export async function monitorMiddleware(c: Context, next: Next) {
     return await next();
   }
 
+  // Generate or get request ID
+  let requestId = c.req.header('X-Request-Id');
+  if (!requestId) {
+    requestId = crypto.randomUUID();
+  }
+  c.header('X-Request-Id', requestId);
+  c.set('requestId', requestId);
+
+  // Create a child logger for this request containing the request ID context
+  const reqLogger = logger.child({ requestId });
+  c.set('logger', reqLogger);
+
   const end = httpRequestDuration.startTimer({ method, path });
 
   try {
@@ -58,7 +71,7 @@ export async function monitorMiddleware(c: Context, next: Next) {
     end({ status });
     
     // Structured request log
-    logger.info({
+    reqLogger.info({
       msg: 'Request processed',
       method,
       path,
@@ -70,7 +83,7 @@ export async function monitorMiddleware(c: Context, next: Next) {
     end({ status });
     
     // Log error
-    logger.error({
+    reqLogger.error({
       msg: 'Request error',
       method,
       path,
@@ -86,3 +99,4 @@ export async function monitorMiddleware(c: Context, next: Next) {
     throw err;
   }
 }
+
