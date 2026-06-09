@@ -26,6 +26,11 @@ async function runMigration() {
     `;
     console.log('Berhasil: Index pada contacts(account_id, phone_number)');
 
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_tickets_acct_conv_status ON tickets(account_id, conversation_id, status);
+    `;
+    console.log('Berhasil: Index pada tickets(account_id, conversation_id, status)');
+
     console.log('Migrasi indeks selesai.');
   } catch (error) {
     console.error('Gagal menjalankan migrasi indeks:', error);
