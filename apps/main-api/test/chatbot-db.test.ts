@@ -7,6 +7,9 @@ describe('Chatbot Database and Cache Engine', () => {
   let testAccountId = 1;
 
   beforeAll(async () => {
+    // Ensure Account 1 exists
+    await sql`INSERT INTO accounts (id, name) VALUES (${testAccountId}, 'Default Test Account') ON CONFLICT (id) DO NOTHING`;
+
     // Reset sequences to prevent duplicate key violations if sequence is behind actual records
     await sql`SELECT setval('channels_id_seq', COALESCE((SELECT MAX(id) FROM channels), 1), true)`;
     await sql`SELECT setval('inboxes_id_seq', COALESCE((SELECT MAX(id) FROM inboxes), 1), true)`;

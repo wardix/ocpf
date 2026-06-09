@@ -9,6 +9,9 @@ describe('AI Assistant System Helpers & Logic', () => {
   let backupConfig: any = null;
 
   beforeAll(async () => {
+    // Ensure Account 1 exists
+    await sql`INSERT INTO accounts (id, name) VALUES (${testAccountId}, 'Default Test Account') ON CONFLICT (id) DO NOTHING`;
+    
     // Reset sequences and backup existing config
     await sql`SELECT setval('ai_configs_id_seq', COALESCE((SELECT MAX(id) FROM ai_configs), 1), true)`;
     
