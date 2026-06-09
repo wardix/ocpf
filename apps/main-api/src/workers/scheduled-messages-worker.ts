@@ -100,6 +100,7 @@ let isRunning = false;
 export function startScheduledMessagesWorker() {
   console.log('[Worker] Scheduled Messages checker started (60s interval)');
   setInterval(async () => {
+    if ((globalThis as any).isShuttingDown) return;
     if (isRunning) return;
     isRunning = true;
     try {

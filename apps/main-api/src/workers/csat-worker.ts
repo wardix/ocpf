@@ -5,6 +5,7 @@ export function startCSATWorker() {
   console.log('[CSAT Worker] 📊 Worker dimulai (interval: 10s)');
 
   setInterval(async () => {
+    if ((globalThis as any).isShuttingDown) return;
     try {
       const now = Math.floor(Date.now() / 1000);
       // Ambil semua job yang target eksekusinya <= waktu sekarang

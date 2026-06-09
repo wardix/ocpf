@@ -5,6 +5,7 @@ export function startSnoozeChecker() {
   console.log('[Snooze Checker] ⏰ Worker dimulai (interval: 60s)');
 
   setInterval(async () => {
+    if ((globalThis as any).isShuttingDown) return;
     try {
       // Cari tiket snoozed yang sudah expired
       const expiredTickets = await sql`

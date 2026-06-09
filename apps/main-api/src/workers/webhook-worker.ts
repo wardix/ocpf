@@ -8,7 +8,7 @@ export async function startWebhookWorker() {
   // Start the scheduler that polls the Redis Sorted Set for delayed retries
   startDelayedRetryScheduler();
 
-  while (true) {
+  while (!(globalThis as any).isShuttingDown) {
     try {
       // FIX: Use dedicated redisWebhookWorker connection for blocking BRPOP
       const result = await redisWebhookWorker.brpop('queue:webhook_deliveries', 0);
@@ -18,6 +18,9 @@ export async function startWebhookWorker() {
         await deliverWebhook(task);
       }
     } catch (e) {
+      if ((globalThis as any).isShuttingDown) {
+        break;
+      }
       console.error('Error in Webhook Worker loop:', e);
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
@@ -112,6 +115,7 @@ async function deliverWebhook(task: {
 
 function startDelayedRetryScheduler() {
   setInterval(async () => {
+    if ((globalThis as any).isShuttingDown) return;
     try {
       const now = Date.now();
       const tasks = await redis.zrangebyscore('delayed:webhook_deliveries', 0, now);

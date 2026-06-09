@@ -5,6 +5,7 @@ export function startIdleTracker() {
   console.log('[Idle Tracker] ⏰ Worker dimulai (interval: 60s)');
 
   setInterval(async () => {
+    if ((globalThis as any).isShuttingDown) return;
     try {
       // 1. Fetch all active rules with trigger_type = 'ticket.idle'
       const idleRules = await sql`

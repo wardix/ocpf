@@ -11,7 +11,7 @@ import { evaluateAutomationRules } from '../utils/automation';
 export async function startWorker() {
   console.log('Worker API: Berjalan (Siap menerima pesan dari Valkey)');
   
-  while (true) {
+  while (!(globalThis as any).isShuttingDown) {
     try {
       const result = await redisWorker.brpop(QUEUE_INCOMING, 0);
         if (result) {
@@ -87,6 +87,9 @@ export async function startWorker() {
           }
       }
     } catch (err) {
+      if ((globalThis as any).isShuttingDown) {
+        break;
+      }
       console.error('Worker processing error:', err);
       await new Promise(resolve => setTimeout(resolve, 3000));
     }

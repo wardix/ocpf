@@ -253,3 +253,34 @@ const healthServer = http.createServer(async (req, res) => {
 healthServer.listen(HEALTH_PORT, () => {
   logger.info(`[Email Adapter] Health check server running on port ${HEALTH_PORT}`);
 });
+
+// =========================================================================
+// GRACEFUL SHUTDOWN HANDLERS
+// =========================================================================
+async function handleShutdown(signal: string) {
+  if (isShuttingDown) return;
+  logger.info(`[SHUTDOWN] Menerima sinyal ${signal}. Menutup proses secara anggun...`);
+  isShuttingDown = true;
+
+  try {
+    // Tutup IMAP connections
+    for (const [inboxId, client] of clients.entries()) {
+      logger.info(`[SHUTDOWN] Menutup koneksi IMAP untuk Inbox ${inboxId}...`);
+      await client.logout();
+    }
+    
+    // Tutup koneksi Redis
+    logger.info('[SHUTDOWN] Menutup koneksi Redis...');
+    await redis.quit();
+    await redisSub.quit();
+    
+    logger.info('[SHUTDOWN] Semua layanan email-adapter terputus. Goodbye! 👋');
+    process.exit(0);
+  } catch (err) {
+    logger.error('[SHUTDOWN] Terjadi kesalahan saat menutup layanan email-adapter:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
