@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { sql } from '../config/database';
-import { jwtMiddleware, getAccountId } from '../middleware/auth';
+import { authMiddleware, getAccountId } from '../middleware/auth';
 import { redis } from '../config/redis';
 import { z } from 'zod';
 import { serveStatic } from 'hono/bun';
@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 
 export const exportsRoutes = new Hono();
-exportsRoutes.use('/*', jwtMiddleware);
+exportsRoutes.use('/*', authMiddleware);
 
 const createExportSchema = z.object({
   export_type: z.enum(['conversations', 'agent_performance', 'contacts']),
@@ -77,6 +77,11 @@ exportsRoutes.get('/:id/download', async (c) => {
     if (new Date(job.expires_at) < new Date()) return c.json({ error: 'File sudah kadaluarsa' }, 410);
 
     const absolutePath = path.resolve(job.file_path);
+    const exportsDir = path.resolve(process.cwd(), 'exports');
+    if (!absolutePath.startsWith(exportsDir)) {
+      return c.json({ error: 'Invalid file path' }, 403);
+    }
+
     if (!fs.existsSync(absolutePath)) {
       return c.json({ error: 'File tidak ditemukan di server' }, 404);
     }
