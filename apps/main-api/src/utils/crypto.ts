@@ -1,7 +1,9 @@
 import crypto from 'crypto';
 
-// Dynamically generate a key from JWT_SECRET or a fallback
-const secret = process.env.JWT_SECRET || 'rahasia_super_aman_untuk_omnichannel_123';
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL ERROR: JWT_SECRET environment variable is missing. Encryption cannot be initialized.');
+}
+const secret = process.env.JWT_SECRET;
 const ENCRYPTION_KEY = crypto.createHash('sha256').update(secret).digest(); // 32 bytes
 const IV_LENGTH = 16; // 16 bytes for AES
 
