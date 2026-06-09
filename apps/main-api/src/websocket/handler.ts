@@ -45,6 +45,9 @@ export const websocketHandlers = {
 
       try {
         const payload = JSON.parse(message);
+        const eventType = payload.event || payload.type;
+        const data = payload.data || payload;
+
         if (ws.data.isWidget) {
           // Tangani event typing dari widget visitor
           if (payload.event === 'typing.widget') {
@@ -103,36 +106,34 @@ export const websocketHandlers = {
         }
 
         // --- COLLISION DETECTION EVENTS ---
-        if (payload.event === 'conversation.viewing') {
-          const { conversation_id } = payload.data;
+        if (eventType === 'conversation.viewing') {
+          const conversation_id = Number(data.conversation_id);
           if (conversation_id) {
             const userId = ws.data.userId;
             const name = ws.data.name;
-            const viewKey = `viewing:${conversation_id}:${userId}`;
-            const setKey = `viewers:${conversation_id}`;
-            
-            // Set expire on individual user viewing status (15s TTL)
-            await redis.setex(viewKey, 15, name);
-            // Add user to the set of viewers
-            await redis.sadd(setKey, userId.toString());
+            const key = `viewing:conversation:${conversation_id}`;
+            const memberObj = JSON.stringify({ id: userId, name: name });
 
-            // Get current active viewers
-            const userIds = await redis.smembers(setKey);
-            const activeViewers = [];
+            // Add viewer to sorted set
+            await redis.zadd(key, Date.now(), memberObj);
+            await redis.expire(key, 20); // auto-expire key in 20s if no updates
 
-            for (const uid of userIds) {
-              const uName = await redis.get(`viewing:${conversation_id}:${uid}`);
-              if (uName) {
-                activeViewers.push({ id: Number(uid), name: uName });
-              } else {
-                // Remove stale viewers from set
-                await redis.srem(setKey, uid);
-              }
-            }
+            ws.data.viewingConversationId = conversation_id;
 
-            // Broadcast to other agents
+            // Prune stale viewers (>15 seconds old)
+            const minScore = Date.now() - 15000;
+            await redis.zremrangebyscore(key, '-inf', minScore);
+
+            // Get active viewers
+            const members = await redis.zrange(key, 0, -1);
+            const activeViewers = members.map(m => JSON.parse(m));
+
+            // Broadcast to other agents (supporting both formats)
             await redis.publish('chat:events', JSON.stringify({
               event: 'conversation.viewers_updated',
+              type: 'conversation.viewers',
+              conversation_id,
+              viewers: activeViewers,
               data: {
                 account_id: ws.data.accountId,
                 conversation_id,
@@ -142,32 +143,34 @@ export const websocketHandlers = {
           }
         }
 
-        if (payload.event === 'conversation.left') {
-          const { conversation_id } = payload.data;
+        if (eventType === 'conversation.left') {
+          const conversation_id = Number(data.conversation_id);
           if (conversation_id) {
             const userId = ws.data.userId;
-            const viewKey = `viewing:${conversation_id}:${userId}`;
-            const setKey = `viewers:${conversation_id}`;
+            const name = ws.data.name;
+            const key = `viewing:conversation:${conversation_id}`;
+            const memberObj = JSON.stringify({ id: userId, name: name });
 
-            await redis.del(viewKey);
-            await redis.srem(setKey, userId.toString());
+            await redis.zrem(key, memberObj);
 
-            // Get current active viewers
-            const userIds = await redis.smembers(setKey);
-            const activeViewers = [];
-
-            for (const uid of userIds) {
-              const uName = await redis.get(`viewing:${conversation_id}:${uid}`);
-              if (uName) {
-                activeViewers.push({ id: Number(uid), name: uName });
-              } else {
-                await redis.srem(setKey, uid);
-              }
+            if (ws.data.viewingConversationId === conversation_id) {
+              ws.data.viewingConversationId = undefined;
             }
+
+            // Prune stale viewers (>15 seconds old)
+            const minScore = Date.now() - 15000;
+            await redis.zremrangebyscore(key, '-inf', minScore);
+
+            // Get active viewers
+            const members = await redis.zrange(key, 0, -1);
+            const activeViewers = members.map(m => JSON.parse(m));
 
             // Broadcast to other agents
             await redis.publish('chat:events', JSON.stringify({
               event: 'conversation.viewers_updated',
+              type: 'conversation.viewers',
+              conversation_id,
+              viewers: activeViewers,
               data: {
                 account_id: ws.data.accountId,
                 conversation_id,
@@ -181,11 +184,47 @@ export const websocketHandlers = {
       }
     }
   },
-  close(ws: ServerWebSocket<any>) {
+  async close(ws: ServerWebSocket<any>) {
     console.log(`[WS] ${ws.data.isWidget ? 'Widget Session ' + ws.data.sessionToken : 'User ' + ws.data.userId} Terputus ❌`);
     activeWebSockets.delete(ws);
 
     if (!ws.data.isWidget) {
+      // Clean up collision detection viewing state immediately on disconnect
+      const conversationId = ws.data.viewingConversationId;
+      if (conversationId) {
+        const userId = ws.data.userId;
+        const name = ws.data.name;
+        const key = `viewing:conversation:${conversationId}`;
+        const memberObj = JSON.stringify({ id: userId, name: name });
+
+        try {
+          await redis.zrem(key, memberObj);
+
+          // Prune stale viewers (>15 seconds old)
+          const minScore = Date.now() - 15000;
+          await redis.zremrangebyscore(key, '-inf', minScore);
+
+          // Get active viewers
+          const members = await redis.zrange(key, 0, -1);
+          const activeViewers = members.map(m => JSON.parse(m));
+
+          // Broadcast to other agents
+          await redis.publish('chat:events', JSON.stringify({
+            event: 'conversation.viewers_updated',
+            type: 'conversation.viewers',
+            conversation_id: conversationId,
+            viewers: activeViewers,
+            data: {
+              account_id: ws.data.accountId,
+              conversation_id: conversationId,
+              viewers: activeViewers
+            }
+          }));
+        } catch (err) {
+          console.error('Error cleaning up viewing presence on close:', err);
+        }
+      }
+
       // Auto-offline
       import('../config/database').then(({ sql }) => {
         sql`
