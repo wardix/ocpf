@@ -31,6 +31,10 @@ apiKeysRoutes.post('/', async (c) => {
     return c.json({ error: 'API Keys can only be generated via the Dashboard' }, 403);
   }
 
+  if (c.get('user_role') !== 'administrator') {
+    return c.json({ error: 'Admin only' }, 403);
+  }
+
   try {
     const body = await c.req.json();
     const validated = createApiKeySchema.parse(body);
