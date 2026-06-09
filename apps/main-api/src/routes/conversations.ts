@@ -19,7 +19,7 @@ conversationsRoutes.get('/', async (c) => {
     
     const jwtPayload = c.get('jwtPayload') as any;
     const currentAgentId = jwtPayload?.id;
-    const accountId = jwtPayload?.account_id || 1;
+    const accountId = getAccountId(c);
 
     // Pagination params
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
