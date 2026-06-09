@@ -48,7 +48,7 @@ describe('Incoming Message Worker - Status Updates', () => {
     convId = Number(conv.id);
 
     // 3. Mock redisWorker.brpop to fetch from our local queue
-    redisWorker.brpop = async (queue: string, timeout: number): Promise<any> => {
+    redisWorker.brpop = (async (queue: string, timeout: number): Promise<any> => {
       if (payloadQueue.length > 0) {
         const nextPayload = payloadQueue.shift();
         return [queue, JSON.stringify(nextPayload)];
@@ -59,7 +59,7 @@ describe('Incoming Message Worker - Status Updates', () => {
           resolve(nextPayload ? [queue, JSON.stringify(nextPayload)] : null);
         });
       });
-    };
+    }) as any;
 
     // 4. Start the worker in the background
     startWorker().catch(err => console.error('Worker error in test:', err));

@@ -175,7 +175,7 @@ widgetRoutes.post('/session', zValidator('json', sessionInitSchema), async (c) =
     let isNewContact = false;
     let isNewConversation = false;
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       // 5a. Cari/buat kontak
       let contactId: number;
       const [existingContact] = await tx`

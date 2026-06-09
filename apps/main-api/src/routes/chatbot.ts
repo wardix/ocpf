@@ -12,22 +12,22 @@ chatbotRoutes.use('/*', authMiddleware);
 const chatbotConfigSchema = z.object({
   name: z.string().min(1, 'Nama chatbot tidak boleh kosong').max(255),
   inbox_id: z.number().int().nullable().optional(),
-  config: z.record(z.any()),
-  editor_metadata: z.record(z.any()).optional()
+  config: z.record(z.string(), z.any()),
+  editor_metadata: z.record(z.string(), z.any()).optional()
 });
 
 const importSchema = z.object({
   name: z.string().min(1, 'Nama chatbot tidak boleh kosong').max(255),
   inbox_id: z.number().int().nullable().optional(),
-  chatbot_json: z.record(z.any())
+  chatbot_json: z.record(z.string(), z.any())
 });
 
 const activateSchema = z.object({
-  is_active: z.boolean({ required_error: 'is_active wajib diisi' })
+  is_active: z.boolean({ message: 'is_active wajib diisi' })
 });
 
 const rollbackSchema = z.object({
-  version: z.number({ required_error: 'version wajib diisi' }).int().positive()
+  version: z.number({ message: 'version wajib diisi' }).int().positive()
 });
 
 
@@ -78,7 +78,7 @@ chatbotRoutes.post('/configs', zValidator('json', chatbotConfigSchema, (result, 
     const accountId = getAccountId(c);
     const { name, inbox_id, config, editor_metadata } = c.req.valid('json');
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       const [newConfig] = await tx`
         INSERT INTO chatbot_configs (account_id, inbox_id, name, config, editor_metadata, version)
         VALUES (${accountId}, ${inbox_id || null}, ${name}, ${config}, ${editor_metadata || {}}, 1)
@@ -120,7 +120,7 @@ chatbotRoutes.put('/configs/:id', zValidator('json', chatbotConfigSchema, (resul
     const oldInboxId = existing.inbox_id;
     const nextVersion = Number(existing.version) + 1;
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       const [updatedConfig] = await tx`
         UPDATE chatbot_configs
         SET name = ${name},
@@ -193,7 +193,7 @@ chatbotRoutes.post('/configs/:id/activate', zValidator('json', activateSchema, (
 
     const inboxId = existing.inbox_id;
 
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: any) => {
       if (is_active && inboxId) {
         // Matikan chatbot lain untuk inbox yang sama
         await tx`
@@ -267,7 +267,7 @@ chatbotRoutes.post('/configs/:id/rollback', zValidator('json', rollbackSchema, (
 
     const nextVersion = Number(existing.version) + 1;
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       const [updatedConfig] = await tx`
         UPDATE chatbot_configs
         SET config = ${targetVersion.config},
@@ -322,7 +322,7 @@ chatbotRoutes.post('/configs/import', zValidator('json', importSchema, (result, 
 
     const metadata = { nodes, edges };
 
-    const result = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx: any) => {
       const [newConfig] = await tx`
         INSERT INTO chatbot_configs (account_id, inbox_id, name, config, editor_metadata, version)
         VALUES (${accountId}, ${inbox_id || null}, ${name}, ${chatbot_json}, ${metadata}, 1)

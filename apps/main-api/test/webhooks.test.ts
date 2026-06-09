@@ -8,6 +8,9 @@ describe('Outbound Webhooks System', () => {
   let testWebhookId: number;
 
   beforeAll(async () => {
+    // Ensure Account 1 exists
+    await sql`INSERT INTO accounts (id, name) VALUES (${testAccountId}, 'Default Test Account') ON CONFLICT (id) DO NOTHING`;
+
     // Reset sequence just in case
     await sql`SELECT setval('webhooks_id_seq', COALESCE((SELECT MAX(id) FROM webhooks), 1), true)`;
   });

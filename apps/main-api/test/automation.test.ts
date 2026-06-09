@@ -11,6 +11,38 @@ describe('Automation Rules Engine Helpers & Evaluation', () => {
   let testTicketId: number;
 
   beforeAll(async () => {
+    // Ensure Account 1 exists
+    await sql`INSERT INTO accounts (id, name) VALUES (${testAccountId}, 'Default Test Account') ON CONFLICT (id) DO NOTHING`;
+
+    // Ensure User 1 exists
+    const passwordHash = await Bun.password.hash('password123');
+    await sql`
+      INSERT INTO users (id, name, email, password_hash)
+      VALUES (${testUserId}, 'Default User', 'default@test.com', ${passwordHash})
+      ON CONFLICT (id) DO NOTHING
+    `;
+
+    // Ensure User 1 is bound to Account 1
+    await sql`
+      INSERT INTO account_users (account_id, user_id, role, availability_status)
+      VALUES (${testAccountId}, ${testUserId}, 'administrator', 'online')
+      ON CONFLICT (account_id, user_id) DO NOTHING
+    `;
+
+    // Ensure Channel 1 exists
+    await sql`
+      INSERT INTO channels (id, account_id, name, provider_type, provider_config)
+      VALUES (1, ${testAccountId}, 'Default Channel', 'whatsapp', '{}')
+      ON CONFLICT (id) DO NOTHING
+    `;
+
+    // Ensure Inbox 1 exists
+    await sql`
+      INSERT INTO inboxes (id, account_id, channel_id, name)
+      VALUES (1, ${testAccountId}, 1, 'Default Inbox')
+      ON CONFLICT (id) DO NOTHING
+    `;
+
     // Clean up any stale rules and logs for test account
     await sql`DELETE FROM automation_rules WHERE account_id = ${testAccountId}`;
     await sql`DELETE FROM automation_logs WHERE account_id = ${testAccountId}`;

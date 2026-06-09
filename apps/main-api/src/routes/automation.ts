@@ -65,7 +65,7 @@ automationRoutes.post('/', zValidator('json', ruleSchema, (result, c) => {
       INSERT INTO automation_rules (
         account_id, name, description, trigger_type, trigger_config, actions, is_active, priority, created_by
       ) VALUES (
-        ${accountId}, ${name}, ${description || ''}, ${trigger_type}, ${sql.json(trigger_config)}, ${actions.map(a => JSON.stringify(a))}::jsonb[], ${is_active}, ${priority}, ${userId}
+        ${accountId}, ${name}, ${description || ''}, ${trigger_type}, ${sql.json(trigger_config)}, ${actions.map((a: any) => JSON.stringify(a))}::jsonb[], ${is_active}, ${priority}, ${userId}
       )
       RETURNING *
     `;
@@ -94,7 +94,7 @@ automationRoutes.put('/:id', zValidator('json', ruleSchema, (result, c) => {
         description = ${description || ''},
         trigger_type = ${trigger_type},
         trigger_config = ${sql.json(trigger_config)},
-        actions = ${actions.map(a => JSON.stringify(a))}::jsonb[],
+        actions = ${actions.map((a: any) => JSON.stringify(a))}::jsonb[],
         is_active = ${is_active},
         priority = ${priority},
         updated_at = NOW()

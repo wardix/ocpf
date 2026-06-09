@@ -7,6 +7,7 @@ const safeEval = (condition: string, responseData: any): boolean => {
                       
   if (match) {
     const [_, path, operator, rawValue] = match;
+    if (!path || !operator || !rawValue) return false;
     const value = path.split('.').reduce((acc: any, part: string) => acc && acc[part], responseData);
     
     let expectedValue: any = rawValue.trim();

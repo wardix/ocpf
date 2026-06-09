@@ -36,7 +36,7 @@ describe('Collision Detection Presence Tracking', () => {
     const members = await redis.zrange(key, 0, -1);
     expect(members.length).toBe(1);
     
-    const parsed = JSON.parse(members[0]);
+    const parsed = JSON.parse(members[0] || '{}');
     expect(parsed.id).toBe(101);
     expect(parsed.name).toBe('Agent Satu');
   });
@@ -85,7 +85,7 @@ describe('Collision Detection Presence Tracking', () => {
     const members = await redis.zrange(key, 0, -1);
     expect(members.length).toBe(1);
 
-    const parsed = JSON.parse(members[0]);
+    const parsed = JSON.parse(members[0] || '{}');
     expect(parsed.id).toBe(102);
   });
 

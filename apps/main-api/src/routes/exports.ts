@@ -13,7 +13,7 @@ exportsRoutes.use('/*', authMiddleware);
 const createExportSchema = z.object({
   export_type: z.enum(['conversations', 'agent_performance', 'contacts']),
   export_format: z.enum(['csv', 'xlsx']),
-  filters: z.record(z.any()).optional()
+  filters: z.record(z.string(), z.any()).optional()
 });
 
 // Enqueue export job

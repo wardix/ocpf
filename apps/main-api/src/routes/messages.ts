@@ -72,7 +72,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const tDbStart = Date.now();
     let attachmentData = null;
 
-    const msg = await sql.begin(async (tx) => {
+    const msg = await sql.begin(async (tx: any) => {
       const [insertedMsg] = await tx`
         INSERT INTO messages (
           account_id, conversation_id, ticket_id, sender_type, sender_id, 
@@ -205,7 +205,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
 
     if (is_private && content) {
       const users = await sql`SELECT id, name FROM users WHERE account_id = ${accountId}`;
-      const mentionedUsers = users.filter(u => content.includes(`@${u.name}`));
+      const mentionedUsers = users.filter((u: any) => content.includes(`@${u.name}`));
       if (mentionedUsers.length > 0) {
         const { createNotification } = await import('../utils/notifications');
         const senderName = jwtPayload.name || 'Seseorang';

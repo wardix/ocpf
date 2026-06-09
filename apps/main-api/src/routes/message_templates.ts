@@ -11,7 +11,9 @@ function extractVariables(text: string): string[] {
   const regex = /\{\{([^}]+)\}\}/g;
   const matches = [...text.matchAll(regex)];
   const vars = new Set<string>();
-  matches.forEach(m => vars.add(m[1].trim()));
+  matches.forEach(m => {
+    if (m[1]) vars.add(m[1].trim());
+  });
   return Array.from(vars);
 }
 

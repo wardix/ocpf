@@ -489,7 +489,7 @@ conversationsRoutes.patch('/:id/assign', zValidator('json', assignTicketSchema, 
 
     const assigneeId = targetAgentId !== undefined ? targetAgentId : actorId;
 
-    const ticket = await sql.begin(async (tx) => {
+    const ticket = await sql.begin(async (tx: any) => {
       let updatedTicket;
       
       if (targetTeamId !== undefined) {
@@ -598,7 +598,7 @@ conversationsRoutes.patch('/:id/snooze', zValidator('json', snoozeSchema, (resul
       return c.json({ error: 'Waktu snooze harus di masa depan' }, 400);
     }
 
-    const ticket = await sql.begin(async (tx) => {
+    const ticket = await sql.begin(async (tx: any) => {
       const [currentTicket] = await tx`
         SELECT status FROM tickets WHERE conversation_id = ${conversationId} AND status != 'resolved' LIMIT 1
       `;
@@ -666,7 +666,7 @@ conversationsRoutes.patch('/:id/unassign', async (c) => {
     const agentId = jwtPayload.id;
     const agentName = jwtPayload.name;
 
-    const ticket = await sql.begin(async (tx) => {
+    const ticket = await sql.begin(async (tx: any) => {
       const [updatedTicket] = await tx`
         UPDATE tickets 
         SET assignee_id = NULL, updated_at = NOW() 
@@ -734,7 +734,7 @@ conversationsRoutes.post('/:id/labels', zValidator('json', assignLabelSchema, (r
   try {
     const { label_id } = c.req.valid('json');
 
-    await sql.begin(async (tx) => {
+    await sql.begin(async (tx: any) => {
       await tx`
         INSERT INTO conversation_labels (conversation_id, label_id)
         VALUES (${conversationId}, ${label_id})

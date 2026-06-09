@@ -230,7 +230,7 @@ export const websocketHandlers = {
         sql`
           UPDATE account_users SET availability_status = 'offline'
           WHERE user_id = ${ws.data.userId} AND account_id = ${ws.data.accountId}
-        `.catch(err => console.error('Error auto-offline:', err));
+        `.catch((err: any) => console.error('Error auto-offline:', err));
       });
 
       redis.publish('chat:events', JSON.stringify({
@@ -240,7 +240,7 @@ export const websocketHandlers = {
           user_id: ws.data.userId, 
           availability_status: 'offline' 
         }
-      })).catch(err => console.error('Error publish offline:', err));
+      })).catch((err: any) => console.error('Error publish offline:', err));
     }
   },
 };
