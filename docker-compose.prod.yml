@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  postgres:
+    ports: []  # Do not expose postgres port in production
+    restart: always
+
+  redis:
+    ports: []  # Do not expose redis port in production
+    restart: always
+
+  main-api:
+    restart: always
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://omni:omni_password@postgres:5432/omni}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://yourdomain.com}
+
+  wa-adapter:
+    restart: always
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  telegram-adapter:
+    restart: always
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://omni:omni_password@postgres:5432/omni}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  email-adapter:
+    restart: always
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-https://api.yourdomain.com}
+        - VITE_WS_URL=${VITE_WS_URL:-wss://api.yourdomain.com/ws}
+    restart: always

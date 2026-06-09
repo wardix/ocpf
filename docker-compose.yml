@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocpf-postgres
+    environment:
+      POSTGRES_DB: omni
+      POSTGRES_USER: omni
+      POSTGRES_PASSWORD: omni_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ocpf-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  main-api:
+    build:
+      context: .
+      dockerfile: apps/main-api/Dockerfile
+    container_name: ocpf-main-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://omni:omni_password@postgres:5432/omni
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: rahasia_super_aman_untuk_omnichannel_123
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5173
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  wa-adapter:
+    build:
+      context: .
+      dockerfile: apps/wa-adapter/Dockerfile
+    container_name: ocpf-wa-adapter
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  telegram-adapter:
+    build:
+      context: .
+      dockerfile: apps/telegram-adapter/Dockerfile
+    container_name: ocpf-telegram-adapter
+    environment:
+      DATABASE_URL: postgres://omni:omni_password@postgres:5432/omni
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  email-adapter:
+    build:
+      context: .
+      dockerfile: apps/email-adapter/Dockerfile
+    container_name: ocpf-email-adapter
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
+        - VITE_WS_URL=ws://localhost:8000/ws
+    container_name: ocpf-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - main-api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
