@@ -465,7 +465,7 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         const oooPayload: SendMessagePayload = {
           event: 'message.send',
           data: {
-            inbox_id: INBOX_ID,
+            inbox_id: Number(INBOX_ID),
             internal_message_id: Number(oooMsg.id),
             target_id: sourceJid,
             content: oooMessage,

@@ -119,8 +119,8 @@ export async function evaluateChatbot(
           const payload: SendMessagePayload = {
             event: 'message.send',
             data: {
-              inbox_id: INBOX_ID,
-              internal_message_id: botMsg.id,
+              inbox_id: Number(INBOX_ID),
+              internal_message_id: Number(botMsg.id),
               target_id: sourceJid,
               content: finalBotText,
               message_type: 'text'

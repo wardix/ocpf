@@ -184,8 +184,8 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       const payload: SendMessagePayload = {
         event: 'message.send',
         data: {
-          inbox_id: inboxId,
-          internal_message_id: msg.id,
+          inbox_id: Number(inboxId),
+          internal_message_id: Number(msg.id),
           target_id: target_id,
           content: content || '',
           message_type: media ? 'image' : 'text',

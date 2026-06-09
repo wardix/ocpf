@@ -38,15 +38,14 @@ async function processScheduledMessages() {
           `;
 
           // Format payload for Redis queue
-          const payload = {
+          const payload: import('@omnichannel/shared-types').SendMessagePayload = {
             event: 'message.send',
             data: {
-              account_id: msg.account_id,
-              inbox_id: msg.inbox_id,
-              conversation_id: msg.conversation_id,
-              message_id: insertedMessage.id,
-              jid: msg.phone_number.includes('@') ? msg.phone_number : `${msg.phone_number}@s.whatsapp.net`,
-              content: msg.content
+              inbox_id: Number(msg.inbox_id),
+              internal_message_id: Number(insertedMessage.id),
+              target_id: msg.phone_number.includes('@') ? msg.phone_number : `${msg.phone_number}@s.whatsapp.net`,
+              content: msg.content,
+              message_type: 'text'
             }
           };
 

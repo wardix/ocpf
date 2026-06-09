@@ -78,8 +78,8 @@ app.post('/', broadcastRateLimiter, zValidator('json', broadcastSchema, (result,
           const payload: SendMessagePayload = {
             event: 'message.send',
             data: {
-              inbox_id: INBOX_ID,
-              internal_message_id: msg.id,
+              inbox_id: Number(INBOX_ID),
+              internal_message_id: Number(msg.id),
               target_id: contact.phone_number,
               content: content,
               message_type: 'text'

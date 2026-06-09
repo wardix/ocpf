@@ -274,8 +274,8 @@ export async function evaluateAutomationRules(
               const payload = {
                 event: 'message.send',
                 data: {
-                  inbox_id: conv.inbox_id,
-                  internal_message_id: insertedMsg.id,
+                  inbox_id: Number(conv.inbox_id),
+                  internal_message_id: Number(insertedMsg.id),
                   target_id: conv.phone_number,
                   content: replyContent || '',
                   message_type: 'text'
