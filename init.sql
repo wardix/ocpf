@@ -13,6 +13,13 @@ CREATE TYPE conversation_status AS ENUM ('open', 'pending', 'snoozed', 'resolved
 CREATE TYPE sender_type AS ENUM ('Contact', 'User', 'System');
 CREATE TYPE message_type AS ENUM ('incoming', 'outgoing', 'template');
 CREATE TYPE message_status AS ENUM ('sent', 'delivered', 'read', 'failed');
+CREATE TYPE notification_type AS ENUM (
+    'conversation_assigned', 
+    'mentioned_in_note', 
+    'snoozed_ticket_due', 
+    'broadcast_completed', 
+    'new_conversation'
+);
 
 -- -------------------------------------------------------------------------
 -- 2. Core & Users
@@ -562,3 +569,19 @@ CREATE TABLE api_keys (
     revoked_at TIMESTAMP WITH TIME ZONE
 );
 CREATE UNIQUE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+
+CREATE TABLE notifications (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    type notification_type NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    body TEXT,
+    data JSONB DEFAULT '{}'::jsonb,
+    read_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_account_user ON notifications(account_id, user_id);
+CREATE INDEX idx_notifications_unread ON notifications(user_id, read_at) WHERE read_at IS NULL;
