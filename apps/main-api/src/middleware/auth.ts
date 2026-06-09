@@ -53,12 +53,39 @@ export const authMiddleware = async (c: Context, next: Next) => {
   }
 };
 
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  administrator: ['*'],
+  agent: [
+    'contacts.read',
+    'contacts.write',
+    'conversations.read',
+    'conversations.write',
+    'messages.read',
+    'messages.write',
+    'canned_responses.read',
+    'canned_responses.write',
+    'chatbot.read',
+    'labels.read',
+    'labels.write',
+    'search.read',
+    'inboxes.read',
+    'widget.read',
+    'teams.read',
+    'notifications.read',
+    'notifications.write'
+  ]
+};
+
 export function requirePermission(requiredPermission: string) {
   return async (c: Context, next: Next) => {
     const authMethod = c.get('auth_method');
     if (authMethod === 'jwt') {
-      // JWT/Dashboard users usually have full access within their role limits
-      return next();
+      const role = c.get('user_role') || 'agent';
+      const allowedPermissions = ROLE_PERMISSIONS[role] || [];
+      if (allowedPermissions.includes('*') || allowedPermissions.includes(requiredPermission)) {
+        return next();
+      }
+      throw new HTTPException(403, { message: `Missing required permission: ${requiredPermission}` });
     }
     if (authMethod === 'api_key') {
       const permissions = c.get('permissions') || [];
