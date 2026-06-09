@@ -53,7 +53,7 @@ export async function startWorker() {
             
             // Prioritas 1: Jika ada internal_message_id (dari wa-adapter saat baru dikirim)
             if (internal_message_id) {
-              const [updated] = await db`
+              const [updated] = await sql`
                 UPDATE messages 
                 SET wa_message_id = ${wa_message_id}, status = ${status} 
                 WHERE id = ${internal_message_id}
@@ -71,13 +71,13 @@ export async function startWorker() {
                 'failed': []
               };
 
-              const [currentMsg] = await db`SELECT id, status FROM messages WHERE wa_message_id = ${wa_message_id} LIMIT 1`;
+              const [currentMsg] = await sql`SELECT id, status FROM messages WHERE wa_message_id = ${wa_message_id} LIMIT 1`;
               
               if (currentMsg) {
                 // Pastikan status tidak downgrade (misal read ke delivered)
                 const allowedNext = validTransitions[currentMsg.status] || [];
                 if (allowedNext.includes(status) || currentMsg.status === status) {
-                  const [updated] = await db`
+                  const [updated] = await sql`
                     UPDATE messages SET status = ${status} WHERE id = ${currentMsg.id} RETURNING *
                   `;
                   await redis.publish(PUB_SUB_CH, JSON.stringify({ event: 'message.status_changed', data: updated }));

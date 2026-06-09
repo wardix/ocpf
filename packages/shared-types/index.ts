@@ -66,7 +66,8 @@ export const MessageStatusUpdatePayloadSchema = z.object({
     wa_message_id: z.string(),
     source_id: z.string(),
     status: MessageStatusSchema,
-    timestamp: z.number().optional()
+    timestamp: z.number().optional(),
+    internal_message_id: z.number().optional()
   })
 });
 
