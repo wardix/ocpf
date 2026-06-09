@@ -20,6 +20,11 @@ const aiConfigSchema = z.object({
   features_enabled: z.array(z.string()).optional()
 });
 
+const aiRequestSchema = z.object({
+  conversation_id: z.number({ required_error: 'conversation_id wajib diisi' }).int().positive()
+});
+
+
 // Helper: Format message history for prompt context
 async function getConversationContext(conversationId: number, accountId: number, limit = 20) {
   const messages = await sql`
@@ -142,21 +147,19 @@ aiRoutes.put('/settings', zValidator('json', aiConfigSchema, (result, c) => {
 });
 
 // POST /api/ai/suggest - Generate 3 quick reply suggestions
-aiRoutes.post('/suggest', async (c) => {
+aiRoutes.post('/suggest', zValidator('json', aiRequestSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   try {
     const accountId = getAccountId(c);
     const jwtPayload = c.get('jwtPayload') as any;
-    const body = await c.req.json();
-    const { conversation_id } = body;
-
-    if (!conversation_id) {
-      return c.json({ error: 'conversation_id wajib diisi' }, 400);
-    }
+    const { conversation_id } = c.req.valid('json');
 
     // Verify conversation ownership
     const [conv] = await sql`
       SELECT id FROM conversations WHERE id = ${conversation_id} AND account_id = ${accountId} LIMIT 1
     `;
+
     if (!conv) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
 
     const context = await getConversationContext(conversation_id, accountId, 20);
@@ -185,16 +188,13 @@ Do NOT wrap the response in markdown blocks or write any explanation.`;
 });
 
 // POST /api/ai/summarize - Summarize long conversation
-aiRoutes.post('/summarize', async (c) => {
+aiRoutes.post('/summarize', zValidator('json', aiRequestSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   try {
     const accountId = getAccountId(c);
     const jwtPayload = c.get('jwtPayload') as any;
-    const body = await c.req.json();
-    const { conversation_id } = body;
-
-    if (!conversation_id) {
-      return c.json({ error: 'conversation_id wajib diisi' }, 400);
-    }
+    const { conversation_id } = c.req.valid('json');
 
     const [conv] = await sql`
       SELECT id FROM conversations WHERE id = ${conversation_id} AND account_id = ${accountId} LIMIT 1
@@ -227,16 +227,13 @@ Return ONLY the JSON. Do NOT write markdown, explanations, or wrap output in cod
 });
 
 // POST /api/ai/categorize - Automatically categorize conversation using active labels
-aiRoutes.post('/categorize', async (c) => {
+aiRoutes.post('/categorize', zValidator('json', aiRequestSchema, (result, c) => {
+  if (!result.success) return c.json({ error: 'Validasi gagal', details: result.error.format() }, 400);
+}), async (c) => {
   try {
     const accountId = getAccountId(c);
     const jwtPayload = c.get('jwtPayload') as any;
-    const body = await c.req.json();
-    const { conversation_id } = body;
-
-    if (!conversation_id) {
-      return c.json({ error: 'conversation_id wajib diisi' }, 400);
-    }
+    const { conversation_id } = c.req.valid('json');
 
     const [conv] = await sql`
       SELECT id FROM conversations WHERE id = ${conversation_id} AND account_id = ${accountId} LIMIT 1
