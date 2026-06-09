@@ -526,18 +526,17 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         }).catch(e => logger.error({ err: e }, 'Webhook dispatch failed'));
 
         try {
-          const { createNotification } = await import('../utils/notifications');
+          const { createNotificationsBatch } = await import('../utils/notifications');
           const eligibleUsers = await sql`SELECT user_id FROM account_users WHERE account_id = ${result.accountId}`;
-          for (const row of eligibleUsers) {
-            await createNotification({
-              userId: row.user_id,
-              accountId: result.accountId,
-              type: 'new_conversation',
-              title: 'Percakapan Baru',
-              body: `Percakapan baru dimulai oleh ${result.msg.contact_name || 'Pelanggan'}`,
-              data: { conversation_id: result.conversationId }
-            });
-          }
+          const userIds = eligibleUsers.map((row: { user_id: string | number }) => Number(row.user_id));
+          await createNotificationsBatch({
+            userIds,
+            accountId: result.accountId,
+            type: 'new_conversation',
+            title: 'Percakapan Baru',
+            body: `Percakapan baru dimulai oleh ${result.msg.contact_name || 'Pelanggan'}`,
+            data: { conversation_id: result.conversationId }
+          });
         } catch (err) {
           logger.error({ err }, 'Failed to create new conversation notification');
         }
