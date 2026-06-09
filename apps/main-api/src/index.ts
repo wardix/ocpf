@@ -10,7 +10,7 @@ import { startScheduledMessagesWorker } from './workers/scheduled-messages-worke
 import { startExportWorker } from './workers/export-worker';
 import { websocketHandlers, setupWebSocket } from './websocket/handler';
 import { PORT } from './config/database';
-import { redisSub, PUB_SUB_CH } from './config/redis';
+import { redis, redisSub, PUB_SUB_CH } from './config/redis';
 import { activeWebSockets } from './websocket/handler';
 import { rateLimiter } from './middleware/rate-limiter';
 
@@ -44,7 +44,7 @@ import { notificationsRoutes } from './routes/notifications';
 import { monitorMiddleware, registry } from './utils/monitoring';
 import * as Sentry from '@sentry/bun';
 
-const app = new Hono();
+export const app = new Hono();
 
 // Capture uncaught exceptions using Sentry
 app.onError((err, c) => {
@@ -118,6 +118,32 @@ app.use('/widget.js', serveStatic({ path: './public/widget.js' }));
 
 // Health Check
 app.get('/', (c) => c.text('Main API Omnichannel (Bun + Hono + WebSocket) ✅'));
+
+app.get('/healthz', async (c) => {
+  let dbStatus = 'ok';
+  let redisStatus = 'ok';
+
+  try {
+    await sql`SELECT 1`;
+  } catch (err) {
+    dbStatus = 'fail';
+  }
+
+  try {
+    await redis.ping();
+  } catch (err) {
+    redisStatus = 'fail';
+  }
+
+  const isOk = dbStatus === 'ok' && redisStatus === 'ok';
+
+  return c.json({
+    status: isOk ? 'ok' : 'fail',
+    db: dbStatus,
+    redis: redisStatus,
+    uptime: process.uptime()
+  }, isOk ? 200 : 500);
+});
 
 // Prometheus Metrics Endpoint
 app.get('/metrics', async (c) => {
@@ -221,7 +247,7 @@ startExportWorker();
 
 // Bun HTTP + WebSocket Server
 const server = Bun.serve({
-  port: Number(process.env.PORT) || 3000,
+  port: process.env.NODE_ENV === 'test' ? 0 : (Number(process.env.PORT) || 3000),
   async fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === '/ws') {

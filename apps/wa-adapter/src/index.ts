@@ -536,22 +536,31 @@ process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 // =========================================================================
 const HEALTH_PORT = process.env.WA_ADAPTER_PORT || 3001;
 
-const healthServer = http.createServer((req, res) => {
-  if (req.url === '/health' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    
+const healthServer = http.createServer(async (req, res) => {
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  if ((url.pathname === '/health' || url.pathname === '/healthz') && req.method === 'GET') {
+    let redisStatus = 'ok';
+    try {
+      await redis.ping();
+    } catch (err) {
+      redisStatus = 'fail';
+    }
+
     const sessions = INBOXES.map((inbox: any) => ({
       inbox_id: inbox.id,
       wa_status: activeSocketStatuses.get(inbox.id) || 'unknown'
     }));
 
-    const responsePayload = {
-      status: 'healthy',
-      redis: redis.status === 'ready' && redisSub.status === 'ready' ? 'connected' : 'disconnected',
-      sessions: sessions
-    };
+    const isOk = redisStatus === 'ok';
     
-    res.end(JSON.stringify(responsePayload));
+    res.writeHead(isOk ? 200 : 500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: isOk ? 'ok' : 'fail',
+      db: 'n/a',
+      redis: redisStatus,
+      uptime: process.uptime(),
+      sessions
+    }));
   } else {
     res.writeHead(404);
     res.end();
