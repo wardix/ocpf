@@ -6,6 +6,7 @@
 -- 1. Custom Types (ENUMs)
 -- -------------------------------------------------------------------------
 CREATE TYPE user_role AS ENUM ('administrator', 'agent');
+CREATE TYPE team_member_role AS ENUM ('member', 'leader');
 CREATE TYPE availability_status AS ENUM ('online', 'busy', 'offline');
 CREATE TYPE provider_type AS ENUM ('whatsapp', 'facebook', 'web_widget', 'api', 'telegram', 'email');
 CREATE TYPE conversation_status AS ENUM ('open', 'pending', 'snoozed', 'resolved');
@@ -39,6 +40,25 @@ CREATE TABLE account_users (
     role user_role DEFAULT 'agent',
     availability_status availability_status DEFAULT 'offline',
     UNIQUE (account_id, user_id)
+);
+
+CREATE TABLE teams (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (account_id, name)
+);
+
+CREATE TABLE team_members (
+    id BIGSERIAL PRIMARY KEY,
+    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role team_member_role DEFAULT 'member',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (team_id, user_id)
 );
 
 -- -------------------------------------------------------------------------
@@ -159,6 +179,7 @@ CREATE TABLE tickets (
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     assignee_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    team_id BIGINT REFERENCES teams(id) ON DELETE SET NULL,
     status conversation_status DEFAULT 'open',
     is_bot_active BOOLEAN DEFAULT TRUE,
     bot_state VARCHAR(255) DEFAULT 'start',
@@ -233,6 +254,14 @@ CREATE TABLE conversation_labels (
     PRIMARY KEY (conversation_id, label_id)
 );
 
+CREATE TABLE label_team_routing (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    label_id BIGINT NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+    team_id BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    UNIQUE (label_id, team_id)
+);
+
 -- -------------------------------------------------------------------------
 -- 7. Indexes for Performance (Important for high concurrency)
 -- -------------------------------------------------------------------------
@@ -253,6 +282,14 @@ CREATE INDEX idx_inboxes_account_id ON inboxes(account_id);
 CREATE INDEX idx_tickets_conversation_id ON tickets(conversation_id);
 CREATE INDEX idx_tickets_status ON tickets(status);
 CREATE INDEX idx_tickets_assignee_id ON tickets(assignee_id);
+CREATE INDEX idx_tickets_team_id ON tickets(team_id);
+
+CREATE INDEX idx_teams_account_id ON teams(account_id);
+CREATE INDEX idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX idx_label_team_routing_account_id ON label_team_routing(account_id);
+CREATE INDEX idx_label_team_routing_label_id ON label_team_routing(label_id);
+CREATE INDEX idx_label_team_routing_team_id ON label_team_routing(team_id);
 
 CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX idx_messages_ticket_id ON messages(ticket_id);
