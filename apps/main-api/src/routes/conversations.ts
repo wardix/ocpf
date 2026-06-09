@@ -223,18 +223,16 @@ conversationsRoutes.get('/:id/viewers', async (c) => {
   const conversationId = c.req.param('id');
   try {
     const { redis } = await import('../config/redis');
-    const setKey = `viewers:${conversationId}`;
-    const userIds = await redis.smembers(setKey);
-    const activeViewers = [];
-
-    for (const uid of userIds) {
-      const uName = await redis.get(`viewing:${conversationId}:${uid}`);
-      if (uName) {
-        activeViewers.push({ id: Number(uid), name: uName });
-      } else {
-        await redis.srem(setKey, uid);
-      }
-    }
+    const key = `viewing:conversation:${conversationId}`;
+    
+    // Prune stale viewers (>15 seconds old)
+    const minScore = Date.now() - 15000;
+    await redis.zremrangebyscore(key, '-inf', minScore);
+    
+    // Retrieve all active viewers
+    const members = await redis.zrange(key, 0, -1);
+    const activeViewers = members.map((m) => JSON.parse(m));
+    
     return c.json({ success: true, data: activeViewers });
   } catch (error) {
     return c.json({ success: false, error: 'Gagal memuat viewers' }, 500);
