@@ -37,11 +37,10 @@ import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import fs from 'fs/promises';
 import http from 'http';
-import type { IncomingMessagePayload, MessageStatusUpdatePayload, SendMessagePayload, MessageType, MessageStatus } from '@omnichannel/shared-types';
-import { IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema, SendMessagePayloadSchema } from '@omnichannel/shared-types';
+import type { IncomingMessagePayload, MessageStatusUpdatePayload, SendMessagePayload, MessageType, MessageStatus, TypingUpdatePayload } from '@omnichannel/shared-types';
+import { IncomingMessagePayloadSchema, MessageStatusUpdatePayloadSchema, SendMessagePayloadSchema, TypingUpdatePayloadSchema } from '@omnichannel/shared-types';
 
-// Jika makeWASocket adalah undefined (masalah ESM), coba ambil dari .default
-const createWASocket = typeof makeWASocket === 'function' ? makeWASocket : (makeWASocket as any).default;
+
 
 // Koneksi ke Redis (untuk Queue & Pub/Sub)
 const redis = new Redis({
@@ -55,6 +54,7 @@ const redisSub = new Redis({
 });
 
 const QUEUE_INCOMING = 'queue:incoming_messages';
+const PUB_SUB_CH = 'chat:events';
 
 // Konfigurasi Inboxes
 // Format JSON: [{"id": 1, "dir": "auth_info_1"}, {"id": 2, "dir": "auth_info_2"}]
@@ -88,7 +88,7 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
   // Menggunakan folder dinamis untuk menyimpan sesi login QR Code
   const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), sessionDir));
 
-  const sock = createWASocket({
+  const sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: 'silent' }), 
@@ -329,11 +329,9 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
     }
   });
   // 1c. DARI WA ADAPTER -> KE REDIS (Typing Indicator Pelanggan)
-  sock.ev.on('presences.update', async (json) => {
+  sock.ev.on('presence.update', async ({ id: jid, presences }) => {
     try {
-      const jid = Object.keys(json)[0];
       if (!jid) return;
-      const presences = json[jid];
       if (!presences) return;
       const participant = Object.keys(presences)[0];
       if (!participant) return;
@@ -361,7 +359,7 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
         await redis.publish(PUB_SUB_CH, JSON.stringify(TypingUpdatePayloadSchema.parse(payload)));
       }
     } catch (e) {
-      console.error(`[Inbox ${inboxId}] Error memproses presences.update:`, e);
+      console.error(`[Inbox ${inboxId}] Error memproses presence.update:`, e);
     }
   });
 }
@@ -512,7 +510,11 @@ async function handleShutdown(signal: string) {
     // Putuskan koneksi WhatsApp (Baileys)
     for (const [inboxId, sock] of activeSockets.entries()) {
       console.log(`[SHUTDOWN] Menutup koneksi WA untuk Inbox ${inboxId}...`);
-      sock.ws.close();
+      if (typeof sock.end === 'function') {
+        sock.end(undefined);
+      } else if (sock.ws && typeof sock.ws.close === 'function') {
+        sock.ws.close();
+      }
     }
     
     // Putuskan koneksi Redis
