@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useToastStore } from '../store/toastStore';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Inbox {
   id: number;
@@ -41,6 +42,10 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState<string>('');
+  
+  // Confirmation State
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<number | null>(null);
   
   // Create Inbox Form State
   const [isCreating, setIsCreating] = useState(false);
@@ -229,9 +234,13 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
     }
   };
 
-  const handleRemoveMember = async (userId: number) => {
+  const handleRemoveMember = (userId: number) => {
+    setMemberToRemove(userId);
+    setShowConfirm(true);
+  };
+
+  const executeRemoveMember = async (userId: number) => {
     if (!token || !activeInboxId) return;
-    if (!window.confirm('Apakah Anda yakin ingin menghapus anggota ini dari inbox?')) return;
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
       const response = await fetch(`${apiUrl}/api/inboxes/${activeInboxId}/members/${userId}`, {
@@ -666,6 +675,25 @@ const InboxManagement = ({ inboxes, activeInboxId, setActiveInboxId, onRefreshIn
           </div>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={showConfirm}
+        title="Hapus Anggota"
+        message="Apakah Anda yakin ingin menghapus anggota ini dari inbox?"
+        confirmText="Ya, Hapus"
+        cancelText="Batal"
+        variant="error"
+        onConfirm={() => {
+          if (memberToRemove !== null) {
+            executeRemoveMember(memberToRemove);
+          }
+          setShowConfirm(false);
+          setMemberToRemove(null);
+        }}
+        onCancel={() => {
+          setShowConfirm(false);
+          setMemberToRemove(null);
+        }}
+      />
     </div>
   );
 };
