@@ -165,3 +165,4 @@ apps/frontend/dist/
 apps/main-api/public/uploads/*
 !apps/main-api/public/uploads/.gitkeep
 apps/main-api/chatbot.json
+backups/

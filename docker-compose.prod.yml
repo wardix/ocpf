@@ -7,6 +7,7 @@ services:
 
   redis:
     ports: []  # Do not expose redis port in production
+    command: redis-server --save 60 1 --appendonly yes
     restart: always
 
   main-api:

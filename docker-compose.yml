@@ -22,6 +22,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --save 60 1 --appendonly yes
     restart: unless-stopped
 
   main-api:
