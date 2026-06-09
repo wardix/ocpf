@@ -11,6 +11,7 @@ services:
     restart: always
 
   main-api:
+    ports: []  # Use gateway for external access in production
     restart: always
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://omni:omni_password@postgres:5432/omni}
@@ -39,12 +40,23 @@ services:
       REDIS_PORT: 6379
 
   frontend:
+    ports: []  # Use gateway for external access in production
     build:
       context: .
       dockerfile: apps/frontend/Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-https://api.yourdomain.com}
-        - VITE_WS_URL=${VITE_WS_URL:-wss://api.yourdomain.com/ws}
+        - VITE_API_URL=${VITE_API_URL:-https://yourdomain.com}
+        - VITE_WS_URL=${VITE_WS_URL:-wss://yourdomain.com/ws}
+    restart: always
+
+  gateway:
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:-yourdomain.com}
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # Mount SSL certs directory in production
     restart: always
 
   prometheus:

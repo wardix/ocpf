@@ -95,6 +95,20 @@ services:
       - main-api
     restart: unless-stopped
 
+  gateway:
+    build:
+      context: ./nginx
+    container_name: ocpf-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN_NAME: localhost
+    depends_on:
+      - main-api
+      - frontend
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.45.0
     container_name: ocpf-prometheus

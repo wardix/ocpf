@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
+import { secureHeaders } from 'hono/secure-headers';
 import { startWorker } from './workers/incoming-message';
 import { startSnoozeChecker } from './workers/snooze-checker';
 import { startCSATWorker } from './workers/csat-worker';
@@ -56,6 +57,22 @@ app.onError((err, c) => {
 
 // Register Prometheus and Structured Logging Middleware
 app.use('*', monitorMiddleware);
+
+// Apply Security Headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+app.use('*', secureHeaders({
+  contentSecurityPolicy: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+    mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
+    connectSrc: ["'self'", 'ws:', 'wss:', 'http:', 'https:'],
+    frameAncestors: ["'self'"],
+  },
+  strictTransportSecurity: 'max-age=31536000; includeSubDomains; preload',
+  xFrameOptions: 'SAMEORIGIN',
+  xContentTypeOptions: 'nosniff',
+}));
 
 // Setup CORS Configuration
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
