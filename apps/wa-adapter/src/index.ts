@@ -152,7 +152,8 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
         if (
           !msg.message || 
           msg.message.protocolMessage || 
-          msg.category === 'peer'
+          msg.category === 'peer' ||
+          msg.key.remoteJid === 'status@broadcast'
         ) continue;
 
         let isHostEcho = false;
