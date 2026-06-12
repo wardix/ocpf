@@ -210,7 +210,13 @@ conversationsRoutes.get('/:id/messages', async (c) => {
             'html_content', em.html_content,
             'has_attachments', em.has_attachments
           ) FROM email_message_metadata em WHERE em.message_id = m.id
-        ) as email_metadata
+        ) as email_metadata,
+        (
+          SELECT json_build_object(
+            'quoted_wa_id', q.wa_message_id,
+            'quoted_text', q.content
+          ) FROM messages q WHERE q.id = m.reply_to_message_id AND q.wa_message_id IS NOT NULL
+        ) as whatsapp_metadata
       FROM messages m
       LEFT JOIN attachments a ON m.id = a.message_id
       WHERE m.conversation_id = ${conversationId} AND m.account_id = ${accountId}

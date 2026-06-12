@@ -101,10 +101,10 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       const [insertedMsg] = await tx`
         INSERT INTO messages (
           account_id, conversation_id, ticket_id, sender_type, sender_id, 
-          content, message_type, status, is_private
+          content, message_type, status, is_private, reply_to_message_id
         ) VALUES (
           ${accountId}, ${conv.conversation_id}, ${conv.ticket_id || null}, 'User', ${agentId}, 
-          ${content || ''}, 'outgoing', 'sent', ${is_private || false}
+          ${content || ''}, 'outgoing', 'sent', ${is_private || false}, ${reply_to_message_id || null}
         )
         RETURNING *;
       `;
