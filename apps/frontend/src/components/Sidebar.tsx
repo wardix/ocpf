@@ -31,7 +31,7 @@ interface Props {
 const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
   const { token } = useAuthStore();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'my_teams' | 'assigned' | 'all'>('unassigned');
+  const [activeTab, setActiveTab] = useState<'unassigned' | 'mine' | 'my_teams' | 'assigned' | 'groups' | 'all'>('unassigned');
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -274,6 +274,13 @@ const Sidebar = ({ selectedId, onSelect, refreshKey, onStartChat }: Props) => {
             title="Sedang Ditangani"
           >
             Aktif
+          </button>
+          <button 
+            className={`btn btn-xs shrink-0 ${activeTab === 'groups' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('groups')}
+            title="Percakapan Grup"
+          >
+            Grup WA
           </button>
           <button 
             className={`btn btn-xs shrink-0 ${activeTab === 'all' ? 'btn-active' : 'btn-ghost'}`}

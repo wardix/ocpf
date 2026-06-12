@@ -34,10 +34,13 @@ conversationsRoutes.get('/', async (c) => {
     const [totalRow] = await sql`
       WITH FilteredConvs AS (
         SELECT 
-          c.id, t.status, t.assignee_id, t.team_id
+          c.id, t.status, t.assignee_id, t.team_id, ch.provider_type, con.phone_number as contact_phone
         FROM conversations c
+        JOIN contacts con ON c.contact_id = con.id
+        JOIN inboxes i ON c.inbox_id = i.id
+        JOIN channels ch ON i.channel_id = ch.id
         LEFT JOIN tickets t ON t.conversation_id = c.id AND t.status != 'resolved'
-        WHERE c.account_id = ${accountId}
+        WHERE c.account_id = ${accountId} AND con.deleted_at IS NULL
           ${isInboxFilter ? sql`AND c.inbox_id = ${inboxId}` : (isAgent ? sql`AND c.inbox_id IN (SELECT inbox_id FROM inbox_members WHERE user_id = ${currentAgentId})` : sql``)}
       )
       SELECT COUNT(*) as total FROM FilteredConvs
@@ -46,6 +49,7 @@ conversationsRoutes.get('/', async (c) => {
           (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
           (${activeTab === 'my_teams'}::boolean = true AND status IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ${currentAgentId})) OR
+          (${activeTab === 'groups'}::boolean = true AND provider_type = 'whatsapp' AND contact_phone LIKE '%@g.us') OR
           (${activeTab === 'all'}::boolean = true)
     `;
 
@@ -95,6 +99,7 @@ conversationsRoutes.get('/', async (c) => {
           (${activeTab === 'mine'}::boolean = true AND status IS NOT NULL AND assignee_id = ${currentAgentId}) OR
           (${activeTab === 'assigned'}::boolean = true AND status IS NOT NULL AND assignee_id IS NOT NULL) OR
           (${activeTab === 'my_teams'}::boolean = true AND status IS NOT NULL AND team_id IN (SELECT team_id FROM team_members WHERE user_id = ${currentAgentId})) OR
+          (${activeTab === 'groups'}::boolean = true AND provider_type = 'whatsapp' AND contact_phone LIKE '%@g.us') OR
           (${activeTab === 'all'}::boolean = true)
       ORDER BY updated_at DESC
       LIMIT ${perPage} OFFSET ${offset}
