@@ -49,9 +49,11 @@ services:
       dockerfile: apps/wa-adapter/Dockerfile
     container_name: ocpf-wa-adapter
     environment:
+      DATABASE_URL: postgres://omni:omni_password@postgres:5432/omni
       REDIS_HOST: redis
       REDIS_PORT: 6379
     depends_on:
+      - postgres
       - redis
     restart: unless-stopped
 
