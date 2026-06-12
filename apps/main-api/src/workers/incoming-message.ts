@@ -367,10 +367,22 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
       ? `[${data.participant_name || 'Member'}]: ${content}` 
       : content;
 
+    let reply_to_message_id = null;
+    if (data.whatsapp_metadata?.quoted_wa_id) {
+      const [quotedMsg] = await tx`
+        SELECT id FROM messages 
+        WHERE wa_message_id = ${data.whatsapp_metadata.quoted_wa_id} AND account_id = ${ACCOUNT_ID}
+        LIMIT 1
+      `;
+      if (quotedMsg) {
+        reply_to_message_id = quotedMsg.id;
+      }
+    }
+
     const [msg] = await tx`
       INSERT INTO messages (
         account_id, conversation_id, ticket_id, sender_type, sender_id, 
-        content, message_type, status, created_at, wa_message_id
+        content, message_type, status, created_at, wa_message_id, reply_to_message_id
       ) VALUES (
         ${ACCOUNT_ID}, ${conversation.id}, ${ticket && (ticket.status !== 'resolved' || isCSATReply) ? ticket.id : null}, 
         ${data.is_host_echo ? 'User' : 'Contact'}, 
@@ -379,10 +391,15 @@ async function processIncomingMessageToDB(data: IncomingMessagePayload['data']) 
         ${data.is_host_echo ? 'outgoing' : 'incoming'}, 
         'delivered', 
         to_timestamp(${timestamp}),
-        ${data.wa_message_id}
+        ${data.wa_message_id},
+        ${reply_to_message_id}
       )
       RETURNING *;
     `;
+
+    if (data.whatsapp_metadata) {
+      (msg as any).whatsapp_metadata = data.whatsapp_metadata;
+    }
 
     if (data.email_metadata) {
       await tx`

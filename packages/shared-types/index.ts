@@ -53,6 +53,10 @@ export const IncomingMessagePayloadSchema = z.object({
       html_content: z.string().optional(),
       has_attachments: z.boolean().optional(),
       email_date: z.string().optional()
+    }).optional(),
+    whatsapp_metadata: z.object({
+      quoted_wa_id: z.string(),
+      quoted_text: z.string().optional()
     }).optional()
   })
 });

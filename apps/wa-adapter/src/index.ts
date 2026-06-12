@@ -269,6 +269,15 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
            console.log(`[Inbox ${inboxId}] Tipe pesan tidak didukung (${messageTypeKey}), raw dump disimpan di ${dumpPath}`);
         }
 
+        let whatsappMetadata = undefined;
+        const contextInfo = actualMessage[messageTypeKey]?.contextInfo || actualMessage.contextInfo;
+        if (contextInfo && contextInfo.stanzaId) {
+          whatsappMetadata = {
+            quoted_wa_id: contextInfo.stanzaId,
+            quoted_text: contextInfo.quotedMessage?.conversation || contextInfo.quotedMessage?.extendedTextMessage?.text || ''
+          };
+        }
+
         const payload: IncomingMessagePayload = {
           event: 'message.incoming',
           data: {
@@ -283,7 +292,8 @@ async function startBaileysForInbox(inboxId: number, sessionDir: string) {
             participant_id: participantId,
             participant_name: isGroup ? msg.pushName : null,
             is_host_echo: isHostEcho,
-            media: mediaPayload 
+            media: mediaPayload,
+            whatsapp_metadata: whatsappMetadata
           }
         };
 
