@@ -10,7 +10,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@omnichannel/shared-types": "workspace:*",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@whiskeysockets/baileys": "7.0.0-rc13",
     "ioredis": "^5.3.0",
     "pino": "^10.3.1",
     "@sentry/node": "^8.9.0",
