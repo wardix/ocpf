@@ -12,7 +12,8 @@
     "dev:email-adapter": "bun run --cwd apps/email-adapter dev",
     "dev:telegram-adapter": "bun run --cwd apps/telegram-adapter dev",
     "test:main-api": "bun test --cwd apps/main-api",
+    "test:wa-adapter": "bun test --cwd apps/wa-adapter",
     "test:frontend": "bun run --cwd apps/frontend test",
-    "test": "bun run test:main-api && bun run test:frontend"
+    "test": "bun run test:main-api && bun run test:wa-adapter && bun run test:frontend"
   }
 }

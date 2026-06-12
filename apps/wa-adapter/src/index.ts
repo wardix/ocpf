@@ -26,10 +26,11 @@ process.on('uncaughtException', (error) => {
 import { 
   default as makeWASocket, 
   DisconnectReason, 
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
   downloadMediaMessage
 } from '@whiskeysockets/baileys';
+import { usePostgresAuthState } from './postgres-auth-state';
+import { sql } from './database';
 import { Boom } from '@hapi/boom';
 import Redis from 'ioredis';
 import path from 'path';
@@ -79,14 +80,65 @@ const GROUP_CACHE_TTL = 5 * 60 * 1000; // 5 Menit
 
 let isShuttingDown = false;
 
+async function migrateFileSystemToPostgres(inboxId: number, sessionDir: string) {
+  try {
+    const dirPath = path.join(process.cwd(), sessionDir);
+    const folderExists = await fs.stat(dirPath).then(s => s.isDirectory()).catch(() => false);
+    if (!folderExists) return;
+
+    console.log(`[Inbox ${inboxId}] Menemukan sesi berbasis file di ${sessionDir}. Memulai migrasi ke PostgreSQL...`);
+    const files = await fs.readdir(dirPath);
+    
+    const upserts: { key: string; value: string }[] = [];
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        const filePath = path.join(dirPath, file);
+        const content = await fs.readFile(filePath, 'utf-8');
+        try {
+          JSON.parse(content); // verify it parses
+          upserts.push({
+            key: file,
+            value: content
+          });
+        } catch (e) {
+          console.error(`[Inbox ${inboxId}] Gagal membaca file ${file} saat migrasi:`, e);
+        }
+      }
+    }
+
+    if (upserts.length > 0) {
+      await sql.begin(async (tx) => {
+        for (const item of upserts) {
+          await tx`
+            INSERT INTO whatsapp_auth_states (inbox_id, key, value)
+            VALUES (${inboxId}, ${item.key}, ${item.value}::text::jsonb)
+            ON CONFLICT (inbox_id, key)
+            DO UPDATE SET value = EXCLUDED.value;
+          `;
+        }
+      });
+      console.log(`[Inbox ${inboxId}] Berhasil memigrasi ${upserts.length} file sesi ke PostgreSQL!`);
+    }
+
+    // Rename folder to avoid migrating again
+    const backupPath = `${dirPath}_migrated_backup_${Date.now()}`;
+    await fs.rename(dirPath, backupPath);
+    console.log(`[Inbox ${inboxId}] Folder sesi asli dipindahkan ke ${backupPath}`);
+  } catch (err) {
+    console.error(`[Inbox ${inboxId}] Gagal memigrasi sesi berbasis file:`, err);
+  }
+}
+
 async function startBaileysForInbox(inboxId: number, sessionDir: string) {
+  // 1. Jalankan migrasi jika folder sesi file ada
+  await migrateFileSystemToPostgres(inboxId, sessionDir);
+
   // Ambil versi WhatsApp terbaru secara dinamis agar tidak kena status 405 (Method Not Allowed)
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`[Inbox ${inboxId}] Menggunakan WA Version: ${version.join('.')}, isLatest: ${isLatest}`);
-  console.log(`[Inbox ${inboxId}] Menjalankan sesi di folder: ${sessionDir}`);
 
-  // Menggunakan folder dinamis untuk menyimpan sesi login QR Code
-  const { state, saveCreds } = await useMultiFileAuthState(path.join(process.cwd(), sessionDir));
+  // Menggunakan custom Postgres Auth State untuk menyimpan sesi login QR Code
+  const { state, saveCreds } = await usePostgresAuthState(sql, inboxId);
 
   const sock = makeWASocket({
     version,
