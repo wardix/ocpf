@@ -20,6 +20,7 @@ const sendMessageSchema = z.object({
   content: z.string().optional(),
   conversation_id: z.coerce.number().int(),
   is_private: z.boolean().optional(),
+  reply_to_message_id: z.coerce.number().int().optional().nullable(),
   media: z.object({
     mimetype: z.string(),
     data_base64: z.string(),
@@ -54,7 +55,7 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     const agentId = jwtPayload.id;
     const accountId = getAccountId(c);
 
-    const { target_id, content, conversation_id, media, is_private, email_metadata } = c.req.valid('json');
+    const { target_id, content, conversation_id, media, is_private, email_metadata, reply_to_message_id } = c.req.valid('json');
 
     const [conv] = await sql`
       SELECT c.id as conversation_id, c.inbox_id, t.id as ticket_id, t.assignee_id, ch.provider_type
@@ -65,6 +66,21 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
       WHERE c.id = ${conversation_id} AND c.account_id = ${accountId} LIMIT 1
     `;
     if (!conv) return c.json({ error: 'Percakapan tidak ditemukan' }, 404);
+
+    let whatsappMetadata = undefined;
+    if (reply_to_message_id && conv.provider_type === 'whatsapp') {
+      const [quotedMsg] = await sql`
+        SELECT wa_message_id, content 
+        FROM messages 
+        WHERE id = ${reply_to_message_id} AND account_id = ${accountId} LIMIT 1
+      `;
+      if (quotedMsg && quotedMsg.wa_message_id) {
+        whatsappMetadata = {
+          quoted_wa_id: quotedMsg.wa_message_id,
+          quoted_text: quotedMsg.content || ''
+        };
+      }
+    }
     
     if (conv.ticket_id && conv.assignee_id !== agentId) {
       return c.json({ error: 'Akses ditolak: Anda harus mengambil alih tiket aktif ini terlebih dahulu.' }, 403);
@@ -196,7 +212,8 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
              bcc_addresses: email_metadata?.bcc_addresses,
              in_reply_to: (msg as unknown as ThreadedMessage)._in_reply_to ?? undefined,
              references: (msg as unknown as ThreadedMessage)._references ?? undefined
-          } : undefined
+          } : undefined,
+          whatsapp_metadata: whatsappMetadata
         }
       };
       
@@ -210,6 +227,8 @@ messagesRoutes.post('/send', sendMessageRateLimiter, zValidator('json', sendMess
     
     const finalMsgData = {
       ...msg,
+      reply_to_message_id: reply_to_message_id || null,
+      whatsapp_metadata: whatsappMetadata || null,
       attachments: attachmentData ? [attachmentData] : []
     };
     

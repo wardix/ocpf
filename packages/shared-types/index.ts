@@ -90,6 +90,10 @@ export const SendMessagePayloadSchema = z.object({
       html_content: z.string().optional(),
       in_reply_to: z.string().optional(),
       references: z.string().optional()
+    }).optional(),
+    whatsapp_metadata: z.object({
+      quoted_wa_id: z.string(),
+      quoted_text: z.string()
     }).optional()
   })
 });
