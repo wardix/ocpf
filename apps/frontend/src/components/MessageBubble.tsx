@@ -23,14 +23,19 @@ export interface MessageProps {
       html_content?: string;
       has_attachments?: boolean;
     };
+    whatsapp_metadata?: {
+      quoted_wa_id: string;
+      quoted_text: string;
+    } | null;
   };
   selectedConvId: number;
   selectedConvName: string;
   copiedLink: string | null;
   handleCopyLink: (type: 'phone' | 'ticket', id: string | number) => void;
+  onReply?: (msgId: number, content: string, senderName: string) => void;
 }
 
-const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedLink, handleCopyLink }: MessageProps) => {
+const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedLink, handleCopyLink, onReply }: MessageProps) => {
   if (msg.sender_type === 'System') {
     const isCopied = copiedLink?.includes(`ticket=${msg.ticket_id}`);
     return (
@@ -63,6 +68,14 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
           ? 'bg-white text-base-content' 
           : msg.is_private ? 'bg-warning text-warning-content' : 'bg-primary text-primary-content'
       }`}>
+        {/* Render WhatsApp Quote Reply */}
+        {msg.whatsapp_metadata && (
+          <div className="bg-base-200/80 border-l-4 border-secondary p-2 mb-2 rounded text-xs text-base-content/85 text-left max-w-full">
+            <span className="font-semibold block text-[10px] text-secondary-focus mb-0.5">Membalas pesan:</span>
+            <span className="italic block truncate max-w-xs">{msg.whatsapp_metadata.quoted_text}</span>
+          </div>
+        )}
+
         {/* Render Media Attachments */}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="flex flex-col gap-2 mb-2">
@@ -118,14 +131,36 @@ const MessageBubbleComponent = ({ msg, selectedConvId, selectedConvName, copiedL
           return <span key={i}>{part}</span>;
         })}
       </div>
-      <div className="chat-footer opacity-50 text-[10px] mt-1 flex items-center gap-1">
-        {msg.sender_type === 'Contact' ? 'Diterima' : (
+      <div className="chat-footer opacity-50 text-[10px] mt-1 flex items-center gap-2 select-none">
+        {msg.sender_type === 'Contact' ? (
+          <>
+            <span>Diterima</span>
+            {onReply && (
+              <button 
+                onClick={() => onReply(msg.id, msg.content, selectedConvName)}
+                className="hover:text-primary transition-colors flex items-center gap-0.5 ml-1 font-semibold"
+                title="Balas pesan ini"
+              >
+                ↩ Balas
+              </button>
+            )}
+          </>
+        ) : (
           <>
             <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             {msg.status === 'failed' && <span className="text-error font-bold" title="Gagal Terkirim">❌</span>}
             {msg.status === 'sent' && <span title="Terkirim">✓</span>}
             {msg.status === 'delivered' && <span title="Tersampaikan">✓✓</span>}
             {msg.status === 'read' && <span className="text-info font-bold" title="Dibaca">✓✓</span>}
+            {onReply && !msg.is_private && (
+              <button 
+                onClick={() => onReply(msg.id, msg.content, 'Anda')}
+                className="hover:text-primary transition-colors flex items-center gap-0.5 ml-1 font-semibold"
+                title="Balas pesan ini"
+              >
+                ↩ Balas
+              </button>
+            )}
           </>
         )}
       </div>
