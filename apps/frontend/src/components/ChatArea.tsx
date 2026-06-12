@@ -77,6 +77,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<{ id: number; content: string; sender_name: string } | null>(null);
 
   const activeViewers = useViewingPresence(selectedConv?.id);
   const currentScheduledMsgs = selectedConv ? (scheduledMessages[selectedConv.id] || []) : [];
@@ -179,6 +180,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
     setSuggestions([]);
     setSummaryData(null);
     setShowSummaryModal(false);
+    setReplyToMessage(null);
   }, [selectedConv?.id]);
 
   const lastTypingTime = useRef<number>(0);
@@ -579,6 +581,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           account_id: 1,
           media: mediaPayload,
           is_private: isPrivateNote,
+          reply_to_message_id: replyToMessage?.id || null,
           email_metadata: selectedConv.provider_type === 'email' ? {
             subject: emailSubject,
             cc_addresses: emailCc.split(',').map(s => s.trim()).filter(s => s)
@@ -592,6 +595,7 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
         setEmailCc('');
         clearFile(); // Hapus file yang dipilih
         setIsPrivateNote(false); // Reset mode ke publik
+        setReplyToMessage(null);
       } else {
         const errData = await response.json();
         addToast(errData.error || 'Gagal mengirim pesan', 'error');
@@ -926,6 +930,9 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
                     selectedConvName={selectedConv.name} 
                     copiedLink={copiedLink} 
                     handleCopyLink={handleCopyLink} 
+                    onReply={(msgId, content, senderName) => {
+                      setReplyToMessage({ id: msgId, content, sender_name: senderName });
+                    }}
                   />
                 </div>
               );
@@ -1029,6 +1036,22 @@ const ChatArea = ({ onResolve, onAssign, onLoadMore }: Props) => {
           <div className="mb-2 p-2 bg-base-200 rounded-lg flex items-center justify-between border border-base-300">
             <span className="text-sm truncate max-w-xs font-medium">📎 {selectedFile.name}</span>
             <button onClick={clearFile} className="btn btn-xs btn-circle btn-ghost text-error">✕</button>
+          </div>
+        )}
+
+        {replyToMessage && (
+          <div className="mb-2 p-3 bg-secondary/10 rounded-xl flex items-center justify-between border border-secondary/20 shadow-sm transition-all animate-fadeIn">
+            <div className="flex flex-col text-left overflow-hidden">
+              <span className="text-[10px] font-bold text-secondary uppercase tracking-wider mb-0.5">Membalas {replyToMessage.sender_name}</span>
+              <span className="text-xs text-base-content/80 italic truncate max-w-lg">{replyToMessage.content}</span>
+            </div>
+            <button 
+              onClick={() => setReplyToMessage(null)} 
+              className="btn btn-xs btn-circle btn-ghost text-error"
+              title="Batalkan Balasan"
+            >
+              ✕
+            </button>
           </div>
         )}
         <div className="flex items-end gap-2">

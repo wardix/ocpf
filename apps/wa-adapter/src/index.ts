@@ -400,7 +400,7 @@ async function listenForOutgoingMessages() {
           const queuedAt = payload._queued_at || poppedAt;
           const redisLatency = poppedAt - queuedAt;
           
-          const { target_id, content, media } = payload.data;
+          const { target_id, content, media, whatsapp_metadata } = payload.data;
           console.log(`\n[DEBUG-LATENCY] (${poppedAt}) [Inbox ${targetInboxId}] Mengambil antrean kirim pesan (Latency Antrean Redis: ${redisLatency}ms)`);
           
           const sock = activeSockets.get(targetInboxId);
@@ -441,7 +441,21 @@ async function listenForOutgoingMessages() {
             waMessage = { text: content };
           }
 
-          const sentMsg = await sock.sendMessage(target_id, waMessage);
+          const options: any = {};
+          if (whatsapp_metadata) {
+            options.quoted = {
+              key: {
+                remoteJid: target_id,
+                fromMe: false,
+                id: whatsapp_metadata.quoted_wa_id
+              },
+              message: {
+                conversation: whatsapp_metadata.quoted_text
+              }
+            };
+          }
+
+          const sentMsg = await sock.sendMessage(target_id, waMessage, options);
           
           if (sentMsg?.key?.id) {
             sentCache.add(sentMsg.key.id);
