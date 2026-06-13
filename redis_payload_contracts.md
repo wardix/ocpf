@@ -27,6 +27,10 @@ Dikirim oleh Baileys saat ada pesan baru masuk dari pelanggan atau sinkronisasi 
     "participant_id": null,                      // Terisi jika pesan ini dari dalam Grup WA
     "participant_name": null,
     "is_host_echo": false,                       // True jika dikirim secara manual dari HP admin
+    "whatsapp_metadata": {                       // Opsional: Data spesifik WA (seperti quoted message)
+      "quoted_wa_id": "3EB0YYYYYYY",
+      "quoted_participant": "6281234567890@s.whatsapp.net"
+    },
     "media": {                                   // Opsional, hanya jika ada lampiran
       "mimetype": "image/jpeg",
       "data_base64": "/9j/4AAQSkZJRg...",
@@ -86,6 +90,7 @@ Dikirim oleh Main API ke antrean spesifik inbox.
     "content": "Baik Pak Budi, harganya Rp100.000",
     "message_type": "text",
     "is_private": false,                         // Abaikan dari pengiriman jika ini sekadar private note antar agen
+    "reply_to_message_id": 10541,                // Opsional: ID internal pesan yang di-quote
     "media": {                                   // Opsional
       "mimetype": "application/pdf",
       "data_base64": "JVBERi0xLjQK...",

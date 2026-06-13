@@ -20,6 +20,7 @@ Proyek ini menggunakan **Bun Workspaces** untuk mengelola beberapa layanan dalam
 3.  **`apps/wa-adapter` (Node.js + Baileys)**
     *   Layanan adapter mandiri untuk koneksi WhatsApp.
     *   Berjalan di atas **Node.js** (karena library Baileys sangat bergantung pada modul internal Node.js yang lebih stabil dibandingkan Bun untuk kasus ini).
+    *   Bersifat **stateless**. Kredensial autentikasi WhatsApp tidak lagi disimpan dalam folder `auth_info_baileys`, melainkan dikelola langsung di PostgreSQL (`whatsapp_auth_states`) sehingga aman di-deploy dalam kontainer Docker.
     *   Mendengarkan event WhatsApp, memformat payload, dan memasukkannya ke antrean Redis (`queue:incoming_messages`).
     *   Mendengarkan perintah kirim pesan dari Redis (`queue:outgoing_messages`) dan mengirimkannya via Baileys.
     *   Memiliki fitur **Message Dumps** (`apps/wa-adapter/message_dumps/`) yang otomatis menyimpan raw payload JSON dari Baileys untuk keperluan *debugging* atau pengembangan fitur baru (seperti *location*, *reaction*, dll).
@@ -31,7 +32,8 @@ Proyek ini menggunakan **Bun Workspaces** untuk mengelola beberapa layanan dalam
 *   **Multi-Tenancy Isolasi Kedap Air:** Setiap rute API dilindungi middleware ketat yang memisahkan data berdasarkan `account_id` pengguna.
 *   **Sistem Kategorisasi (Labels/Tags):** Agen dapat menyematkan chip warna-warni ke percakapan, dikelola sepenuhnya oleh administrator.
 *   **Visibilitas Tim & Penugasan Paksa (Admin Reassign):** Administrator dapat melihat status agen (Online/Busy/Offline) secara *real-time* via Pub/Sub dan dapat secara paksa mengambil alih atau melempar tiket ke agen lain.
-*   **PostgreSQL Full-Text Search (Unified Search):** Pencarian teks super cepat yang langsung menandai (highlight) kata kunci dalam pesan, dapat dipanggil dengan jalan pintas `Ctrl+K` (Command Palette).
+*   **PostgreSQL Full-Text Search (Unified Search):** Pencarian teks super cepat menggunakan GIN Index yang langsung menandai (highlight) kata kunci dalam pesan, dapat dipanggil dengan jalan pintas `Ctrl+K`.
+*   **Dukungan Grup WA & Balasan Kutipan (Quote Reply):** Filter khusus untuk memisahkan *chat* grup WhatsApp dengan obrolan pribadi, serta dukungan penuh membalas pesan secara spesifik menggunakan `whatsapp_metadata`.
 *   **Ergonomi Tingkat Lanjut:** Dilengkapi dukungan UI/UX penuh seperti Dark Mode (*Theme Switcher*), indikator "Sedang Mengetik" (Typing Indicator), centang biru WhatsApp (*Read Receipts*), hingga *Snoozed Timer* untuk menunda tiket dan menunggunya bangun secara mandiri.
 *   **Keyboard Shortcuts Global:** Agen dapat melakukan penugasan, mengirim pesan, atau beralih mode tiket dalam kedipan mata cukup dengan menekan tombol (e.g. `Alt+R`, `Ctrl+Enter`, `Shift+?`).
 

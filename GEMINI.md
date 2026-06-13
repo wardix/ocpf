@@ -29,6 +29,7 @@ Platform ini dibangun dengan arsitektur **Microservices** terpisah (*decoupled*)
 *   **Wajib Menggunakan Raw SQL:** Di dalam `main-api`, kita menggunakan pustaka `postgres` murni. **JANGAN gunakan ORM** (seperti Prisma atau TypeORM). Keputusan ini diambil secara sadar untuk mencegah *memory bloat* dan menjaga efisiensi saat menangani jutaan baris data pesan.
 *   **Multi-tenancy:** Semua tabel data utama (seperti `contacts`, `conversations`, `messages`, `channels`) wajib menyertakan kolom `account_id` untuk memastikan isolasi data antar perusahaan.
 *   **Audit Trail & Dual-Write:** Setiap perubahan status percakapan (seperti tutup/buka tiket) harus dicatat ganda (*dual-write*): sebagai data analitik struktural di tabel `conversation_events` dan sebagai gelembung pesan visual di tabel `messages` dengan `sender_type = 'System'`.
+*   **Pencarian Teks Penuh (FTS):** Pencarian riwayat chat dan kontak menggunakan Native PostgreSQL Full-Text Search dengan `GIN Index` (menggunakan kolom `search_vector`). Hindari penggunaan kueri `LIKE '%...%'` atau integrasi *search engine* eksternal (seperti OpenSearch) selama PostgreSQL masih mampu menangani.
 
 ## 3. Aturan Koneksi Redis (Anti-Blocking)
 Di `apps/main-api`, koneksi Redis dipisahkan menjadi 3 *instance* yang berbeda peruntukannya. Tolong pertahankan pola ini:
@@ -40,6 +41,7 @@ Di `apps/main-api`, koneksi Redis dipisahkan menjadi 3 *instance* yang berbeda p
 *   **JID Normalization:** Karena arsitektur *Multi-Device* WhatsApp sering merutekan pesan menggunakan `@lid`, `wa-adapter` telah dikonfigurasi untuk memprioritaskan alamat `@s.whatsapp.net` (dari `remoteJidAlt`) agar riwayat obrolan pelanggan tidak terpecah.
 *   **Pesan Sistem:** `wa-adapter` mengabaikan pesan bertipe `protocolMessage` dan kategori `peer` agar pesan internal sinkronisasi kunci WhatsApp tidak masuk sebagai percakapan di *database*.
 *   **Group Chat:** Pesan dari grup WhatsApp direkam. Sistem akan menyisipkan tag nama pengirim asli (`participant_name`) di depan isi pesan saat menyimpannya di database (misal: `[Budi]: Halo`).
+*   **Stateless Auth State:** Sesi kredensial WhatsApp Baileys TIDAK lagi disimpan di dalam _file system_ (folder `auth_info_baileys`), melainkan di-serialize dan disimpan langsung ke database PostgreSQL (`whatsapp_auth_states`). Hal ini membuat `wa-adapter` sepenuhnya bersifat _stateless_ dan siap di-_deploy_ di dalam kontainer (Docker) tanpa risiko kehilangan sesi saat restart.
 
 ## 5. Fitur Debugging (Message Dumps)
 Jika Anda perlu menambahkan dukungan untuk tipe pesan WhatsApp yang baru (seperti pesan lokasi, reaksi, atau dokumen), **JANGAN langsung menebak strukturnya**.

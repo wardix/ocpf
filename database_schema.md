@@ -69,6 +69,7 @@ Tabel pelanggan yang menghubungi sistem.
 *   `phone_number` (String, Nullable)
 *   `avatar_url` (String, Nullable)
 *   `custom_attributes` (JSONB) - Data tambahan yang dinamis.
+*   `search_vector` (TSVector, Nullable) - Vektor penelusuran berindeks GIN.
 
 ### `contact_inboxes` (Pivot Table)
 Menghubungkan kontak dengan inbox tertentu (seorang kontak di WA mungkin punya ID yang berbeda dengan di Facebook).
@@ -76,6 +77,13 @@ Menghubungkan kontak dengan inbox tertentu (seorang kontak di WA mungkin punya I
 *   `contact_id` (Foreign Key -> contacts.id)
 *   `inbox_id` (Foreign Key -> inboxes.id)
 *   `source_id` (String) - ID unik dari platform asli (Misal: nomor WA pelanggan, atau ID Facebook Messenger).
+
+### `whatsapp_auth_states`
+Menyimpan state otentikasi Baileys untuk WhatsApp Adapter. Ini memungkinkan `wa-adapter` berjalan secara *stateless* dan persisten di dalam kontainer Docker.
+*   `inbox_id` (Integer) - Menandakan akun WA mana yang dihubungkan
+*   `key` (String) - Kunci data auth (e.g. 'creds', 'app-state-sync-key')
+*   `data` (JSONB) - Nilai state yang di-serialize
+*   `PRIMARY KEY (inbox_id, key)`
 
 ## 3. Tabel Percakapan & Tiket (Conversations & Tickets)
 
@@ -115,6 +123,7 @@ Tabel yang menyimpan setiap baris pesan di dalam sebuah percakapan. Tabel ini ak
 *   `is_private` (Boolean) - `true` jika ini adalah *Private Note* antar agen.
 *   `status` (Enum: 'sent', 'delivered', 'read', 'failed') - Status pengiriman ke platform asli.
 *   `wa_message_id` (String, Nullable) - ID spesifik pesan dari WhatsApp.
+*   `reply_to_message_id` (Foreign Key -> messages.id, Nullable) - ID pesan internal yang sedang dibalas/di-quote.
 *   `search_vector` (TSVector, Nullable) - Vektor penelusuran berindeks GIN untuk pencarian teks penuh (*Full-Text Search*).
 *   `created_at` (Timestamp)
 

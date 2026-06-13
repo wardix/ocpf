@@ -23,6 +23,7 @@ Berdasarkan preferensi teknis Anda, berikut adalah spesifikasi *stack* yang sang
 ### 3. Database & Penyimpanan (Data Layer)
 *   **Database Relasional: PostgreSQL (Raw SQL)**
     *   *Alasan:* Wajib untuk aplikasi SaaS *multi-tenant*. Menggunakan **Raw SQL** tanpa ORM (Object-Relational Mapping) memberikan kontrol absolut terhadap performa *query*, terutama saat data pesan sudah mencapai jutaan baris. Anda bisa menggunakan *driver* bawaan Bun atau `postgres.js` untuk mengeksekusi *raw query*.
+    *   *FTS (Full-Text Search):* Kita memaksimalkan fitur bawaan PostgreSQL (`tsvector` & GIN Index) untuk sistem pencarian global, menghindari kompleksitas pemasangan *search engine* eksternal seperti Elasticsearch/OpenSearch di fase awal MVP.
 *   **Message Broker / Cache / Pub-Sub: Redis**
     *   *Alasan:* Tetap menjadi komponen **krusial** meskipun menggunakan Bun. Digunakan untuk:
         1.  *Pub/Sub:* Menyiarkan pesan baru via WebSocket.
@@ -56,7 +57,7 @@ Untuk rilis awal, kita harus menghindari *over-engineering* dan fokus pada "Alur
 5.  Sistem Penagihan (Billing/Subscription) jika ini SaaS.
 
 ## Ringkasan Arsitektur Aliran Data (Microservice Pattern)
-1.  **Incoming Message:** *WhatsApp Adapter Service* (berjalan di Node.js) menerima *event* pesan masuk (`messages.upsert`) dari koneksi Baileys.
+1.  **Incoming Message:** *WhatsApp Adapter Service* (berjalan di Node.js secara *stateless* karena manajemen sesinya disimpan di PostgreSQL) menerima *event* pesan masuk (`messages.upsert`) dari koneksi Baileys.
 2.  **Queueing:** *Service* Node.js tersebut langsung memasukkan *payload* pesan mentah ke dalam antrean (Queue) Redis agar *socket* Baileys tidak terblokir.
 3.  **Background Processing:** *Main API* (berjalan di Bun) yang bertindak sebagai *consumer*, mengambil *payload* dari antrean Redis -> Melakukan *Raw SQL Query* untuk mencari/membuat `Contact` di PostgreSQL -> Menyisipkan data `Message` baru.
 4.  **Pub/Sub Broadcast:** Jika penyimpanan berhasil, *Main API* (Bun) mengirim *event* via Redis Pub/Sub.
