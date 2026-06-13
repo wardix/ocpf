@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { sql } from '../config/database';
 import { authMiddleware, getAccountId } from '../middleware/auth';
+import { formatTsQuery } from '../utils/search';
 
 export const contactsRoutes = new Hono();
 
@@ -12,39 +13,74 @@ contactsRoutes.use('/*', authMiddleware);
 // Endpoint daftar semua kontak (CRM) dengan pencarian
 contactsRoutes.get('/', async (c) => {
   try {
-    const search = c.req.query('q') || '';
+    const search = (c.req.query('q') || '').trim();
     const accountId = getAccountId(c);
     // Pagination params
     const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
     const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || '25', 10)));
     const offset = (page - 1) * perPage;
 
-    const [totalRow] = await sql`
-      SELECT COUNT(*) as total FROM contacts
-      WHERE account_id = ${accountId} 
-        AND deleted_at IS NULL 
-        AND (name ILIKE ${'%' + search + '%'} OR phone_number ILIKE ${'%' + search + '%'})
-    `;
-    const total = parseInt(totalRow?.total || '0', 10);
+    let contacts;
+    let total = 0;
 
-    const contacts = await sql`
-      SELECT 
-        c.id, 
-        c.name, 
-        c.phone_number, 
-        c.email, 
-        c.created_at,
-        COUNT(t.id) as total_tickets
-      FROM contacts c
-      LEFT JOIN conversations conv ON c.id = conv.contact_id
-      LEFT JOIN tickets t ON conv.id = t.conversation_id
-      WHERE c.account_id = ${accountId} 
-        AND c.deleted_at IS NULL 
-        AND (c.name ILIKE ${'%' + search + '%'} OR c.phone_number ILIKE ${'%' + search + '%'})
-      GROUP BY c.id
-      ORDER BY c.created_at DESC
-      LIMIT ${perPage} OFFSET ${offset}
-    `;
+    if (search.length > 0) {
+      const formattedQuery = formatTsQuery(search);
+      if (formattedQuery) {
+        const [totalRow] = await sql`
+          SELECT COUNT(*)::int as total FROM contacts
+          WHERE account_id = ${accountId} 
+            AND deleted_at IS NULL 
+            AND search_vector @@ to_tsquery('simple', ${formattedQuery})
+        `;
+        total = totalRow?.total || 0;
+
+        contacts = await sql`
+          SELECT 
+            c.id, 
+            c.name, 
+            c.phone_number, 
+            c.email, 
+            c.created_at,
+            COUNT(t.id) as total_tickets
+          FROM contacts c
+          LEFT JOIN conversations conv ON c.id = conv.contact_id
+          LEFT JOIN tickets t ON conv.id = t.conversation_id
+          WHERE c.account_id = ${accountId} 
+            AND c.deleted_at IS NULL 
+            AND c.search_vector @@ to_tsquery('simple', ${formattedQuery})
+          GROUP BY c.id
+          ORDER BY ts_rank(c.search_vector, to_tsquery('simple', ${formattedQuery})) DESC, c.created_at DESC
+          LIMIT ${perPage} OFFSET ${offset}
+        `;
+      } else {
+        contacts = [];
+      }
+    } else {
+      const [totalRow] = await sql`
+        SELECT COUNT(*)::int as total FROM contacts
+        WHERE account_id = ${accountId} 
+          AND deleted_at IS NULL
+      `;
+      total = totalRow?.total || 0;
+
+      contacts = await sql`
+        SELECT 
+          c.id, 
+          c.name, 
+          c.phone_number, 
+          c.email, 
+          c.created_at,
+          COUNT(t.id) as total_tickets
+        FROM contacts c
+        LEFT JOIN conversations conv ON c.id = conv.contact_id
+        LEFT JOIN tickets t ON conv.id = t.conversation_id
+        WHERE c.account_id = ${accountId} 
+          AND c.deleted_at IS NULL 
+        GROUP BY c.id
+        ORDER BY c.created_at DESC
+        LIMIT ${perPage} OFFSET ${offset}
+      `;
+    }
     
     return c.json({
       data: contacts,

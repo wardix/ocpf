@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import postgres from 'postgres';
 import { sql } from '../config/database';
 import { authMiddleware, getAccountId } from '../middleware/auth';
+import { formatTsQuery } from '../utils/search';
 
 export const searchRoutes = new Hono();
 searchRoutes.use('/*', authMiddleware);
@@ -25,7 +26,12 @@ searchRoutes.get('/', async (c) => {
       return c.json({ error: 'Query minimal 2 karakter' }, 400);
     }
 
+    const formattedQuery = formatTsQuery(query);
     const results: SearchResults = {};
+
+    if (!formattedQuery) {
+      return c.json({ success: true, data: { query, results } });
+    }
 
     // Search Contacts
     if (type === 'all' || type === 'contacts') {
@@ -36,10 +42,8 @@ searchRoutes.get('/', async (c) => {
         LEFT JOIN conversations conv ON conv.contact_id = c.id AND conv.account_id = ${accountId}
         WHERE c.account_id = ${accountId}
           AND c.deleted_at IS NULL
-          AND (c.name ILIKE ${'%' + query + '%'}
-               OR c.phone_number ILIKE ${'%' + query + '%'}
-               OR c.email ILIKE ${'%' + query + '%'})
-        ORDER BY c.updated_at DESC
+          AND c.search_vector @@ to_tsquery('simple', ${formattedQuery})
+        ORDER BY ts_rank(c.search_vector, to_tsquery('simple', ${formattedQuery})) DESC, c.updated_at DESC
         LIMIT ${perPage} OFFSET ${offset}
       `;
 
@@ -47,9 +51,7 @@ searchRoutes.get('/', async (c) => {
         SELECT COUNT(*)::int as total FROM contacts
         WHERE account_id = ${accountId}
           AND deleted_at IS NULL
-          AND (name ILIKE ${'%' + query + '%'}
-               OR phone_number ILIKE ${'%' + query + '%'}
-               OR email ILIKE ${'%' + query + '%'})
+          AND search_vector @@ to_tsquery('simple', ${formattedQuery})
       `;
 
       results.contacts = { total: countRow?.total || 0, data: contacts };
@@ -60,22 +62,22 @@ searchRoutes.get('/', async (c) => {
       const messages = await sql`
         SELECT m.id as message_id, m.conversation_id, m.content, m.sender_type, m.created_at,
           con.name as contact_name,
-          ts_headline('indonesian', m.content, plainto_tsquery('indonesian', ${query}),
+          ts_headline('indonesian', m.content, to_tsquery('indonesian', ${formattedQuery}),
             'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15') as headline
         FROM messages m
         JOIN conversations c ON c.id = m.conversation_id
         JOIN contacts con ON con.id = c.contact_id
         WHERE m.account_id = ${accountId}
           AND con.deleted_at IS NULL
-          AND m.search_vector @@ plainto_tsquery('indonesian', ${query})
-        ORDER BY ts_rank(m.search_vector, plainto_tsquery('indonesian', ${query})) DESC, m.created_at DESC
+          AND m.search_vector @@ to_tsquery('indonesian', ${formattedQuery})
+        ORDER BY ts_rank(m.search_vector, to_tsquery('indonesian', ${formattedQuery})) DESC, m.created_at DESC
         LIMIT ${perPage} OFFSET ${offset}
       `;
 
       const [countRow] = await sql`
         SELECT COUNT(*)::int as total FROM messages
         WHERE account_id = ${accountId}
-          AND search_vector @@ plainto_tsquery('indonesian', ${query})
+          AND search_vector @@ to_tsquery('indonesian', ${formattedQuery})
       `;
 
       results.messages = { total: countRow?.total || 0, data: messages };
@@ -95,8 +97,8 @@ searchRoutes.get('/', async (c) => {
         LEFT JOIN users u ON t.assignee_id = u.id
         WHERE c.account_id = ${accountId}
           AND con.deleted_at IS NULL
-          AND (con.name ILIKE ${'%' + query + '%'} OR con.phone_number ILIKE ${'%' + query + '%'})
-        ORDER BY c.updated_at DESC
+          AND con.search_vector @@ to_tsquery('simple', ${formattedQuery})
+        ORDER BY ts_rank(con.search_vector, to_tsquery('simple', ${formattedQuery})) DESC, c.updated_at DESC
         LIMIT ${perPage} OFFSET ${offset}
       `;
 
