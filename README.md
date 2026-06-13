@@ -1,6 +1,6 @@
-# Omnichannel Customer Support Platform - MVP
+# Omnichannel Customer Support Platform
 
-Proyek ini adalah prototipe (MVP) dari platform omnichannel customer support (mirip Chatwoot) yang dirancang dengan arsitektur microservices untuk menangani konkurensi tinggi dan komunikasi real-time, menggunakan WhatsApp (via Baileys) sebagai saluran komunikasi pertamanya.
+Proyek ini adalah platform omnichannel customer support (mirip Chatwoot) yang dirancang dengan arsitektur microservices untuk menangani konkurensi tinggi dan komunikasi real-time, menggunakan WhatsApp (via Baileys) sebagai saluran komunikasi pertamanya.
 
 ## Arsitektur Proyek (Monorepo)
 
@@ -28,7 +28,7 @@ Proyek ini menggunakan **Bun Workspaces** untuk mengelola beberapa layanan dalam
 4.  **`packages/shared-types`**
     *   Berisi definisi TypeScript interface (`IncomingMessagePayload`, `SendMessagePayload`, dll) yang digunakan bersama oleh `main-api`, `wa-adapter`, dan `frontend` agar struktur data (kontrak komunikasi via Redis) tetap konsisten. Telah dilengkapi runtime validation menggunakan **Zod**.
 
-## Fitur Unggulan (MVP+)
+## Fitur Unggulan
 *   **Multi-Tenancy Isolasi Kedap Air:** Setiap rute API dilindungi middleware ketat yang memisahkan data berdasarkan `account_id` pengguna.
 *   **Sistem Kategorisasi (Labels/Tags):** Agen dapat menyematkan chip warna-warni ke percakapan, dikelola sepenuhnya oleh administrator.
 *   **Visibilitas Tim & Penugasan Paksa (Admin Reassign):** Administrator dapat melihat status agen (Online/Busy/Offline) secara *real-time* via Pub/Sub dan dapat secara paksa mengambil alih atau melempar tiket ke agen lain.
